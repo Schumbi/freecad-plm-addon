@@ -1,15 +1,19 @@
 import unittest
 
 from freecad_plm_addon.panel import (
+    annotation_label,
+    annotations_for_revision,
     build_revision_index,
     connection_label,
     format_bytes,
     part_label,
     project_label,
-    revision_details_text,
     revision_filename,
     revision_label,
+    revision_notes_text,
+    revision_overview_text,
     revision_reference_files,
+    revision_technical_text,
     revisions_from_part_detail,
 )
 
@@ -82,8 +86,8 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(format_bytes(1536), "1.5 KB")
         self.assertEqual(format_bytes(2 * 1024 * 1024), "2.0 MB")
 
-    def test_revision_details_text_includes_api_fields(self):
-        details = revision_details_text(
+    def test_revision_overview_text_includes_api_fields_without_metadata(self):
+        details = revision_overview_text(
             {
                 "id": 11,
                 "revision_code": "R0001",
@@ -93,7 +97,6 @@ class PanelTests(unittest.TestCase):
                 "sha256": "abc123",
                 "created_at": "2026-07-06T09:30:00Z",
                 "download_url": "https://plm.example/api/revisions/11/file/",
-                "notes": "Initial import",
                 "extracted_metadata": {"Label": "Part"},
             }
         )
@@ -103,7 +106,41 @@ class PanelTests(unittest.TestCase):
         self.assertIn("Groesse: 1.5 KB", details)
         self.assertIn("SHA-256: abc123", details)
         self.assertIn("Download-URL: https://plm.example/api/revisions/11/file/", details)
-        self.assertIn('"Label": "Part"', details)
+        self.assertNotIn('"Label": "Part"', details)
+
+    def test_revision_notes_text(self):
+        self.assertEqual(revision_notes_text({"notes": "Initial import"}), "Initial import")
+        self.assertEqual(revision_notes_text({}), "Keine Notizen vorhanden.")
+
+    def test_revision_technical_text_contains_metadata(self):
+        self.assertIn('"Label": "Part"', revision_technical_text({"extracted_metadata": {"Label": "Part"}}))
+
+    def test_annotation_label(self):
+        self.assertEqual(
+            annotation_label(
+                {
+                    "object_name": "Body",
+                    "subelement": "Face1",
+                    "status": "open",
+                    "created_by": "ralf",
+                    "created_at": "2026-07-06T10:00:00Z",
+                    "text": "Kante prüfen",
+                }
+            ),
+            "Body.Face1 - [open] - ralf 2026-07-06 - Kante prüfen",
+        )
+
+    def test_annotations_for_revision_includes_general_and_matching_annotations(self):
+        annotations = [
+            {"id": 1, "revision_id": None},
+            {"id": 2, "revision_id": 7},
+            {"id": 3, "revision_id": 8},
+        ]
+
+        self.assertEqual(
+            annotations_for_revision(annotations, 7),
+            [{"id": 1, "revision_id": None}, {"id": 2, "revision_id": 7}],
+        )
 
     def test_revision_filename_uses_original_filename(self):
         self.assertEqual(revision_filename({"original_filename": "../Box.FCStd"}), "Box.FCStd")

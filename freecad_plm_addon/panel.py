@@ -86,7 +86,7 @@ def format_bytes(size_bytes):
     return str(value)
 
 
-def revision_details_text(revision):
+def revision_overview_text(revision):
     rows = [
         ("ID", revision.get("id")),
         ("Revision", revision.get("revision_code") or revision.get("revision") or revision.get("version")),
@@ -97,14 +97,53 @@ def revision_details_text(revision):
         ("Erstellt", revision.get("created_at") or revision.get("created") or revision.get("uploaded_at")),
         ("Freigegeben", revision.get("released_at")),
         ("Download-URL", revision.get("download_url")),
-        ("Notizen", revision.get("notes")),
     ]
     lines = [f"{label}: {value}" for label, value in rows if value not in ("", None)]
-    metadata = revision.get("extracted_metadata")
-    if metadata:
-        lines.append("Metadaten:")
-        lines.append(json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=False))
     return "\n".join(lines) or "Keine Revisionsdetails vorhanden."
+
+
+def revision_notes_text(revision):
+    return revision.get("notes") or "Keine Notizen vorhanden."
+
+
+def revision_technical_text(revision):
+    metadata = revision.get("extracted_metadata")
+    if not metadata:
+        return "Keine technischen Metadaten vorhanden."
+    return json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=False)
+
+
+def annotation_label(annotation):
+    parts = []
+    target = annotation.get("object_name") or ""
+    subelement = annotation.get("subelement") or ""
+    if target and subelement:
+        parts.append(f"{target}.{subelement}")
+    elif target:
+        parts.append(target)
+
+    status = annotation.get("status") or ""
+    if status:
+        parts.append(f"[{status}]")
+
+    author = annotation.get("created_by") or ""
+    created = annotation.get("created_at") or ""
+    if author or created:
+        parts.append(" ".join(value for value in (author, created[:10]) if value))
+
+    text = annotation.get("text") or ""
+    if text:
+        parts.append(text)
+
+    return " - ".join(parts) or f"Anmerkung {annotation.get('id', '')}".strip()
+
+
+def annotations_for_revision(annotations, revision_id):
+    return [
+        annotation
+        for annotation in annotations
+        if annotation.get("revision_id") in (None, revision_id)
+    ]
 
 
 def revision_filename(revision):
@@ -169,6 +208,7 @@ class PLMPanel:
         self.QtCore, self.QtWidgets = _load_qt()
         self.widget = self.QtWidgets.QWidget()
         self.widget.setObjectName("FreeCADPLMPanelWidget")
+        self.readonly_document_names = []
 
         layout = self.QtWidgets.QVBoxLayout(self.widget)
 
@@ -202,29 +242,61 @@ class PLMPanel:
 
         self.refresh_button.setVisible(False)
 
-        self.status = self.QtWidgets.QLabel("Nicht verbunden.")
-        layout.addWidget(self.status)
+        splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Horizontal)
+        layout.addWidget(splitter)
 
-        layout.addWidget(self.QtWidgets.QLabel("Projekte"))
+        browser_widget = self.QtWidgets.QWidget()
+        browser_layout = self.QtWidgets.QVBoxLayout(browser_widget)
+
+        browser_layout.addWidget(self.QtWidgets.QLabel("Projekte"))
         self.projects = self.QtWidgets.QListWidget()
-        layout.addWidget(self.projects)
+        browser_layout.addWidget(self.projects)
 
-        layout.addWidget(self.QtWidgets.QLabel("Teile"))
+        browser_layout.addWidget(self.QtWidgets.QLabel("Teile"))
         self.parts = self.QtWidgets.QListWidget()
-        layout.addWidget(self.parts)
+        browser_layout.addWidget(self.parts)
 
-        layout.addWidget(self.QtWidgets.QLabel("Revisionen"))
+        browser_layout.addWidget(self.QtWidgets.QLabel("Revisionen"))
         self.revisions = self.QtWidgets.QListWidget()
-        layout.addWidget(self.revisions)
+        browser_layout.addWidget(self.revisions)
 
-        layout.addWidget(self.QtWidgets.QLabel("Details"))
-        self.revision_details = self.QtWidgets.QPlainTextEdit()
-        self.revision_details.setReadOnly(True)
-        self.revision_details.setPlainText("Keine Revision ausgewählt.")
-        layout.addWidget(self.revision_details)
+        details_widget = self.QtWidgets.QWidget()
+        details_layout = self.QtWidgets.QVBoxLayout(details_widget)
+
+        self.detail_tabs = self.QtWidgets.QTabWidget()
+
+        self.revision_overview = self.QtWidgets.QPlainTextEdit()
+        self.revision_overview.setReadOnly(True)
+        self.revision_overview.setPlainText("Keine Revision ausgewählt.")
+        self.detail_tabs.addTab(self.revision_overview, "Übersicht")
+
+        self.revision_notes = self.QtWidgets.QPlainTextEdit()
+        self.revision_notes.setReadOnly(True)
+        self.revision_notes.setPlainText("Keine Revision ausgewählt.")
+        self.detail_tabs.addTab(self.revision_notes, "Notizen")
+
+        self.annotations = self.QtWidgets.QListWidget()
+        self.detail_tabs.addTab(self.annotations, "Anmerkungen")
+
+        self.technical_details = self.QtWidgets.QPlainTextEdit()
+        self.technical_details.setReadOnly(True)
+        self.technical_details.setPlainText("Keine Revision ausgewählt.")
+        self.detail_tabs.addTab(self.technical_details, "Technik")
+
+        details_layout.addWidget(self.detail_tabs)
 
         self.open_readonly_button = self.QtWidgets.QPushButton("Read-only öffnen")
-        layout.addWidget(self.open_readonly_button)
+        self.open_readonly_button.setEnabled(False)
+        details_layout.addWidget(self.open_readonly_button)
+
+        self.status = self.QtWidgets.QLabel("Nicht verbunden.")
+        self.status.setWordWrap(True)
+        details_layout.addWidget(self.status)
+
+        splitter.addWidget(browser_widget)
+        splitter.addWidget(details_widget)
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
 
         self.connect_button.clicked.connect(self.refresh_projects)
         self.refresh_button.clicked.connect(self.refresh_projects)
@@ -252,12 +324,33 @@ class PLMPanel:
         project = items[0].data(self.QtCore.Qt.UserRole)
         return project if isinstance(project, dict) else None
 
+    def selected_part(self):
+        items = self.parts.selectedItems()
+        if not items:
+            return None
+        part = items[0].data(self.QtCore.Qt.UserRole)
+        return part if isinstance(part, dict) else None
+
     def selected_revision(self):
         items = self.revisions.selectedItems()
         if not items:
             return None
         revision = items[0].data(self.QtCore.Qt.UserRole)
         return revision if isinstance(revision, dict) else None
+
+    def clear_revision_context(self):
+        self.revision_overview.setPlainText("Keine Revision ausgewählt.")
+        self.revision_notes.setPlainText("Keine Revision ausgewählt.")
+        self.technical_details.setPlainText("Keine Revision ausgewählt.")
+        self.annotations.clear()
+        self.open_readonly_button.setEnabled(False)
+
+    def set_revision_context(self, revision):
+        self.revision_overview.setPlainText(revision_overview_text(revision))
+        self.revision_notes.setPlainText(revision_notes_text(revision))
+        self.technical_details.setPlainText(revision_technical_text(revision))
+        self.open_readonly_button.setEnabled(True)
+        self.refresh_annotations(revision)
 
     def refresh_projects(self):
         from . import config
@@ -278,7 +371,7 @@ class PLMPanel:
         self.projects.clear()
         self.parts.clear()
         self.revisions.clear()
-        self.revision_details.setPlainText("Keine Revision ausgewählt.")
+        self.clear_revision_context()
 
         try:
             client = self.client()
@@ -304,7 +397,7 @@ class PLMPanel:
         items = self.projects.selectedItems()
         self.parts.clear()
         self.revisions.clear()
-        self.revision_details.setPlainText("Keine Revision ausgewählt.")
+        self.clear_revision_context()
         if not items:
             return
 
@@ -337,7 +430,7 @@ class PLMPanel:
     def refresh_revisions(self):
         items = self.parts.selectedItems()
         self.revisions.clear()
-        self.revision_details.setPlainText("Keine Revision ausgewählt.")
+        self.clear_revision_context()
         if not items:
             return
 
@@ -371,15 +464,43 @@ class PLMPanel:
     def show_revision_details(self):
         items = self.revisions.selectedItems()
         if not items:
-            self.revision_details.setPlainText("Keine Revision ausgewählt.")
+            self.clear_revision_context()
             return
 
         revision = items[0].data(self.QtCore.Qt.UserRole)
         if not isinstance(revision, dict):
-            self.revision_details.setPlainText("Keine Revisionsdetails vorhanden.")
+            self.clear_revision_context()
             return
 
-        self.revision_details.setPlainText(revision_details_text(revision))
+        self.set_revision_context(revision)
+
+    def refresh_annotations(self, revision):
+        self.annotations.clear()
+        part = self.selected_part()
+        part_id = part.get("id") if isinstance(part, dict) else None
+        if part_id is None:
+            return
+
+        try:
+            annotations = annotations_for_revision(
+                self.client().get_annotations(part_id),
+                revision.get("id"),
+            )
+        except PLMError as exc:
+            self.annotations.addItem(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.annotations.addItem(f"Anmerkungen konnten nicht geladen werden: {exc}")
+            return
+
+        if not annotations:
+            self.annotations.addItem("Keine Anmerkungen vorhanden.")
+            return
+
+        for annotation in annotations:
+            item = self.QtWidgets.QListWidgetItem(annotation_label(annotation))
+            item.setData(self.QtCore.Qt.UserRole, annotation)
+            self.annotations.addItem(item)
 
     def open_selected_revision_readonly(self):
         from . import fcstd
@@ -416,6 +537,15 @@ class PLMPanel:
         )
 
         try:
+            closed, failed = fcstd.close_documents(self.readonly_document_names)
+            self.readonly_document_names = []
+            if failed:
+                failed_names = ", ".join(failed)
+                self.status.setText(
+                    f"Vorherige read-only Dokumente konnten nicht geschlossen werden: {failed_names}"
+                )
+                return
+
             self.status.setText("Lade Revision und Referenzen herunter...")
             root_path, downloaded, missing = self.download_revision_tree(
                 project,
@@ -423,7 +553,9 @@ class PLMPanel:
                 target_dir,
                 filename,
             )
-            fcstd.open_document(root_path)
+            before_documents = fcstd.document_names()
+            document = fcstd.open_document(root_path)
+            self.readonly_document_names = fcstd.opened_document_names(before_documents, document)
         except PLMError as exc:
             self.status.setText(f"PLM-Fehler: {exc}")
             return
@@ -432,6 +564,8 @@ class PLMPanel:
             return
 
         message = f"Read-only geöffnet: {root_path} ({len(downloaded)} Datei(en))"
+        if closed:
+            message = f"{message}; vorher geschlossen: {len(closed)}"
         if missing:
             message = f"{message}; fehlende Referenzen: {', '.join(sorted(missing))}"
         self.status.setText(message)
