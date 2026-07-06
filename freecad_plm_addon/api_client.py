@@ -1,0 +1,162 @@
+import json
+from pathlib import Path
+from urllib import error, parse, request
+
+from .errors import (
+    APIError,
+    AuthenticationError,
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+)
+from .workspace import sha256_file
+
+
+class PLMClient:
+    def __init__(self, base_url, api_token, timeout=30):
+        self.base_url = base_url.rstrip("/")
+        self.api_token = api_token.strip()
+        self.timeout = timeout
+
+    def get_projects(self):
+        return self._json("GET", "/api/projects/")["projects"]
+
+    def get_project(self, project_id):
+        return self._json("GET", f"/api/projects/{project_id}/")["project"]
+
+    def get_parts(self, project_id):
+        return self._json("GET", f"/api/projects/{project_id}/parts/")["parts"]
+
+    def get_part(self, part_id):
+        return self._json("GET", f"/api/parts/{part_id}/")
+
+    def update_part(self, part_id, data):
+        return self._json("POST", f"/api/parts/{part_id}/", data)["part"]
+
+    def get_revision(self, revision_id):
+        return self._json("GET", f"/api/revisions/{revision_id}/")["revision"]
+
+    def download_revision_file(self, download_url, target_path, expected_sha256):
+        target_path = Path(target_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        response = self._open("GET", download_url, absolute=True)
+        target_path.write_bytes(response.read())
+        digest = sha256_file(target_path)
+        if digest != expected_sha256:
+            target_path.unlink(missing_ok=True)
+            raise APIError(0, f"SHA-256 stimmt nicht: {target_path}")
+
+    def checkout_revision(self, revision_id, snapshot_id=None, workspace_hint=""):
+        payload = {"workspace_hint": workspace_hint}
+        if snapshot_id is not None:
+            payload["snapshot_id"] = snapshot_id
+        return self._json("POST", f"/api/revisions/{revision_id}/checkout/", payload)
+
+    def get_checkout_manifest(self, checkout_id):
+        return self._json("GET", f"/api/checkouts/{checkout_id}/manifest/")
+
+    def checkin(self, checkout_id, fcstd_path, change_summary):
+        return self._multipart(
+            f"/api/checkouts/{checkout_id}/checkin/",
+            {"change_summary": change_summary},
+            "file",
+            Path(fcstd_path),
+            "application/octet-stream",
+        )
+
+    def cancel_checkout(self, checkout_id):
+        return self._json("POST", f"/api/checkouts/{checkout_id}/cancel/", {})
+
+    def get_annotations(self, part_id):
+        return self._json("GET", f"/api/parts/{part_id}/annotations/")["annotations"]
+
+    def create_annotation(self, part_id, data):
+        return self._json("POST", f"/api/parts/{part_id}/annotations/", data)["annotation"]
+
+    def update_annotation(self, annotation_id, data):
+        return self._json("POST", f"/api/annotations/{annotation_id}/", data)["annotation"]
+
+    def _url(self, path, absolute=False):
+        if absolute:
+            return path
+        return f"{self.base_url}/{path.lstrip('/')}"
+
+    def _headers(self, content_type=None):
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        if content_type:
+            headers["Content-Type"] = content_type
+        return headers
+
+    def _json(self, method, path, data=None):
+        body = None
+        if data is not None:
+            body = json.dumps(data).encode("utf-8")
+        response = self._open(method, path, body=body, content_type="application/json")
+        if response.status == 204:
+            return {}
+        return json.loads(response.read().decode("utf-8"))
+
+    def _open(self, method, path, body=None, content_type=None, absolute=False):
+        req = request.Request(
+            self._url(path, absolute=absolute),
+            data=body,
+            headers=self._headers(content_type=content_type),
+            method=method,
+        )
+        try:
+            return request.urlopen(req, timeout=self.timeout)
+        except error.HTTPError as exc:
+            self._raise_api_error(exc)
+
+    def _raise_api_error(self, exc):
+        raw = exc.read()
+        payload = {}
+        message = exc.reason or f"HTTP {exc.code}"
+        if raw:
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+                message = payload.get("error") or message
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                message = raw.decode("utf-8", errors="replace")
+        error_class = {
+            401: AuthenticationError,
+            403: PermissionDeniedError,
+            404: NotFoundError,
+            409: ConflictError,
+        }.get(exc.code, APIError)
+        raise error_class(exc.code, message, payload)
+
+    def _multipart(self, path, fields, file_field, file_path, content_type):
+        boundary = "----FreeCADPLMAddonBoundary"
+        chunks = []
+        for name, value in fields.items():
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode("utf-8"),
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"),
+                    str(value).encode("utf-8"),
+                    b"\r\n",
+                ]
+            )
+        filename = file_path.name
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("utf-8"),
+                (
+                    f'Content-Disposition: form-data; name="{file_field}"; '
+                    f'filename="{filename}"\r\n'
+                ).encode("utf-8"),
+                f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"),
+                file_path.read_bytes(),
+                b"\r\n",
+                f"--{boundary}--\r\n".encode("utf-8"),
+            ]
+        )
+        body = b"".join(chunks)
+        response = self._open(
+            "POST",
+            path,
+            body=body,
+            content_type=f"multipart/form-data; boundary={boundary}",
+        )
+        return json.loads(response.read().decode("utf-8"))
