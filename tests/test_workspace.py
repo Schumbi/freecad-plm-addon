@@ -7,10 +7,10 @@ from pathlib import Path
 from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.workspace import (
     checkout_dir,
+    download_manifest_files,
     prune_readonly_cache,
     read_manifest,
     readonly_revision_dir,
-    resolve_reference_path,
     root_file_path,
     safe_join,
     safe_download_filename,
@@ -69,13 +69,6 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(safe_download_filename("../part.FCStd"), "part.FCStd")
         self.assertEqual(safe_download_filename("/tmp/part.FCStd"), "part.FCStd")
         self.assertEqual(safe_download_filename(""), "revision.FCStd")
-
-    def test_resolve_reference_path(self):
-        self.assertEqual(resolve_reference_path("Assembly.FCStd", "Box.FCStd"), "Box.FCStd")
-        self.assertEqual(
-            resolve_reference_path("assemblies/Assembly.FCStd", "../parts/Box.FCStd"),
-            "parts/Box.FCStd",
-        )
 
     def make_readonly_revision(self, root, project, revision_id, file_count=1, mtime=1):
         revision_dir = (
@@ -150,6 +143,31 @@ class WorkspaceTests(unittest.TestCase):
             self.assertFalse((Path(tmp) / "plm-lan-schumbi-de" / "OLD" / "readonly").exists())
             self.assertTrue((Path(tmp) / "plm-lan-schumbi-de" / "MID" / "readonly").exists())
             self.assertTrue((Path(tmp) / "plm-lan-schumbi-de" / "CUR" / "readonly").exists())
+
+    def test_download_manifest_files_chmods_existing_readonly_file(self):
+        class FakeClient:
+            def download_revision_file(self, _url, target_path, _sha256):
+                Path(target_path).write_bytes(b"abc")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "part.FCStd"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"old")
+            path.chmod(0o444)
+            manifest = {
+                "files": [
+                    {
+                        "path": "part.FCStd",
+                        "download_url": "https://plm.example/file",
+                        "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                    }
+                ]
+            }
+
+            downloaded = download_manifest_files(FakeClient(), manifest, tmp)
+
+            self.assertEqual(downloaded, [path])
+            self.assertEqual(path.read_bytes(), b"abc")
 
 
 if __name__ == "__main__":

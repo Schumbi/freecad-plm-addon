@@ -3,12 +3,12 @@ import json
 from .api_client import PLMClient
 from .errors import PLMError
 from .workspace import (
+    download_manifest_files,
     prune_readonly_cache,
     readonly_revision_dir,
-    resolve_reference_path,
-    safe_download_filename,
-    safe_join,
+    root_file_path,
     touch_directory,
+    write_manifest,
 )
 
 
@@ -151,43 +151,6 @@ def annotations_for_revision(annotations, revision_id):
         for annotation in annotations
         if annotation.get("revision_id") in (None, revision_id)
     ]
-
-
-def revision_filename(revision):
-    return safe_download_filename(
-        revision.get("original_filename") or revision.get("filename") or revision.get("file_name")
-    )
-
-
-def revision_reference_files(revision):
-    document = (revision.get("extracted_metadata") or {}).get("freecad_document", {})
-    references = document.get("references") or []
-    files = []
-    for reference in references:
-        if not isinstance(reference, dict):
-            continue
-        filename = reference.get("file")
-        if filename:
-            files.append(filename)
-    return files
-
-
-def revision_index_key(path):
-    return str(path).replace("\\", "/").lower()
-
-
-def revision_basename_key(path):
-    return safe_download_filename(path).lower()
-
-
-def build_revision_index(part_details):
-    index = {}
-    for part_detail in part_details:
-        for revision in revisions_from_part_detail(part_detail):
-            filename = revision_filename(revision)
-            for key in (revision_index_key(filename), revision_basename_key(filename)):
-                index.setdefault(key, revision)
-    return index
 
 
 def _load_qt():
@@ -547,20 +510,11 @@ class PLMPanel:
             return
 
         revision_id = revision.get("id")
-        download_url = revision.get("download_url")
-        sha256 = revision.get("sha256")
         if revision_id is None:
             self.status.setText("Revision hat keine ID.")
             return
-        if not download_url:
-            self.status.setText("Revision hat keine Download-URL.")
-            return
-        if not sha256:
-            self.status.setText("Revision hat keine SHA-256-Prüfsumme.")
-            return
 
         project_code = project.get("code") or project.get("project_code") or f"project-{project.get('id')}"
-        filename = revision_filename(revision)
         target_dir = readonly_revision_dir(
             self.workspace_root.text().strip(),
             self.server_url.text().strip(),
@@ -578,13 +532,13 @@ class PLMPanel:
                 )
                 return
 
-            self.status.setText("Lade Revision und Referenzen herunter...")
-            root_path, downloaded, missing = self.download_revision_tree(
-                project,
-                revision,
-                target_dir,
-                filename,
-            )
+            self.status.setText("Lade Manifest und Dateien herunter...")
+            manifest = self.client().get_revision_manifest(revision_id)
+            write_manifest(target_dir, manifest)
+            downloaded = download_manifest_files(self.client(), manifest, target_dir)
+            for path in downloaded:
+                path.chmod(0o444)
+            root_path = root_file_path(manifest, target_dir)
             before_documents = fcstd.document_names()
             document = fcstd.open_document(root_path)
             self.readonly_document_names = fcstd.opened_document_names(before_documents, document)
@@ -608,73 +562,9 @@ class PLMPanel:
         message = f"Read-only geöffnet: {root_path} ({len(downloaded)} Datei(en))"
         if closed:
             message = f"{message}; vorher geschlossen: {len(closed)}"
-        if missing:
-            message = f"{message}; fehlende Referenzen: {', '.join(sorted(missing))}"
         if pruned:
             message = f"{message}; Cache bereinigt: {len(pruned)}"
         self.status.setText(message)
-
-    def project_revision_index(self, project):
-        project_id = project.get("id")
-        if project_id is None:
-            return {}
-
-        client = self.client()
-        part_details = []
-        for part in client.get_parts(project_id):
-            part_id = part.get("id") if isinstance(part, dict) else None
-            if part_id is None:
-                continue
-            part_details.append(client.get_part(part_id))
-        return build_revision_index(part_details)
-
-    def download_revision_tree(self, project, root_revision, target_dir, root_path):
-        client = self.client()
-        revision_index = self.project_revision_index(project)
-        revision_index.setdefault(revision_index_key(root_path), root_revision)
-        revision_index.setdefault(revision_basename_key(root_path), root_revision)
-
-        queue = [(root_revision, root_path)]
-        seen_paths = set()
-        downloaded = []
-        missing = set()
-
-        while queue:
-            revision, relative_path = queue.pop(0)
-            path_key = revision_index_key(relative_path)
-            if path_key in seen_paths:
-                continue
-            seen_paths.add(path_key)
-
-            download_url = revision.get("download_url")
-            sha256 = revision.get("sha256")
-            if not download_url or not sha256:
-                missing.add(str(relative_path))
-                continue
-
-            try:
-                target_path = safe_join(target_dir, relative_path)
-            except Exception:
-                missing.add(str(relative_path))
-                continue
-
-            if target_path.exists():
-                target_path.chmod(0o644)
-            client.download_revision_file(download_url, target_path, sha256)
-            target_path.chmod(0o444)
-            downloaded.append(target_path)
-
-            for reference_file in revision_reference_files(revision):
-                reference_path = resolve_reference_path(relative_path, reference_file)
-                reference_revision = revision_index.get(revision_index_key(reference_path))
-                if reference_revision is None:
-                    reference_revision = revision_index.get(revision_basename_key(reference_path))
-                if reference_revision is None:
-                    missing.add(reference_file)
-                    continue
-                queue.append((reference_revision, reference_path))
-
-        return safe_join(target_dir, root_path), downloaded, missing
 
 
 def _find_dock(main_window, QtWidgets):

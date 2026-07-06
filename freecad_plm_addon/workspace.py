@@ -53,30 +53,6 @@ def safe_download_filename(filename, default="revision.FCStd"):
     return name
 
 
-def resolve_reference_path(source_path, reference_file):
-    source_dir = PurePosixPath(source_path).parent
-    reference_path = PurePosixPath(reference_file)
-    if reference_path.is_absolute():
-        return str(reference_path)
-    if str(source_dir) == ".":
-        combined = reference_path
-    else:
-        combined = source_dir / reference_path
-
-    parts = []
-    for part in combined.parts:
-        if part in ("", "."):
-            continue
-        if part == "..":
-            if parts:
-                parts.pop()
-            else:
-                parts.append(part)
-            continue
-        parts.append(part)
-    return str(PurePosixPath(*parts))
-
-
 def touch_directory(path):
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
@@ -221,6 +197,8 @@ def download_manifest_files(client, manifest, path):
     downloaded = []
     for item in manifest["files"]:
         target = safe_join(target_root, item["path"])
+        if target.exists():
+            target.chmod(0o644)
         client.download_revision_file(item["download_url"], target, item["sha256"])
         if sha256_file(target) != item["sha256"]:
             raise HashMismatchError(f"SHA-256 stimmt nicht: {target}")

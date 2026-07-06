@@ -3,16 +3,13 @@ import unittest
 from freecad_plm_addon.panel import (
     annotation_label,
     annotations_for_revision,
-    build_revision_index,
     connection_label,
     format_bytes,
     part_label,
     project_label,
-    revision_filename,
     revision_label,
     revision_notes_text,
     revision_overview_text,
-    revision_reference_files,
     revision_technical_text,
     revisions_from_part_detail,
 )
@@ -141,39 +138,6 @@ class PanelTests(unittest.TestCase):
             annotations_for_revision(annotations, 7),
             [{"id": 1, "revision_id": None}, {"id": 2, "revision_id": 7}],
         )
-
-    def test_revision_filename_uses_original_filename(self):
-        self.assertEqual(revision_filename({"original_filename": "../Box.FCStd"}), "Box.FCStd")
-
-    def test_revision_reference_files_reads_freecad_metadata(self):
-        self.assertEqual(
-            revision_reference_files(
-                {
-                    "extracted_metadata": {
-                        "freecad_document": {
-                            "references": [
-                                {"file": "Box.FCStd"},
-                                {"file": "sub/Chip.FCStd"},
-                                {"name": "ignored"},
-                            ]
-                        }
-                    }
-                }
-            ),
-            ["Box.FCStd", "sub/Chip.FCStd"],
-        )
-
-    def test_build_revision_index_uses_latest_matching_filename(self):
-        old = {"id": 1, "original_filename": "Box.FCStd"}
-        latest = {"id": 2, "original_filename": "Box.FCStd"}
-
-        index = build_revision_index(
-            [
-                {"revisions": [latest, old]},
-            ]
-        )
-
-        self.assertIs(index["box.fcstd"], latest)
 
 
 if __name__ == "__main__":

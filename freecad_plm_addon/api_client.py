@@ -36,6 +36,12 @@ class PLMClient:
     def get_revision(self, revision_id):
         return self._json("GET", f"/api/revisions/{revision_id}/")["revision"]
 
+    def get_revision_manifest(self, revision_id, snapshot_id=None):
+        path = f"/api/revisions/{revision_id}/manifest/"
+        if snapshot_id is not None:
+            path = f"{path}?{parse.urlencode({'snapshot_id': snapshot_id})}"
+        return self._json("GET", path)["manifest"]
+
     def download_revision_file(self, download_url, target_path, expected_sha256):
         target_path = Path(target_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)

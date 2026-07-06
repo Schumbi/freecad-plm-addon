@@ -88,6 +88,16 @@ class PLMClientTests(unittest.TestCase):
             urlopen.assert_not_called()
             self.assertEqual(target.read_bytes(), b"abc")
 
+    def test_get_revision_manifest_adds_optional_snapshot_id(self):
+        client = PLMClient("https://plm.example", "token")
+        with patch("urllib.request.urlopen", return_value=FakeResponse({"manifest": {"files": []}})) as urlopen:
+            self.assertEqual(client.get_revision_manifest(17, snapshot_id=3), {"files": []})
+            req = urlopen.call_args.args[0]
+            self.assertEqual(
+                req.full_url,
+                "https://plm.example/api/revisions/17/manifest/?snapshot_id=3",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
