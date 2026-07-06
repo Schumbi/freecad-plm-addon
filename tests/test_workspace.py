@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.workspace import (
     checkout_dir,
+    prune_readonly_cache,
     read_manifest,
     readonly_revision_dir,
     resolve_reference_path,
@@ -14,6 +16,7 @@ from freecad_plm_addon.workspace import (
     safe_download_filename,
     server_slug,
     sha256_file,
+    touch_directory,
     write_manifest,
 )
 
@@ -73,6 +76,80 @@ class WorkspaceTests(unittest.TestCase):
             resolve_reference_path("assemblies/Assembly.FCStd", "../parts/Box.FCStd"),
             "parts/Box.FCStd",
         )
+
+    def make_readonly_revision(self, root, project, revision_id, file_count=1, mtime=1):
+        revision_dir = (
+            Path(root)
+            / "plm-lan-schumbi-de"
+            / project
+            / "readonly"
+            / f"revision-{revision_id}"
+        )
+        revision_dir.mkdir(parents=True)
+        for index in range(file_count):
+            (revision_dir / f"part-{index}.FCStd").write_text("data", encoding="utf-8")
+        os.utime(revision_dir, (mtime, mtime))
+        return revision_dir
+
+    def test_touch_directory_updates_cache_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "revision-1"
+
+            touch_directory(path)
+
+            self.assertTrue(path.is_dir())
+
+    def test_prune_readonly_cache_keeps_five_revisions_per_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for index in range(7):
+                self.make_readonly_revision(tmp, "PRJ", index, mtime=index + 1)
+
+            removed = prune_readonly_cache(
+                tmp,
+                "https://plm.lan.schumbi.de",
+                current_project_code="PRJ",
+                current_revision_id=6,
+            )
+
+            self.assertEqual(len(removed), 2)
+            self.assertFalse((Path(tmp) / "plm-lan-schumbi-de" / "PRJ" / "readonly" / "revision-0").exists())
+            self.assertFalse((Path(tmp) / "plm-lan-schumbi-de" / "PRJ" / "readonly" / "revision-1").exists())
+            self.assertTrue((Path(tmp) / "plm-lan-schumbi-de" / "PRJ" / "readonly" / "revision-6").exists())
+
+    def test_prune_readonly_cache_keeps_five_projects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for index in range(7):
+                self.make_readonly_revision(tmp, f"PRJ{index}", 1, mtime=index + 1)
+
+            removed = prune_readonly_cache(
+                tmp,
+                "https://plm.lan.schumbi.de",
+                current_project_code="PRJ6",
+                current_revision_id=1,
+            )
+
+            self.assertEqual(len(removed), 2)
+            self.assertFalse((Path(tmp) / "plm-lan-schumbi-de" / "PRJ0" / "readonly").exists())
+            self.assertFalse((Path(tmp) / "plm-lan-schumbi-de" / "PRJ1" / "readonly").exists())
+            self.assertTrue((Path(tmp) / "plm-lan-schumbi-de" / "PRJ6" / "readonly").exists())
+
+    def test_prune_readonly_cache_limits_fcstd_files_by_removing_project_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_readonly_revision(tmp, "OLD", 1, file_count=12, mtime=1)
+            self.make_readonly_revision(tmp, "MID", 1, file_count=8, mtime=2)
+            self.make_readonly_revision(tmp, "CUR", 1, file_count=5, mtime=3)
+
+            removed = prune_readonly_cache(
+                tmp,
+                "https://plm.lan.schumbi.de",
+                current_project_code="CUR",
+                current_revision_id=1,
+            )
+
+            self.assertEqual(len(removed), 1)
+            self.assertFalse((Path(tmp) / "plm-lan-schumbi-de" / "OLD" / "readonly").exists())
+            self.assertTrue((Path(tmp) / "plm-lan-schumbi-de" / "MID" / "readonly").exists())
+            self.assertTrue((Path(tmp) / "plm-lan-schumbi-de" / "CUR" / "readonly").exists())
 
 
 if __name__ == "__main__":

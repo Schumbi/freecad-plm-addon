@@ -39,6 +39,8 @@ class PLMClient:
     def download_revision_file(self, download_url, target_path, expected_sha256):
         target_path = Path(target_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
+        if target_path.exists() and sha256_file(target_path) == expected_sha256:
+            return
         response = self._open("GET", download_url, absolute=True)
         target_path.write_bytes(response.read())
         digest = sha256_file(target_path)

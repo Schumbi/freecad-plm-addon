@@ -2,7 +2,14 @@ import json
 
 from .api_client import PLMClient
 from .errors import PLMError
-from .workspace import readonly_revision_dir, resolve_reference_path, safe_download_filename, safe_join
+from .workspace import (
+    prune_readonly_cache,
+    readonly_revision_dir,
+    resolve_reference_path,
+    safe_download_filename,
+    safe_join,
+    touch_directory,
+)
 
 
 PANEL_OBJECT_NAME = "FreeCADPLMPanel"
@@ -226,10 +233,29 @@ class PLMPanel:
         self.api_token = self.QtWidgets.QLineEdit(config.get_api_token())
         self.api_token.setEchoMode(self.QtWidgets.QLineEdit.Password)
         self.workspace_root = self.QtWidgets.QLineEdit(config.get_workspace_root())
+        self.cache_max_fcstd_files = self.QtWidgets.QSpinBox()
+        self.cache_max_fcstd_files.setMinimum(config.DEFAULT_CACHE_MAX_FCSTD_FILES)
+        self.cache_max_fcstd_files.setMaximum(9999)
+        self.cache_max_fcstd_files.setValue(config.get_cache_max_fcstd_files())
+        self.cache_max_projects = self.QtWidgets.QSpinBox()
+        self.cache_max_projects.setMinimum(config.DEFAULT_CACHE_MAX_PROJECTS)
+        self.cache_max_projects.setMaximum(999)
+        self.cache_max_projects.setValue(config.get_cache_max_projects())
+        self.cache_max_revisions_per_project = self.QtWidgets.QSpinBox()
+        self.cache_max_revisions_per_project.setMinimum(
+            config.DEFAULT_CACHE_MAX_REVISIONS_PER_PROJECT
+        )
+        self.cache_max_revisions_per_project.setMaximum(999)
+        self.cache_max_revisions_per_project.setValue(
+            config.get_cache_max_revisions_per_project()
+        )
 
         form.addRow("Server", self.server_url)
         form.addRow("API-Token", self.api_token)
         form.addRow("Workspace", self.workspace_root)
+        form.addRow("Max. FCStd-Dateien", self.cache_max_fcstd_files)
+        form.addRow("Max. Projekte", self.cache_max_projects)
+        form.addRow("Max. Revisionen je Projekt", self.cache_max_revisions_per_project)
         settings_layout.addLayout(form)
 
         button_row = self.QtWidgets.QHBoxLayout()
@@ -358,10 +384,16 @@ class PLMPanel:
         server_url = self.server_url.text().strip()
         api_token = self.api_token.text().strip()
         workspace_root = self.workspace_root.text().strip()
+        max_fcstd_files = self.cache_max_fcstd_files.value()
+        max_projects = self.cache_max_projects.value()
+        max_revisions_per_project = self.cache_max_revisions_per_project.value()
 
         config.set_server_url(server_url)
         config.set_api_token(api_token)
         config.set_workspace_root(workspace_root)
+        config.set_cache_max_fcstd_files(max_fcstd_files)
+        config.set_cache_max_projects(max_projects)
+        config.set_cache_max_revisions_per_project(max_revisions_per_project)
 
         if not server_url or not api_token:
             self.status.setText("Server und API-Token eintragen.")
@@ -556,6 +588,16 @@ class PLMPanel:
             before_documents = fcstd.document_names()
             document = fcstd.open_document(root_path)
             self.readonly_document_names = fcstd.opened_document_names(before_documents, document)
+            touch_directory(target_dir)
+            pruned = prune_readonly_cache(
+                self.workspace_root.text().strip(),
+                self.server_url.text().strip(),
+                current_project_code=project_code,
+                current_revision_id=revision_id,
+                max_fcstd_files=self.cache_max_fcstd_files.value(),
+                max_projects=self.cache_max_projects.value(),
+                max_revisions_per_project=self.cache_max_revisions_per_project.value(),
+            )
         except PLMError as exc:
             self.status.setText(f"PLM-Fehler: {exc}")
             return
@@ -568,6 +610,8 @@ class PLMPanel:
             message = f"{message}; vorher geschlossen: {len(closed)}"
         if missing:
             message = f"{message}; fehlende Referenzen: {', '.join(sorted(missing))}"
+        if pruned:
+            message = f"{message}; Cache bereinigt: {len(pruned)}"
         self.status.setText(message)
 
     def project_revision_index(self, project):
