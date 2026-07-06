@@ -2,7 +2,7 @@
 
 import FreeCADGui
 
-from freecad_plm_addon.workbench import FreeCADPLMWorkbench
+from freecad_plm_addon.workbench import create_workbench
 
 
-FreeCADGui.addWorkbench(FreeCADPLMWorkbench())
+FreeCADGui.addWorkbench(create_workbench(globals().get("Workbench")))

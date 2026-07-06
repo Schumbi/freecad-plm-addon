@@ -1,4 +1,4 @@
-class FreeCADPLMWorkbench:
+class FreeCADPLMWorkbenchMixin:
     MenuText = "FreeCAD-PLM"
     ToolTip = "FreeCAD-PLM Workbench"
 
@@ -17,3 +17,13 @@ class FreeCADPLMWorkbench:
 
     def GetClassName(self):
         return "Gui::PythonWorkbench"
+
+
+def create_workbench(base_class=None):
+    if base_class is None:
+        return FreeCADPLMWorkbenchMixin()
+
+    class FreeCADPLMWorkbench(FreeCADPLMWorkbenchMixin, base_class):
+        pass
+
+    return FreeCADPLMWorkbench()
