@@ -31,6 +31,47 @@ def checkout_dir(base_root, server_url, project_code, checkout_id):
     )
 
 
+def readonly_revision_dir(base_root, server_url, project_code, revision_id):
+    return (
+        Path(base_root).expanduser()
+        / server_slug(server_url)
+        / project_code
+        / "readonly"
+        / f"revision-{revision_id}"
+    )
+
+
+def safe_download_filename(filename, default="revision.FCStd"):
+    name = Path(str(filename or "")).name.strip()
+    if not name or name in (".", ".."):
+        return default
+    return name
+
+
+def resolve_reference_path(source_path, reference_file):
+    source_dir = PurePosixPath(source_path).parent
+    reference_path = PurePosixPath(reference_file)
+    if reference_path.is_absolute():
+        return str(reference_path)
+    if str(source_dir) == ".":
+        combined = reference_path
+    else:
+        combined = source_dir / reference_path
+
+    parts = []
+    for part in combined.parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            else:
+                parts.append(part)
+            continue
+        parts.append(part)
+    return str(PurePosixPath(*parts))
+
+
 def write_manifest(path, manifest):
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)

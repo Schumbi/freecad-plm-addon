@@ -7,8 +7,11 @@ from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.workspace import (
     checkout_dir,
     read_manifest,
+    readonly_revision_dir,
+    resolve_reference_path,
     root_file_path,
     safe_join,
+    safe_download_filename,
     server_slug,
     sha256_file,
     write_manifest,
@@ -52,6 +55,24 @@ class WorkspaceTests(unittest.TestCase):
         path = checkout_dir("~/FreeCAD-PLM", "https://plm.lan.schumbi.de", "PRJ", 17)
         self.assertEqual(path.name, "checkout-17")
         self.assertEqual(path.parent.name, "PRJ")
+
+    def test_readonly_revision_dir(self):
+        path = readonly_revision_dir("~/FreeCAD-PLM", "https://plm.lan.schumbi.de", "PRJ", 23)
+        self.assertEqual(path.name, "revision-23")
+        self.assertEqual(path.parent.name, "readonly")
+        self.assertEqual(path.parent.parent.name, "PRJ")
+
+    def test_safe_download_filename_strips_path(self):
+        self.assertEqual(safe_download_filename("../part.FCStd"), "part.FCStd")
+        self.assertEqual(safe_download_filename("/tmp/part.FCStd"), "part.FCStd")
+        self.assertEqual(safe_download_filename(""), "revision.FCStd")
+
+    def test_resolve_reference_path(self):
+        self.assertEqual(resolve_reference_path("Assembly.FCStd", "Box.FCStd"), "Box.FCStd")
+        self.assertEqual(
+            resolve_reference_path("assemblies/Assembly.FCStd", "../parts/Box.FCStd"),
+            "parts/Box.FCStd",
+        )
 
 
 if __name__ == "__main__":

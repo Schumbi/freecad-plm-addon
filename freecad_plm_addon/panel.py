@@ -1,5 +1,8 @@
+import json
+
 from .api_client import PLMClient
 from .errors import PLMError
+from .workspace import readonly_revision_dir, resolve_reference_path, safe_download_filename, safe_join
 
 
 PANEL_OBJECT_NAME = "FreeCADPLMPanel"
@@ -12,6 +15,133 @@ def project_label(project):
     if code and name:
         return f"{code} - {name}"
     return code or name or f"Projekt {project.get('id', '')}".strip()
+
+
+def connection_label(server_url):
+    text = server_url.replace("https://", "").replace("http://", "").strip("/")
+    return f"Verbunden mit {text}" if text else "Nicht verbunden."
+
+
+def part_label(part):
+    number = part.get("number") or part.get("part_number") or part.get("code") or ""
+    name = part.get("name") or part.get("title") or ""
+    status = part.get("status") or part.get("release_status") or ""
+    label = " - ".join(value for value in (number, name) if value)
+    if not label:
+        label = f"Teil {part.get('id', '')}".strip()
+    if status:
+        return f"{label} [{status}]"
+    return label
+
+
+def revisions_from_part_detail(part_detail):
+    if not isinstance(part_detail, dict):
+        return []
+    for key in ("revisions", "revision_set", "latest_revisions"):
+        revisions = part_detail.get(key)
+        if isinstance(revisions, list):
+            return revisions
+    part = part_detail.get("part") if isinstance(part_detail.get("part"), dict) else part_detail
+    for key in ("revisions", "revision_set", "latest_revisions"):
+        revisions = part.get(key)
+        if isinstance(revisions, list):
+            return revisions
+    return []
+
+
+def revision_label(revision):
+    number = (
+        revision.get("revision")
+        or revision.get("revision_code")
+        or revision.get("version")
+        or revision.get("number")
+        or revision.get("label")
+        or ""
+    )
+    status = revision.get("status") or revision.get("release_status") or ""
+    filename = revision.get("original_filename") or revision.get("filename") or revision.get("file_name") or ""
+    created = revision.get("created_at") or revision.get("created") or revision.get("uploaded_at") or ""
+    label = f"Revision {number}" if number else f"Revision {revision.get('id', '')}".strip()
+    details = [value for value in (status, filename, created[:10]) if value]
+    if details:
+        return f"{label} - {', '.join(details)}"
+    return label
+
+
+def format_bytes(size_bytes):
+    if size_bytes in ("", None):
+        return ""
+    try:
+        value = int(size_bytes)
+    except (TypeError, ValueError):
+        return str(size_bytes)
+    units = ("B", "KB", "MB", "GB")
+    amount = float(value)
+    for unit in units:
+        if amount < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(amount)} {unit}"
+            return f"{amount:.1f} {unit}"
+        amount /= 1024
+    return str(value)
+
+
+def revision_details_text(revision):
+    rows = [
+        ("ID", revision.get("id")),
+        ("Revision", revision.get("revision_code") or revision.get("revision") or revision.get("version")),
+        ("Status", revision.get("status") or revision.get("release_status")),
+        ("Datei", revision.get("original_filename") or revision.get("filename") or revision.get("file_name")),
+        ("Groesse", format_bytes(revision.get("size_bytes"))),
+        ("SHA-256", revision.get("sha256")),
+        ("Erstellt", revision.get("created_at") or revision.get("created") or revision.get("uploaded_at")),
+        ("Freigegeben", revision.get("released_at")),
+        ("Download-URL", revision.get("download_url")),
+        ("Notizen", revision.get("notes")),
+    ]
+    lines = [f"{label}: {value}" for label, value in rows if value not in ("", None)]
+    metadata = revision.get("extracted_metadata")
+    if metadata:
+        lines.append("Metadaten:")
+        lines.append(json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=False))
+    return "\n".join(lines) or "Keine Revisionsdetails vorhanden."
+
+
+def revision_filename(revision):
+    return safe_download_filename(
+        revision.get("original_filename") or revision.get("filename") or revision.get("file_name")
+    )
+
+
+def revision_reference_files(revision):
+    document = (revision.get("extracted_metadata") or {}).get("freecad_document", {})
+    references = document.get("references") or []
+    files = []
+    for reference in references:
+        if not isinstance(reference, dict):
+            continue
+        filename = reference.get("file")
+        if filename:
+            files.append(filename)
+    return files
+
+
+def revision_index_key(path):
+    return str(path).replace("\\", "/").lower()
+
+
+def revision_basename_key(path):
+    return safe_download_filename(path).lower()
+
+
+def build_revision_index(part_details):
+    index = {}
+    for part_detail in part_details:
+        for revision in revisions_from_part_detail(part_detail):
+            filename = revision_filename(revision)
+            for key in (revision_index_key(filename), revision_basename_key(filename)):
+                index.setdefault(key, revision)
+    return index
 
 
 def _load_qt():
@@ -41,6 +171,15 @@ class PLMPanel:
         self.widget.setObjectName("FreeCADPLMPanelWidget")
 
         layout = self.QtWidgets.QVBoxLayout(self.widget)
+
+        self.connection_summary = self.QtWidgets.QLabel("Nicht verbunden.")
+        layout.addWidget(self.connection_summary)
+
+        self.settings_button = self.QtWidgets.QPushButton("Einstellungen")
+        layout.addWidget(self.settings_button)
+
+        self.settings_widget = self.QtWidgets.QWidget()
+        settings_layout = self.QtWidgets.QVBoxLayout(self.settings_widget)
         form = self.QtWidgets.QFormLayout()
 
         self.server_url = self.QtWidgets.QLineEdit(config.get_server_url())
@@ -51,23 +190,74 @@ class PLMPanel:
         form.addRow("Server", self.server_url)
         form.addRow("API-Token", self.api_token)
         form.addRow("Workspace", self.workspace_root)
-        layout.addLayout(form)
+        settings_layout.addLayout(form)
 
         button_row = self.QtWidgets.QHBoxLayout()
         self.connect_button = self.QtWidgets.QPushButton("Verbinden")
         self.refresh_button = self.QtWidgets.QPushButton("Aktualisieren")
         button_row.addWidget(self.connect_button)
         button_row.addWidget(self.refresh_button)
-        layout.addLayout(button_row)
+        settings_layout.addLayout(button_row)
+        layout.addWidget(self.settings_widget)
+
+        self.refresh_button.setVisible(False)
 
         self.status = self.QtWidgets.QLabel("Nicht verbunden.")
         layout.addWidget(self.status)
 
+        layout.addWidget(self.QtWidgets.QLabel("Projekte"))
         self.projects = self.QtWidgets.QListWidget()
         layout.addWidget(self.projects)
 
+        layout.addWidget(self.QtWidgets.QLabel("Teile"))
+        self.parts = self.QtWidgets.QListWidget()
+        layout.addWidget(self.parts)
+
+        layout.addWidget(self.QtWidgets.QLabel("Revisionen"))
+        self.revisions = self.QtWidgets.QListWidget()
+        layout.addWidget(self.revisions)
+
+        layout.addWidget(self.QtWidgets.QLabel("Details"))
+        self.revision_details = self.QtWidgets.QPlainTextEdit()
+        self.revision_details.setReadOnly(True)
+        self.revision_details.setPlainText("Keine Revision ausgewählt.")
+        layout.addWidget(self.revision_details)
+
+        self.open_readonly_button = self.QtWidgets.QPushButton("Read-only öffnen")
+        layout.addWidget(self.open_readonly_button)
+
         self.connect_button.clicked.connect(self.refresh_projects)
         self.refresh_button.clicked.connect(self.refresh_projects)
+        self.settings_button.clicked.connect(self.toggle_settings)
+        self.projects.itemSelectionChanged.connect(self.refresh_parts)
+        self.parts.itemSelectionChanged.connect(self.refresh_revisions)
+        self.revisions.itemSelectionChanged.connect(self.show_revision_details)
+        self.open_readonly_button.clicked.connect(self.open_selected_revision_readonly)
+
+    def toggle_settings(self):
+        self.settings_widget.setVisible(not self.settings_widget.isVisible())
+
+    def set_connected(self, server_url):
+        self.connection_summary.setText(connection_label(server_url))
+        self.settings_widget.setVisible(False)
+        self.refresh_button.setVisible(True)
+
+    def client(self):
+        return PLMClient(self.server_url.text().strip(), self.api_token.text().strip())
+
+    def selected_project(self):
+        items = self.projects.selectedItems()
+        if not items:
+            return None
+        project = items[0].data(self.QtCore.Qt.UserRole)
+        return project if isinstance(project, dict) else None
+
+    def selected_revision(self):
+        items = self.revisions.selectedItems()
+        if not items:
+            return None
+        revision = items[0].data(self.QtCore.Qt.UserRole)
+        return revision if isinstance(revision, dict) else None
 
     def refresh_projects(self):
         from . import config
@@ -86,9 +276,12 @@ class PLMPanel:
 
         self.status.setText("Lade Projekte...")
         self.projects.clear()
+        self.parts.clear()
+        self.revisions.clear()
+        self.revision_details.setPlainText("Keine Revision ausgewählt.")
 
         try:
-            client = PLMClient(server_url, api_token)
+            client = self.client()
             projects = client.get_projects()
         except PLMError as exc:
             self.status.setText(f"PLM-Fehler: {exc}")
@@ -105,6 +298,205 @@ class PLMPanel:
         count = len(projects)
         suffix = "" if count == 1 else "e"
         self.status.setText(f"{count} Projekt{suffix} geladen.")
+        self.set_connected(server_url)
+
+    def refresh_parts(self):
+        items = self.projects.selectedItems()
+        self.parts.clear()
+        self.revisions.clear()
+        self.revision_details.setPlainText("Keine Revision ausgewählt.")
+        if not items:
+            return
+
+        project = items[0].data(self.QtCore.Qt.UserRole)
+        project_id = project.get("id") if isinstance(project, dict) else None
+        if project_id is None:
+            self.status.setText("Projekt hat keine ID.")
+            return
+
+        self.status.setText("Lade Teile...")
+
+        try:
+            parts = self.client().get_parts(project_id)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Verbindung fehlgeschlagen: {exc}")
+            return
+
+        for part in parts:
+            item = self.QtWidgets.QListWidgetItem(part_label(part))
+            item.setData(self.QtCore.Qt.UserRole, part)
+            self.parts.addItem(item)
+
+        count = len(parts)
+        suffix = "" if count == 1 else "e"
+        self.status.setText(f"{count} Teil{suffix} geladen.")
+
+    def refresh_revisions(self):
+        items = self.parts.selectedItems()
+        self.revisions.clear()
+        self.revision_details.setPlainText("Keine Revision ausgewählt.")
+        if not items:
+            return
+
+        part = items[0].data(self.QtCore.Qt.UserRole)
+        part_id = part.get("id") if isinstance(part, dict) else None
+        if part_id is None:
+            self.status.setText("Teil hat keine ID.")
+            return
+
+        self.status.setText("Lade Revisionen...")
+
+        try:
+            part_detail = self.client().get_part(part_id)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Verbindung fehlgeschlagen: {exc}")
+            return
+
+        revisions = revisions_from_part_detail(part_detail)
+        for revision in revisions:
+            item = self.QtWidgets.QListWidgetItem(revision_label(revision))
+            item.setData(self.QtCore.Qt.UserRole, revision)
+            self.revisions.addItem(item)
+
+        count = len(revisions)
+        suffix = "" if count == 1 else "en"
+        self.status.setText(f"{count} Revision{suffix} geladen.")
+
+    def show_revision_details(self):
+        items = self.revisions.selectedItems()
+        if not items:
+            self.revision_details.setPlainText("Keine Revision ausgewählt.")
+            return
+
+        revision = items[0].data(self.QtCore.Qt.UserRole)
+        if not isinstance(revision, dict):
+            self.revision_details.setPlainText("Keine Revisionsdetails vorhanden.")
+            return
+
+        self.revision_details.setPlainText(revision_details_text(revision))
+
+    def open_selected_revision_readonly(self):
+        from . import fcstd
+
+        project = self.selected_project()
+        revision = self.selected_revision()
+        if project is None:
+            self.status.setText("Kein Projekt ausgewählt.")
+            return
+        if revision is None:
+            self.status.setText("Keine Revision ausgewählt.")
+            return
+
+        revision_id = revision.get("id")
+        download_url = revision.get("download_url")
+        sha256 = revision.get("sha256")
+        if revision_id is None:
+            self.status.setText("Revision hat keine ID.")
+            return
+        if not download_url:
+            self.status.setText("Revision hat keine Download-URL.")
+            return
+        if not sha256:
+            self.status.setText("Revision hat keine SHA-256-Prüfsumme.")
+            return
+
+        project_code = project.get("code") or project.get("project_code") or f"project-{project.get('id')}"
+        filename = revision_filename(revision)
+        target_dir = readonly_revision_dir(
+            self.workspace_root.text().strip(),
+            self.server_url.text().strip(),
+            project_code,
+            revision_id,
+        )
+
+        try:
+            self.status.setText("Lade Revision und Referenzen herunter...")
+            root_path, downloaded, missing = self.download_revision_tree(
+                project,
+                revision,
+                target_dir,
+                filename,
+            )
+            fcstd.open_document(root_path)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Öffnen fehlgeschlagen: {exc}")
+            return
+
+        message = f"Read-only geöffnet: {root_path} ({len(downloaded)} Datei(en))"
+        if missing:
+            message = f"{message}; fehlende Referenzen: {', '.join(sorted(missing))}"
+        self.status.setText(message)
+
+    def project_revision_index(self, project):
+        project_id = project.get("id")
+        if project_id is None:
+            return {}
+
+        client = self.client()
+        part_details = []
+        for part in client.get_parts(project_id):
+            part_id = part.get("id") if isinstance(part, dict) else None
+            if part_id is None:
+                continue
+            part_details.append(client.get_part(part_id))
+        return build_revision_index(part_details)
+
+    def download_revision_tree(self, project, root_revision, target_dir, root_path):
+        client = self.client()
+        revision_index = self.project_revision_index(project)
+        revision_index.setdefault(revision_index_key(root_path), root_revision)
+        revision_index.setdefault(revision_basename_key(root_path), root_revision)
+
+        queue = [(root_revision, root_path)]
+        seen_paths = set()
+        downloaded = []
+        missing = set()
+
+        while queue:
+            revision, relative_path = queue.pop(0)
+            path_key = revision_index_key(relative_path)
+            if path_key in seen_paths:
+                continue
+            seen_paths.add(path_key)
+
+            download_url = revision.get("download_url")
+            sha256 = revision.get("sha256")
+            if not download_url or not sha256:
+                missing.add(str(relative_path))
+                continue
+
+            try:
+                target_path = safe_join(target_dir, relative_path)
+            except Exception:
+                missing.add(str(relative_path))
+                continue
+
+            if target_path.exists():
+                target_path.chmod(0o644)
+            client.download_revision_file(download_url, target_path, sha256)
+            target_path.chmod(0o444)
+            downloaded.append(target_path)
+
+            for reference_file in revision_reference_files(revision):
+                reference_path = resolve_reference_path(relative_path, reference_file)
+                reference_revision = revision_index.get(revision_index_key(reference_path))
+                if reference_revision is None:
+                    reference_revision = revision_index.get(revision_basename_key(reference_path))
+                if reference_revision is None:
+                    missing.add(reference_file)
+                    continue
+                queue.append((reference_revision, reference_path))
+
+        return safe_join(target_dir, root_path), downloaded, missing
 
 
 def _find_dock(main_window, QtWidgets):

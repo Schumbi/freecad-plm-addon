@@ -20,10 +20,19 @@ def save_active_document():
     return active_document_path()
 
 
-def open_document(path):
+def open_document(path, recompute=True):
     import FreeCAD
 
-    return FreeCAD.openDocument(str(path))
+    document = FreeCAD.openDocument(str(path))
+    if recompute and document is not None:
+        document.recompute()
+        try:
+            import FreeCADGui
+
+            FreeCADGui.updateGui()
+        except Exception:
+            pass
+    return document
 
 
 def selected_object_name():
