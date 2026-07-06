@@ -59,6 +59,22 @@ def close_documents(names):
     return closed, failed
 
 
+def save_documents(names):
+    saved = []
+    failed = []
+    existing = documents_by_name()
+    for name in names:
+        document = existing.get(name)
+        if document is None:
+            continue
+        try:
+            document.save()
+            saved.append(name)
+        except Exception:
+            failed.append(name)
+    return saved, failed
+
+
 def open_document(path, recompute=True):
     import FreeCAD
 

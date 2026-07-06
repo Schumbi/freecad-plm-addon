@@ -6,8 +6,10 @@ from pathlib import Path
 
 from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.workspace import (
+    changed_manifest_files,
     checkout_dir,
     download_manifest_files,
+    ensure_checkout_manifest_files,
     prune_readonly_cache,
     read_manifest,
     readonly_revision_dir,
@@ -168,6 +170,61 @@ class WorkspaceTests(unittest.TestCase):
 
             self.assertEqual(downloaded, [path])
             self.assertEqual(path.read_bytes(), b"abc")
+
+    def test_ensure_checkout_manifest_files_does_not_overwrite_existing_file(self):
+        class FakeClient:
+            def __init__(self):
+                self.calls = 0
+
+            def download_revision_file(self, _url, target_path, _sha256):
+                self.calls += 1
+                Path(target_path).write_bytes(b"abc")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "part.FCStd"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"local changes")
+            manifest = {
+                "files": [
+                    {
+                        "path": "part.FCStd",
+                        "download_url": "https://plm.example/file",
+                        "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                    }
+                ]
+            }
+            client = FakeClient()
+
+            downloaded = ensure_checkout_manifest_files(client, manifest, tmp)
+
+            self.assertEqual(downloaded, [])
+            self.assertEqual(client.calls, 0)
+            self.assertEqual(path.read_bytes(), b"local changes")
+
+    def test_changed_manifest_files_returns_modified_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "part.FCStd"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"changed")
+            manifest = {
+                "files": [
+                    {
+                        "path": "part.FCStd",
+                        "revision_id": 10,
+                        "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                        "is_root": True,
+                    }
+                ]
+            }
+
+            changed = changed_manifest_files(manifest, tmp)
+
+            self.assertEqual(len(changed), 1)
+            self.assertEqual(changed[0]["path"], "part.FCStd")
+            self.assertEqual(changed[0]["local_path"], path)
+            self.assertEqual(changed[0]["revision_id"], 10)
+            self.assertTrue(changed[0]["is_root"])
+            self.assertNotEqual(changed[0]["sha256"], changed[0]["base_sha256"])
 
 
 if __name__ == "__main__":

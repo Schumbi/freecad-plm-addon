@@ -3,6 +3,9 @@ import unittest
 from freecad_plm_addon.panel import (
     annotation_label,
     annotations_for_revision,
+    checkin_result_text,
+    checkout_label,
+    checkout_project_code,
     connection_label,
     format_bytes,
     part_label,
@@ -28,6 +31,58 @@ class PanelTests(unittest.TestCase):
     def test_connection_label(self):
         self.assertEqual(connection_label("https://plm.lan.schumbi.de"), "Verbunden mit plm.lan.schumbi.de")
         self.assertEqual(connection_label(""), "Nicht verbunden.")
+
+    def test_checkout_project_code_uses_nested_project(self):
+        self.assertEqual(
+            checkout_project_code({"project": {"id": 3, "code": "PRJ"}}),
+            "PRJ",
+        )
+
+    def test_checkout_project_code_falls_back_to_project_id(self):
+        self.assertEqual(
+            checkout_project_code({"project_id": 3}),
+            "project-3",
+        )
+
+    def test_checkout_label_includes_project_part_and_revision(self):
+        self.assertEqual(
+            checkout_label(
+                {
+                    "id": 42,
+                    "project": {"code": "PRJ"},
+                    "part": {"number": "A-001"},
+                    "revision": {"revision_code": "R0001"},
+                }
+            ),
+            "Checkout 42 - PRJ, A-001, Revision R0001",
+        )
+
+    def test_checkin_result_text_reports_root_and_revision_count(self):
+        self.assertEqual(
+            checkin_result_text(
+                {
+                    "revision": {"id": 20},
+                    "revisions": [
+                        {"path": "Root.FCStd", "revision": {"id": 20}},
+                        {"path": "Box.FCStd", "revision": {"id": 21}},
+                    ],
+                }
+            ),
+            "Neue Root-Revision: 20. Neue Revisionen: 2.",
+        )
+
+    def test_checkin_result_text_handles_referenced_only_checkin(self):
+        self.assertEqual(
+            checkin_result_text(
+                {
+                    "revision": None,
+                    "revisions": [
+                        {"path": "Box.FCStd", "revision": {"id": 21}},
+                    ],
+                }
+            ),
+            "Neue Revision: 1.",
+        )
 
     def test_part_label_uses_number_name_and_status(self):
         self.assertEqual(

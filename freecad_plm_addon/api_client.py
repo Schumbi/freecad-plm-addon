@@ -60,6 +60,9 @@ class PLMClient:
             payload["snapshot_id"] = snapshot_id
         return self._json("POST", f"/api/revisions/{revision_id}/checkout/", payload)
 
+    def get_active_checkouts(self):
+        return self._json("GET", "/api/checkouts/active/")["checkouts"]
+
     def get_checkout_manifest(self, checkout_id):
         return self._json("GET", f"/api/checkouts/{checkout_id}/manifest/")
 
@@ -70,6 +73,32 @@ class PLMClient:
             "file",
             Path(fcstd_path),
             "application/octet-stream",
+        )
+
+    def checkin_files(self, checkout_id, changed_files, change_summary):
+        metadata = []
+        files = []
+        for index, changed_file in enumerate(changed_files):
+            field_name = f"file_{index}"
+            local_path = Path(changed_file["local_path"])
+            metadata.append(
+                {
+                    "field": field_name,
+                    "path": changed_file["path"],
+                    "revision_id": changed_file.get("revision_id"),
+                    "base_sha256": changed_file.get("base_sha256"),
+                    "sha256": changed_file.get("sha256"),
+                    "is_root": bool(changed_file.get("is_root")),
+                }
+            )
+            files.append((field_name, local_path, "application/octet-stream"))
+        return self._multipart_files(
+            f"/api/checkouts/{checkout_id}/checkin/",
+            {
+                "change_summary": change_summary,
+                "files_metadata": json.dumps(metadata, sort_keys=True),
+            },
+            files,
         )
 
     def cancel_checkout(self, checkout_id):
@@ -135,6 +164,13 @@ class PLMClient:
         raise error_class(exc.code, message, payload)
 
     def _multipart(self, path, fields, file_field, file_path, content_type):
+        return self._multipart_files(
+            path,
+            fields,
+            [(file_field, file_path, content_type)],
+        )
+
+    def _multipart_files(self, path, fields, files):
         boundary = "----FreeCADPLMAddonBoundary"
         chunks = []
         for name, value in fields.items():
@@ -146,20 +182,22 @@ class PLMClient:
                     b"\r\n",
                 ]
             )
-        filename = file_path.name
-        chunks.extend(
-            [
-                f"--{boundary}\r\n".encode("utf-8"),
-                (
-                    f'Content-Disposition: form-data; name="{file_field}"; '
-                    f'filename="{filename}"\r\n'
-                ).encode("utf-8"),
-                f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"),
-                file_path.read_bytes(),
-                b"\r\n",
-                f"--{boundary}--\r\n".encode("utf-8"),
-            ]
-        )
+        for file_field, file_path, content_type in files:
+            file_path = Path(file_path)
+            filename = file_path.name
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode("utf-8"),
+                    (
+                        f'Content-Disposition: form-data; name="{file_field}"; '
+                        f'filename="{filename}"\r\n'
+                    ).encode("utf-8"),
+                    f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"),
+                    file_path.read_bytes(),
+                    b"\r\n",
+                ]
+            )
+        chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
         body = b"".join(chunks)
         response = self._open(
             "POST",

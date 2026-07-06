@@ -90,13 +90,122 @@ class PLMClientTests(unittest.TestCase):
 
     def test_get_revision_manifest_adds_optional_snapshot_id(self):
         client = PLMClient("https://plm.example", "token")
-        with patch("urllib.request.urlopen", return_value=FakeResponse({"manifest": {"files": []}})) as urlopen:
-            self.assertEqual(client.get_revision_manifest(17, snapshot_id=3), {"files": []})
+        with patch(
+            "urllib.request.urlopen",
+            return_value=FakeResponse({"manifest": {"files": []}}),
+        ) as urlopen:
+            self.assertEqual(
+                client.get_revision_manifest(17, snapshot_id=3),
+                {"files": []},
+            )
             req = urlopen.call_args.args[0]
             self.assertEqual(
                 req.full_url,
                 "https://plm.example/api/revisions/17/manifest/?snapshot_id=3",
             )
+
+    def test_checkout_revision_posts_workspace_hint_and_snapshot(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"checkout": {"id": 9}, "manifest": {"files": []}}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(
+                client.checkout_revision(17, snapshot_id=3, workspace_hint="/tmp/plm"),
+                payload,
+            )
+            req = urlopen.call_args.args[0]
+            body = json.loads(req.data.decode("utf-8"))
+            self.assertEqual(
+                req.full_url,
+                "https://plm.example/api/revisions/17/checkout/",
+            )
+            self.assertEqual(body, {"workspace_hint": "/tmp/plm", "snapshot_id": 3})
+
+    def test_get_active_checkouts(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"checkouts": [{"id": 9}]}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(client.get_active_checkouts(), [{"id": 9}])
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/checkouts/active/")
+
+    def test_cancel_checkout_posts_empty_payload(self):
+        client = PLMClient("https://plm.example", "token")
+        with patch("urllib.request.urlopen", return_value=FakeResponse({"checkout": {}})) as urlopen:
+            self.assertEqual(client.cancel_checkout(9), {"checkout": {}})
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/checkouts/9/cancel/")
+            self.assertEqual(json.loads(req.data.decode("utf-8")), {})
+
+    def test_checkin_posts_multipart_file_and_summary(self):
+        client = PLMClient("https://plm.example", "token")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            path.write_bytes(b"fcstd")
+
+            with patch(
+                "urllib.request.urlopen",
+                return_value=FakeResponse({"revision": {"id": 10}}),
+            ) as urlopen:
+                self.assertEqual(
+                    client.checkin(9, path, "changed root"),
+                    {"revision": {"id": 10}},
+                )
+
+            req = urlopen.call_args.args[0]
+            body = req.data
+            self.assertEqual(req.full_url, "https://plm.example/api/checkouts/9/checkin/")
+            self.assertIn(b'name="change_summary"', body)
+            self.assertIn(b"changed root", body)
+            self.assertIn(b'name="file"; filename="part.FCStd"', body)
+            self.assertIn(b"fcstd", body)
+
+    def test_checkin_files_posts_metadata_and_multiple_files(self):
+        client = PLMClient("https://plm.example", "token")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root.FCStd"
+            child = Path(tmp) / "child.FCStd"
+            root.write_bytes(b"root")
+            child.write_bytes(b"child")
+            changed_files = [
+                {
+                    "path": "root.FCStd",
+                    "local_path": root,
+                    "revision_id": 10,
+                    "base_sha256": "old-root",
+                    "sha256": "new-root",
+                    "is_root": True,
+                },
+                {
+                    "path": "child.FCStd",
+                    "local_path": child,
+                    "revision_id": 11,
+                    "base_sha256": "old-child",
+                    "sha256": "new-child",
+                    "is_root": False,
+                },
+            ]
+
+            with patch(
+                "urllib.request.urlopen",
+                return_value=FakeResponse({"revision": {"id": 12}}),
+            ) as urlopen:
+                self.assertEqual(
+                    client.checkin_files(9, changed_files, "changed assembly"),
+                    {"revision": {"id": 12}},
+                )
+
+            req = urlopen.call_args.args[0]
+            body = req.data
+            self.assertEqual(req.full_url, "https://plm.example/api/checkouts/9/checkin/")
+            self.assertIn(b'name="change_summary"', body)
+            self.assertIn(b"changed assembly", body)
+            self.assertIn(b'name="files_metadata"', body)
+            self.assertIn(b'"field": "file_0"', body)
+            self.assertIn(b'"path": "root.FCStd"', body)
+            self.assertIn(b'name="file_0"; filename="root.FCStd"', body)
+            self.assertIn(b'name="file_1"; filename="child.FCStd"', body)
+            self.assertIn(b"root", body)
+            self.assertIn(b"child", body)
 
 
 if __name__ == "__main__":

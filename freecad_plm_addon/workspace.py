@@ -206,6 +206,44 @@ def download_manifest_files(client, manifest, path):
     return downloaded
 
 
+def ensure_checkout_manifest_files(client, manifest, path):
+    target_root = files_root(path)
+    downloaded = []
+    for item in manifest["files"]:
+        target = safe_join(target_root, item["path"])
+        if target.exists():
+            target.chmod(0o644)
+            continue
+        client.download_revision_file(item["download_url"], target, item["sha256"])
+        if sha256_file(target) != item["sha256"]:
+            raise HashMismatchError(f"SHA-256 stimmt nicht: {target}")
+        downloaded.append(target)
+    return downloaded
+
+
+def changed_manifest_files(manifest, path):
+    target_root = files_root(path)
+    changed = []
+    for item in manifest["files"]:
+        target = safe_join(target_root, item["path"])
+        if not target.exists():
+            raise WorkspaceError(f"Checkout-Datei fehlt: {target}")
+        digest = sha256_file(target)
+        if digest == item["sha256"]:
+            continue
+        changed.append(
+            {
+                "path": item["path"],
+                "local_path": target,
+                "revision_id": item.get("revision_id"),
+                "base_sha256": item.get("sha256"),
+                "sha256": digest,
+                "is_root": bool(item.get("is_root")),
+            }
+        )
+    return changed
+
+
 def root_file_path(manifest, path):
     roots = [item for item in manifest["files"] if item.get("is_root")]
     if len(roots) != 1:

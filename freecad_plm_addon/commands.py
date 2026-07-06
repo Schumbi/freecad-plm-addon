@@ -1,4 +1,5 @@
 COMMAND_NAMES = [
+    "FreeCADPLM_ActivateConnection",
     "FreeCADPLM_Connect",
     "FreeCADPLM_Refresh",
     "FreeCADPLM_Checkout",
@@ -11,12 +12,16 @@ COMMAND_NAMES = [
 class BaseCommand:
     menu_text = ""
     tooltip = ""
+    pixmap = ""
 
     def GetResources(self):
-        return {
+        resources = {
             "MenuText": self.menu_text,
             "ToolTip": self.tooltip or self.menu_text,
         }
+        if self.pixmap:
+            resources["Pixmap"] = self.pixmap
+        return resources
 
     def IsActive(self):
         return True
@@ -24,6 +29,7 @@ class BaseCommand:
 
 class ConnectCommand(BaseCommand):
     menu_text = "Verbinden"
+    pixmap = "network-idle"
 
     def Activated(self):
         from .panel import show_panel
@@ -31,8 +37,20 @@ class ConnectCommand(BaseCommand):
         show_panel()
 
 
+class ActivateConnectionCommand(BaseCommand):
+    menu_text = "PLM-Verbindung aktivieren"
+    tooltip = "FreeCAD-PLM Panel öffnen und Projekte laden"
+    pixmap = "network-transmit-receive"
+
+    def Activated(self):
+        from .panel import refresh_panel
+
+        refresh_panel()
+
+
 class RefreshCommand(BaseCommand):
     menu_text = "Aktualisieren"
+    pixmap = "view-refresh"
 
     def Activated(self):
         from .panel import refresh_panel
@@ -42,6 +60,7 @@ class RefreshCommand(BaseCommand):
 
 class CheckoutCommand(BaseCommand):
     menu_text = "Auschecken"
+    pixmap = "document-open"
 
     def Activated(self):
         from .panel import checkout_selected_revision
@@ -51,6 +70,7 @@ class CheckoutCommand(BaseCommand):
 
 class CheckinCommand(BaseCommand):
     menu_text = "Einchecken"
+    pixmap = "document-save"
 
     def Activated(self):
         from .panel import checkin_active_checkout
@@ -60,6 +80,7 @@ class CheckinCommand(BaseCommand):
 
 class CancelCheckoutCommand(BaseCommand):
     menu_text = "Checkout abbrechen"
+    pixmap = "edit-delete"
 
     def Activated(self):
         from .panel import cancel_active_checkout
@@ -69,6 +90,7 @@ class CancelCheckoutCommand(BaseCommand):
 
 class CreateAnnotationCommand(BaseCommand):
     menu_text = "Anmerkung erstellen"
+    pixmap = "list-add"
 
     def Activated(self):
         from .panel import create_annotation_for_selection
@@ -80,6 +102,7 @@ def register_commands():
     import FreeCADGui
 
     commands = {
+        "FreeCADPLM_ActivateConnection": ActivateConnectionCommand(),
         "FreeCADPLM_Connect": ConnectCommand(),
         "FreeCADPLM_Refresh": RefreshCommand(),
         "FreeCADPLM_Checkout": CheckoutCommand(),

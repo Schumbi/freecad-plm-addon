@@ -10,6 +10,7 @@ class FakeDocument:
     def __init__(self, name="Doc"):
         self.Name = name
         self.recompute = Mock()
+        self.save = Mock()
 
 
 class FCStdTests(unittest.TestCase):
@@ -65,6 +66,19 @@ class FCStdTests(unittest.TestCase):
         self.assertEqual(closed, ["A"])
         self.assertEqual(failed, [])
         freecad.closeDocument.assert_called_once_with("A")
+
+    def test_save_documents_only_saves_known_names(self):
+        document = FakeDocument("A")
+        freecad = types.SimpleNamespace(
+            listDocuments=Mock(return_value={"A": document, "B": FakeDocument("B")}),
+        )
+        sys.modules["FreeCAD"] = freecad
+
+        saved, failed = fcstd.save_documents(["A", "Missing"])
+
+        self.assertEqual(saved, ["A"])
+        self.assertEqual(failed, [])
+        document.save.assert_called_once_with()
 
 
 if __name__ == "__main__":
