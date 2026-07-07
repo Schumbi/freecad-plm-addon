@@ -28,6 +28,9 @@ class PLMClient:
     def get_parts(self, project_id):
         return self._json("GET", f"/api/projects/{project_id}/parts/")["parts"]
 
+    def create_part(self, project_id, data):
+        return self._json("POST", f"/api/projects/{project_id}/parts/", data)["part"]
+
     def get_part(self, part_id):
         return self._json("GET", f"/api/parts/{part_id}/")
 

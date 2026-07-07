@@ -49,6 +49,18 @@ def part_label(part):
     return label
 
 
+def part_edit_payload(values, include_number=False):
+    payload = {}
+    fields = ("name", "description", "material", "supplier", "tags", "category")
+    if include_number:
+        fields = ("number", *fields)
+    for field in fields:
+        value = values.get(field, "")
+        payload[field] = value.strip() if isinstance(value, str) else value
+    payload["is_archived"] = bool(values.get("is_archived", False))
+    return payload
+
+
 def revisions_from_part_detail(part_detail):
     if not isinstance(part_detail, dict):
         return []
@@ -151,6 +163,15 @@ def annotation_label(annotation):
         parts.append(text)
 
     return " - ".join(parts) or f"Anmerkung {annotation.get('id', '')}".strip()
+
+
+def annotation_update_payload(text=None, status=None):
+    payload = {}
+    if text is not None:
+        payload["text"] = text.strip()
+    if status is not None:
+        payload["status"] = status
+    return payload
 
 
 def annotations_for_revision(annotations, revision_id):
@@ -334,6 +355,12 @@ class PLMPanel:
         self.parts = self.QtWidgets.QListWidget()
         browser_layout.addWidget(self.parts)
 
+        part_action_row = self.QtWidgets.QHBoxLayout()
+        self.new_part_button = self.QtWidgets.QPushButton("Neues Teil")
+        self.new_part_button.setEnabled(False)
+        part_action_row.addWidget(self.new_part_button)
+        browser_layout.addLayout(part_action_row)
+
         browser_layout.addWidget(self.QtWidgets.QLabel("Revisionen"))
         self.revisions = self.QtWidgets.QListWidget()
         browser_layout.addWidget(self.revisions)
@@ -342,6 +369,33 @@ class PLMPanel:
         details_layout = self.QtWidgets.QVBoxLayout(details_widget)
 
         self.detail_tabs = self.QtWidgets.QTabWidget()
+
+        self.part_details = self.QtWidgets.QWidget()
+        part_form = self.QtWidgets.QFormLayout(self.part_details)
+        self.part_number = self.QtWidgets.QLineEdit()
+        self.part_number.setReadOnly(True)
+        self.part_name = self.QtWidgets.QLineEdit()
+        self.part_category = self.QtWidgets.QComboBox()
+        self.part_category.addItem("Teil", "part")
+        self.part_category.addItem("Baugruppe", "assembly")
+        self.part_description = self.QtWidgets.QPlainTextEdit()
+        self.part_description.setMaximumHeight(80)
+        self.part_material = self.QtWidgets.QLineEdit()
+        self.part_supplier = self.QtWidgets.QLineEdit()
+        self.part_tags = self.QtWidgets.QLineEdit()
+        self.part_archived = self.QtWidgets.QCheckBox("Archiviert")
+        self.save_part_button = self.QtWidgets.QPushButton("Stammdaten speichern")
+        self.save_part_button.setEnabled(False)
+        part_form.addRow("Nummer", self.part_number)
+        part_form.addRow("Name", self.part_name)
+        part_form.addRow("Kategorie", self.part_category)
+        part_form.addRow("Beschreibung", self.part_description)
+        part_form.addRow("Material", self.part_material)
+        part_form.addRow("Lieferant", self.part_supplier)
+        part_form.addRow("Tags", self.part_tags)
+        part_form.addRow("", self.part_archived)
+        part_form.addRow("", self.save_part_button)
+        self.detail_tabs.addTab(self.part_details, "Teil")
 
         self.revision_overview = self.QtWidgets.QPlainTextEdit()
         self.revision_overview.setReadOnly(True)
@@ -353,8 +407,25 @@ class PLMPanel:
         self.revision_notes.setPlainText("Keine Revision ausgewählt.")
         self.detail_tabs.addTab(self.revision_notes, "Notizen")
 
+        annotation_widget = self.QtWidgets.QWidget()
+        annotation_layout = self.QtWidgets.QVBoxLayout(annotation_widget)
         self.annotations = self.QtWidgets.QListWidget()
-        self.detail_tabs.addTab(self.annotations, "Anmerkungen")
+        annotation_layout.addWidget(self.annotations)
+        annotation_action_row = self.QtWidgets.QHBoxLayout()
+        self.new_annotation_button = self.QtWidgets.QPushButton("Neu")
+        self.edit_annotation_button = self.QtWidgets.QPushButton("Bearbeiten")
+        self.resolve_annotation_button = self.QtWidgets.QPushButton("Erledigt")
+        self.reopen_annotation_button = self.QtWidgets.QPushButton("Wieder öffnen")
+        self.new_annotation_button.setEnabled(False)
+        self.edit_annotation_button.setEnabled(False)
+        self.resolve_annotation_button.setEnabled(False)
+        self.reopen_annotation_button.setEnabled(False)
+        annotation_action_row.addWidget(self.new_annotation_button)
+        annotation_action_row.addWidget(self.edit_annotation_button)
+        annotation_action_row.addWidget(self.resolve_annotation_button)
+        annotation_action_row.addWidget(self.reopen_annotation_button)
+        annotation_layout.addLayout(annotation_action_row)
+        self.detail_tabs.addTab(annotation_widget, "Anmerkungen")
 
         self.technical_details = self.QtWidgets.QPlainTextEdit()
         self.technical_details.setReadOnly(True)
@@ -406,7 +477,18 @@ class PLMPanel:
         self.settings_button.clicked.connect(self.toggle_settings)
         self.projects.itemSelectionChanged.connect(self.refresh_parts)
         self.parts.itemSelectionChanged.connect(self.refresh_revisions)
+        self.new_part_button.clicked.connect(self.create_part_dialog)
+        self.save_part_button.clicked.connect(self.save_selected_part)
         self.revisions.itemSelectionChanged.connect(self.show_revision_details)
+        self.annotations.itemSelectionChanged.connect(self.update_annotation_controls)
+        self.new_annotation_button.clicked.connect(self.create_annotation_for_current_revision)
+        self.edit_annotation_button.clicked.connect(self.edit_selected_annotation)
+        self.resolve_annotation_button.clicked.connect(
+            lambda: self.update_selected_annotation_status("resolved")
+        )
+        self.reopen_annotation_button.clicked.connect(
+            lambda: self.update_selected_annotation_status("open")
+        )
         self.open_readonly_button.clicked.connect(self.open_selected_revision_readonly)
         self.checkout_button.clicked.connect(self.checkout_selected_revision)
         self.checkin_button.clicked.connect(self.checkin_active_checkout)
@@ -446,6 +528,13 @@ class PLMPanel:
         revision = items[0].data(self.QtCore.Qt.UserRole)
         return revision if isinstance(revision, dict) else None
 
+    def selected_annotation(self):
+        items = self.annotations.selectedItems()
+        if not items:
+            return None
+        annotation = items[0].data(self.QtCore.Qt.UserRole)
+        return annotation if isinstance(annotation, dict) else None
+
     def select_revision_by_id(self, revision_id):
         for index in range(self.revisions.count()):
             item = self.revisions.item(index)
@@ -464,6 +553,17 @@ class PLMPanel:
 
     def update_reopen_checkout_button(self):
         self.reopen_checkout_button.setEnabled(self.selected_active_checkout() is not None)
+
+    def update_annotation_controls(self):
+        annotation = self.selected_annotation()
+        has_annotation = annotation is not None and annotation.get("id") is not None
+        self.edit_annotation_button.setEnabled(has_annotation)
+        self.resolve_annotation_button.setEnabled(
+            has_annotation and annotation.get("status") != "resolved"
+        )
+        self.reopen_annotation_button.setEnabled(
+            has_annotation and annotation.get("status") == "resolved"
+        )
 
     def update_checkout_controls(self):
         checkout_id = self.active_checkout_id()
@@ -497,13 +597,58 @@ class PLMPanel:
         self.revision_notes.setPlainText("Keine Revision ausgewählt.")
         self.technical_details.setPlainText("Keine Revision ausgewählt.")
         self.annotations.clear()
+        self.new_annotation_button.setEnabled(False)
+        self.update_annotation_controls()
         self.open_readonly_button.setEnabled(False)
         self.checkout_button.setEnabled(False)
+
+    def clear_part_form(self):
+        self.part_number.setText("")
+        self.part_name.setText("")
+        self.part_category.setCurrentIndex(0)
+        self.part_description.setPlainText("")
+        self.part_material.setText("")
+        self.part_supplier.setText("")
+        self.part_tags.setText("")
+        self.part_archived.setChecked(False)
+        self.save_part_button.setEnabled(False)
+
+    def set_part_form(self, part):
+        self.part_number.setText(part.get("number", "") or "")
+        self.part_name.setText(part.get("name", "") or "")
+        category = part.get("category") or "part"
+        index = self.part_category.findData(category)
+        self.part_category.setCurrentIndex(index if index >= 0 else 0)
+        self.part_description.setPlainText(part.get("description", "") or "")
+        self.part_material.setText(part.get("material", "") or "")
+        self.part_supplier.setText(part.get("supplier", "") or "")
+        self.part_tags.setText(part.get("tags", "") or "")
+        self.part_archived.setChecked(bool(part.get("is_archived", False)))
+        self.save_part_button.setEnabled(part.get("id") is not None)
+
+    def part_form_values(self, include_number=False):
+        current_data = getattr(self.part_category, "currentData", None)
+        category = current_data() if callable(current_data) else None
+        if category is None:
+            category = self.part_category.itemData(self.part_category.currentIndex())
+        values = {
+            "name": self.part_name.text(),
+            "category": category or "part",
+            "description": self.part_description.toPlainText(),
+            "material": self.part_material.text(),
+            "supplier": self.part_supplier.text(),
+            "tags": self.part_tags.text(),
+            "is_archived": self.part_archived.isChecked(),
+        }
+        if include_number:
+            values["number"] = self.part_number.text()
+        return values
 
     def set_revision_context(self, revision):
         self.revision_overview.setPlainText(revision_overview_text(revision))
         self.revision_notes.setPlainText(revision_notes_text(revision))
         self.technical_details.setPlainText(revision_technical_text(revision))
+        self.new_annotation_button.setEnabled(True)
         self.open_readonly_button.setEnabled(True)
         self.checkout_button.setEnabled(True)
         self.refresh_annotations(revision)
@@ -534,8 +679,10 @@ class PLMPanel:
         self.parts.clear()
         self.revisions.clear()
         self.active_checkouts.clear()
+        self.new_part_button.setEnabled(False)
         self.update_reopen_checkout_button()
         self.clear_revision_context()
+        self.clear_part_form()
 
         try:
             client = self.client()
@@ -584,6 +731,8 @@ class PLMPanel:
         self.parts.clear()
         self.revisions.clear()
         self.clear_revision_context()
+        self.clear_part_form()
+        self.new_part_button.setEnabled(False)
         if not items:
             return
 
@@ -592,6 +741,7 @@ class PLMPanel:
         if project_id is None:
             self.status.setText("Projekt hat keine ID.")
             return
+        self.new_part_button.setEnabled(True)
 
         self.status.setText("Lade Teile...")
 
@@ -618,6 +768,7 @@ class PLMPanel:
         self.revisions.clear()
         self.clear_revision_context()
         if not items:
+            self.clear_part_form()
             return
 
         part = items[0].data(self.QtCore.Qt.UserRole)
@@ -625,6 +776,7 @@ class PLMPanel:
         if part_id is None:
             self.status.setText("Teil hat keine ID.")
             return
+        self.set_part_form(part)
 
         self.status.setText("Lade Revisionen...")
 
@@ -638,6 +790,11 @@ class PLMPanel:
             return
 
         revisions = revisions_from_part_detail(part_detail)
+        detail_part = part_detail.get("part") if isinstance(part_detail, dict) else None
+        if isinstance(detail_part, dict):
+            items[0].setData(self.QtCore.Qt.UserRole, detail_part)
+            items[0].setText(part_label(detail_part))
+            self.set_part_form(detail_part)
         for revision in revisions:
             item = self.QtWidgets.QListWidgetItem(revision_label(revision))
             item.setData(self.QtCore.Qt.UserRole, revision)
@@ -646,6 +803,84 @@ class PLMPanel:
         count = len(revisions)
         suffix = "" if count == 1 else "en"
         self.status.setText(f"{count} Revision{suffix} geladen.")
+
+    def create_part_dialog(self):
+        project = self.selected_project()
+        project_id = project.get("id") if isinstance(project, dict) else None
+        if project_id is None:
+            self.status.setText("Kein Projekt ausgewählt.")
+            return
+
+        name, accepted = self.QtWidgets.QInputDialog.getText(
+            self.widget,
+            "Neues Teil",
+            "Name",
+            self.QtWidgets.QLineEdit.Normal,
+            "",
+        )
+        if not accepted:
+            self.status.setText("Teilanlage abgebrochen.")
+            return
+
+        name = name.strip()
+        if not name:
+            self.status.setText("Name ist erforderlich.")
+            return
+
+        category, accepted = self.QtWidgets.QInputDialog.getItem(
+            self.widget,
+            "Kategorie",
+            "Kategorie",
+            ["Teil", "Baugruppe"],
+            0,
+            False,
+        )
+        if not accepted:
+            self.status.setText("Teilanlage abgebrochen.")
+            return
+
+        payload = {
+            "name": name,
+            "category": "assembly" if category == "Baugruppe" else "part",
+        }
+        try:
+            part = self.client().create_part(project_id, payload)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Teil konnte nicht angelegt werden: {exc}")
+            return
+
+        item = self.QtWidgets.QListWidgetItem(part_label(part))
+        item.setData(self.QtCore.Qt.UserRole, part)
+        self.parts.addItem(item)
+        self.parts.setCurrentItem(item)
+        self.status.setText(f"Teil angelegt: {part_label(part)}")
+
+    def save_selected_part(self):
+        part = self.selected_part()
+        part_id = part.get("id") if isinstance(part, dict) else None
+        if part_id is None:
+            self.status.setText("Kein Teil ausgewählt.")
+            return
+
+        payload = part_edit_payload(self.part_form_values())
+        try:
+            updated_part = self.client().update_part(part_id, payload)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Teil konnte nicht gespeichert werden: {exc}")
+            return
+
+        items = self.parts.selectedItems()
+        if items:
+            items[0].setData(self.QtCore.Qt.UserRole, updated_part)
+            items[0].setText(part_label(updated_part))
+        self.set_part_form(updated_part)
+        self.status.setText(f"Stammdaten gespeichert: {part_label(updated_part)}")
 
     def show_revision_details(self):
         items = self.revisions.selectedItems()
@@ -662,6 +897,7 @@ class PLMPanel:
 
     def refresh_annotations(self, revision):
         self.annotations.clear()
+        self.update_annotation_controls()
         part = self.selected_part()
         part_id = part.get("id") if isinstance(part, dict) else None
         if part_id is None:
@@ -681,12 +917,105 @@ class PLMPanel:
 
         if not annotations:
             self.annotations.addItem("Keine Anmerkungen vorhanden.")
+            self.update_annotation_controls()
             return
 
         for annotation in annotations:
             item = self.QtWidgets.QListWidgetItem(annotation_label(annotation))
             item.setData(self.QtCore.Qt.UserRole, annotation)
             self.annotations.addItem(item)
+        self.update_annotation_controls()
+
+    def create_annotation_for_current_revision(self, object_name="", subelement=""):
+        part = self.selected_part()
+        revision = self.selected_revision()
+        part_id = part.get("id") if isinstance(part, dict) else None
+        revision_id = revision.get("id") if isinstance(revision, dict) else None
+        if part_id is None or revision_id is None:
+            self.status.setText("Teil und Revision auswählen.")
+            return
+
+        text, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
+            self.widget,
+            "Anmerkung",
+            "Text",
+            "",
+        )
+        if not accepted:
+            self.status.setText("Anmerkung abgebrochen.")
+            return
+
+        text = text.strip()
+        if not text:
+            self.status.setText("Anmerkungstext ist erforderlich.")
+            return
+
+        payload = {
+            "revision_id": revision_id,
+            "text": text,
+            "object_name": object_name,
+            "subelement": subelement,
+        }
+        try:
+            annotation = self.client().create_annotation(part_id, payload)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Anmerkung konnte nicht gespeichert werden: {exc}")
+            return
+
+        self.refresh_annotations(revision)
+        self.status.setText(f"Anmerkung angelegt: {annotation_label(annotation)}")
+
+    def edit_selected_annotation(self):
+        annotation = self.selected_annotation()
+        annotation_id = annotation.get("id") if isinstance(annotation, dict) else None
+        if annotation_id is None:
+            self.status.setText("Keine Anmerkung ausgewählt.")
+            return
+
+        text, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
+            self.widget,
+            "Anmerkung bearbeiten",
+            "Text",
+            annotation.get("text", ""),
+        )
+        if not accepted:
+            self.status.setText("Bearbeiten abgebrochen.")
+            return
+
+        payload = annotation_update_payload(text=text)
+        if not payload.get("text"):
+            self.status.setText("Anmerkungstext ist erforderlich.")
+            return
+        self.update_selected_annotation(payload, "Anmerkung gespeichert")
+
+    def update_selected_annotation_status(self, status):
+        payload = annotation_update_payload(status=status)
+        label = "Anmerkung erledigt" if status == "resolved" else "Anmerkung wieder geöffnet"
+        self.update_selected_annotation(payload, label)
+
+    def update_selected_annotation(self, payload, success_prefix):
+        annotation = self.selected_annotation()
+        annotation_id = annotation.get("id") if isinstance(annotation, dict) else None
+        if annotation_id is None:
+            self.status.setText("Keine Anmerkung ausgewählt.")
+            return
+
+        try:
+            updated = self.client().update_annotation(annotation_id, payload)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Anmerkung konnte nicht gespeichert werden: {exc}")
+            return
+
+        revision = self.selected_revision()
+        if isinstance(revision, dict):
+            self.refresh_annotations(revision)
+        self.status.setText(f"{success_prefix}: {annotation_label(updated)}")
 
     def open_selected_revision_readonly(self):
         from . import fcstd
@@ -1117,3 +1446,17 @@ def cancel_active_checkout():
 
 def create_annotation_for_selection():
     show_panel()
+    if _active_panel is None:
+        return
+    try:
+        from . import fcstd
+
+        object_name = fcstd.selected_object_name()
+        subelement = fcstd.selected_subelement_name()
+    except Exception:
+        object_name = ""
+        subelement = ""
+    _active_panel.create_annotation_for_current_revision(
+        object_name=object_name,
+        subelement=subelement,
+    )

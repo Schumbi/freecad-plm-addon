@@ -2,6 +2,7 @@ import unittest
 
 from freecad_plm_addon.panel import (
     annotation_label,
+    annotation_update_payload,
     annotations_for_revision,
     checkin_conflict_text,
     checkin_created_revision_count,
@@ -11,6 +12,7 @@ from freecad_plm_addon.panel import (
     connection_label,
     format_bytes,
     part_label,
+    part_edit_payload,
     project_label,
     revision_label,
     revision_notes_text,
@@ -172,6 +174,39 @@ class PanelTests(unittest.TestCase):
     def test_part_label_falls_back_to_id(self):
         self.assertEqual(part_label({"id": 9}), "Teil 9")
 
+    def test_part_edit_payload_trims_supported_fields(self):
+        self.assertEqual(
+            part_edit_payload(
+                {
+                    "name": " Halter ",
+                    "description": " Test ",
+                    "material": " PLA ",
+                    "supplier": " intern ",
+                    "tags": " demo, addon ",
+                    "category": " assembly ",
+                    "is_archived": True,
+                }
+            ),
+            {
+                "name": "Halter",
+                "description": "Test",
+                "material": "PLA",
+                "supplier": "intern",
+                "tags": "demo, addon",
+                "category": "assembly",
+                "is_archived": True,
+            },
+        )
+
+    def test_part_edit_payload_can_include_number_for_create(self):
+        self.assertEqual(
+            part_edit_payload(
+                {"number": " A-001 ", "name": " Baugruppe ", "category": "assembly"},
+                include_number=True,
+            )["number"],
+            "A-001",
+        )
+
     def test_revision_label_uses_revision_status_filename_and_date(self):
         self.assertEqual(
             revision_label(
@@ -253,6 +288,18 @@ class PanelTests(unittest.TestCase):
                 }
             ),
             "Body.Face1 - [open] - ralf 2026-07-06 - Kante prüfen",
+        )
+
+    def test_annotation_update_payload_trims_text_and_sets_status(self):
+        self.assertEqual(
+            annotation_update_payload(text=" erledigt ", status="resolved"),
+            {"text": "erledigt", "status": "resolved"},
+        )
+
+    def test_annotation_update_payload_allows_status_only(self):
+        self.assertEqual(
+            annotation_update_payload(status="open"),
+            {"status": "open"},
         )
 
     def test_annotations_for_revision_includes_general_and_matching_annotations(self):

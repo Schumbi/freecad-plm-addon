@@ -121,6 +121,21 @@ class PLMClientTests(unittest.TestCase):
                 "https://plm.example/api/revisions/17/manifest/?snapshot_id=3",
             )
 
+    def test_create_part_posts_json_payload(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"part": {"id": 5, "name": "Halter"}}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(
+                client.create_part(3, {"name": "Halter", "category": "part"}),
+                {"id": 5, "name": "Halter"},
+            )
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/projects/3/parts/")
+            self.assertEqual(
+                json.loads(req.data.decode("utf-8")),
+                {"name": "Halter", "category": "part"},
+            )
+
     def test_checkout_revision_posts_workspace_hint_and_snapshot(self):
         client = PLMClient("https://plm.example", "token")
         payload = {"checkout": {"id": 9}, "manifest": {"files": []}}
@@ -152,6 +167,46 @@ class PLMClientTests(unittest.TestCase):
             req = urlopen.call_args.args[0]
             self.assertEqual(req.full_url, "https://plm.example/api/checkouts/9/cancel/")
             self.assertEqual(json.loads(req.data.decode("utf-8")), {})
+
+    def test_create_annotation_posts_revision_and_selection_payload(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"annotation": {"id": 7, "text": "Pruefen"}}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(
+                client.create_annotation(
+                    5,
+                    {
+                        "revision_id": 11,
+                        "text": "Pruefen",
+                        "object_name": "Body",
+                        "subelement": "Face1",
+                    },
+                ),
+                {"id": 7, "text": "Pruefen"},
+            )
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/parts/5/annotations/")
+            self.assertEqual(
+                json.loads(req.data.decode("utf-8")),
+                {
+                    "revision_id": 11,
+                    "text": "Pruefen",
+                    "object_name": "Body",
+                    "subelement": "Face1",
+                },
+            )
+
+    def test_update_annotation_posts_text_or_status_payload(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"annotation": {"id": 7, "status": "resolved"}}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(
+                client.update_annotation(7, {"status": "resolved"}),
+                {"id": 7, "status": "resolved"},
+            )
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/annotations/7/")
+            self.assertEqual(json.loads(req.data.decode("utf-8")), {"status": "resolved"})
 
     def test_checkin_posts_multipart_file_and_summary(self):
         client = PLMClient("https://plm.example", "token")
