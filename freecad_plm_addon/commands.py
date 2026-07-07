@@ -1,3 +1,13 @@
+from pathlib import Path
+
+
+ICON_DIR = Path(__file__).resolve().parent / "icons"
+
+
+def icon_path(filename):
+    return str(ICON_DIR / filename)
+
+
 COMMAND_NAMES = [
     "FreeCADPLM_ActivateConnection",
     "FreeCADPLM_Connect",
@@ -29,7 +39,7 @@ class BaseCommand:
 
 class ConnectCommand(BaseCommand):
     menu_text = "Verbinden"
-    pixmap = "network-idle"
+    pixmap = icon_path("connect.svg")
 
     def Activated(self):
         from .panel import show_panel
@@ -40,7 +50,7 @@ class ConnectCommand(BaseCommand):
 class ActivateConnectionCommand(BaseCommand):
     menu_text = "PLM-Verbindung aktivieren"
     tooltip = "FreeCAD-PLM Panel öffnen und Projekte laden"
-    pixmap = "network-transmit-receive"
+    pixmap = icon_path("activate-connection.svg")
 
     def Activated(self):
         from .panel import refresh_panel
