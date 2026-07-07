@@ -2,10 +2,25 @@ import hashlib
 import json
 import re
 import shutil
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
+from xml.etree import ElementTree
+from zipfile import BadZipFile, ZipFile
 
 from .errors import HashMismatchError, WorkspaceError
+
+CHECKOUT_METADATA_VERSION = 4
+IGNORED_DOCUMENT_PROPERTIES = {
+    "LastModifiedBy",
+    "LastModifiedDate",
+    "PLMRevision",
+}
+IGNORED_DOCUMENT_ATTRIBUTES = {
+    "Touched",
+    "stamp",
+    "status",
+}
 
 
 def safe_join(root, relative_path):
@@ -180,12 +195,32 @@ def read_manifest(path):
     return json.loads((Path(path) / "manifest.json").read_text(encoding="utf-8"))
 
 
+def write_checkout_metadata(path, metadata):
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "checkout.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def read_checkout_metadata(path):
+    return json.loads((Path(path) / "checkout.json").read_text(encoding="utf-8"))
+
+
 def sha256_file(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def next_revision_code(revision_code):
+    match = re.fullmatch(r"R(\d{4})", str(revision_code or ""))
+    if match is None:
+        raise WorkspaceError(f"Ungueltiger Revisionscode: {revision_code}")
+    return f"R{int(match.group(1)) + 1:04d}"
 
 
 def files_root(path):
@@ -221,6 +256,104 @@ def ensure_checkout_manifest_files(client, manifest, path):
     return downloaded
 
 
+def _hash_zip_members(path, include_member):
+    digest = hashlib.sha256()
+    matched = False
+    try:
+        with ZipFile(path) as archive:
+            names = sorted(name for name in archive.namelist() if include_member(name))
+            for name in names:
+                matched = True
+                encoded_name = name.encode("utf-8")
+                digest.update(len(encoded_name).to_bytes(8, "big"))
+                digest.update(encoded_name)
+                content = archive.read(name)
+                digest.update(len(content).to_bytes(8, "big"))
+                digest.update(content)
+    except BadZipFile as exc:
+        raise WorkspaceError(f"Ungueltige FCStd-Datei: {path}") from exc
+
+    return digest.hexdigest() if matched else None
+
+
+def _is_brep_member(name):
+    lower = str(name).lower()
+    return lower.endswith(".brp") or lower.endswith(".brep")
+
+
+def normalized_document_xml(document_xml):
+    try:
+        root = ElementTree.fromstring(document_xml)
+    except ElementTree.ParseError as exc:
+        raise WorkspaceError("Document.xml konnte nicht gelesen werden.") from exc
+
+    properties_node = root.find("./Properties")
+    if properties_node is not None:
+        for property_node in list(properties_node.findall("./Property")):
+            if property_node.attrib.get("name") in IGNORED_DOCUMENT_PROPERTIES:
+                properties_node.remove(property_node)
+        properties_node.attrib["Count"] = str(len(properties_node.findall("./Property")))
+
+    for node in root.iter():
+        for name in IGNORED_DOCUMENT_ATTRIBUTES:
+            node.attrib.pop(name, None)
+        node.attrib = dict(sorted(node.attrib.items()))
+        if node.text is not None and not node.text.strip():
+            node.text = None
+        if node.tail is not None and not node.tail.strip():
+            node.tail = None
+
+    return ElementTree.tostring(root, encoding="utf-8")
+
+
+def fcstd_technical_hashes(path):
+    try:
+        with ZipFile(path) as archive:
+            if "Document.xml" not in archive.namelist():
+                raise WorkspaceError(f"Document.xml fehlt in {path}")
+            document_xml = normalized_document_xml(archive.read("Document.xml"))
+    except BadZipFile as exc:
+        raise WorkspaceError(f"Ungueltige FCStd-Datei: {path}") from exc
+
+    return {
+        "document_sha256": hashlib.sha256(document_xml).hexdigest(),
+        "brep_sha256": _hash_zip_members(path, _is_brep_member),
+    }
+
+
+def build_checkout_metadata(manifest, path):
+    target_root = files_root(path)
+    files = []
+    for item in manifest["files"]:
+        target = safe_join(target_root, item["path"])
+        if not target.exists():
+            raise WorkspaceError(f"Checkout-Datei fehlt: {target}")
+        technical_hashes = fcstd_technical_hashes(target)
+        files.append(
+            {
+                "path": item["path"],
+                "revision_id": item.get("revision_id"),
+                "revision_code": item.get("revision_code"),
+                **technical_hashes,
+            }
+        )
+    return {"version": CHECKOUT_METADATA_VERSION, "files": files}
+
+
+def ensure_checkout_metadata(manifest, path):
+    metadata_path = Path(path) / "checkout.json"
+    if not metadata_path.exists():
+        raise WorkspaceError(
+            "Checkout-Metadaten fehlen. Bitte Checkout abbrechen und neu auschecken."
+        )
+    metadata = read_checkout_metadata(path)
+    if metadata.get("version") != CHECKOUT_METADATA_VERSION:
+        raise WorkspaceError(
+            "Checkout-Metadaten sind veraltet. Bitte Checkout abbrechen und neu auschecken."
+        )
+    return metadata
+
+
 def changed_manifest_files(manifest, path):
     target_root = files_root(path)
     changed = []
@@ -236,12 +369,124 @@ def changed_manifest_files(manifest, path):
                 "path": item["path"],
                 "local_path": target,
                 "revision_id": item.get("revision_id"),
+                "revision_code": item.get("revision_code"),
                 "base_sha256": item.get("sha256"),
                 "sha256": digest,
                 "is_root": bool(item.get("is_root")),
             }
         )
     return changed
+
+
+def _checkout_metadata_by_path(metadata):
+    return {
+        item.get("path"): item
+        for item in metadata.get("files", [])
+        if item.get("path")
+    }
+
+
+def technically_changed_manifest_files(manifest, metadata, path):
+    target_root = files_root(path)
+    metadata_by_path = _checkout_metadata_by_path(metadata)
+    changed = []
+    for item in manifest["files"]:
+        manifest_path = item["path"]
+        base = metadata_by_path.get(manifest_path)
+        if base is None:
+            raise WorkspaceError(f"Checkout-Metadaten fehlen: {manifest_path}")
+        target = safe_join(target_root, manifest_path)
+        if not target.exists():
+            raise WorkspaceError(f"Checkout-Datei fehlt: {target}")
+        technical_hashes = fcstd_technical_hashes(target)
+        if (
+            technical_hashes["document_sha256"] == base.get("document_sha256")
+        ):
+            continue
+        digest = sha256_file(target)
+        changed.append(
+            {
+                "path": manifest_path,
+                "local_path": target,
+                "revision_id": item.get("revision_id"),
+                "revision_code": item.get("revision_code"),
+                "base_sha256": item.get("sha256"),
+                "sha256": digest,
+                "is_root": bool(item.get("is_root")),
+                **technical_hashes,
+            }
+        )
+    return changed
+
+
+def set_document_string_property(document_xml, name, value):
+    root = ElementTree.fromstring(document_xml)
+    properties_node = root.find("./Properties")
+    if properties_node is None:
+        properties_node = ElementTree.SubElement(root, "Properties")
+
+    property_node = None
+    for candidate in properties_node.findall("./Property"):
+        if candidate.attrib.get("name") == name:
+            property_node = candidate
+            break
+
+    if property_node is None:
+        property_node = ElementTree.SubElement(
+            properties_node,
+            "Property",
+            {"name": name, "type": "App::PropertyString"},
+        )
+    else:
+        property_node.attrib["type"] = "App::PropertyString"
+
+    for child in list(property_node):
+        property_node.remove(child)
+    ElementTree.SubElement(property_node, "String", {"value": value})
+    properties_node.attrib["Count"] = str(len(properties_node.findall("./Property")))
+    return ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def set_fcstd_plm_revision(path, revision_code):
+    path = Path(path)
+    try:
+        original_data = path.read_bytes()
+        source = BytesIO(original_data)
+        target = BytesIO()
+        with ZipFile(source) as archive:
+            if "Document.xml" not in archive.namelist():
+                raise WorkspaceError(f"Document.xml fehlt in {path}")
+            updated_document_xml = set_document_string_property(
+                archive.read("Document.xml"),
+                "PLMRevision",
+                revision_code,
+            )
+
+            with ZipFile(target, "w") as updated_archive:
+                for info in archive.infolist():
+                    content = (
+                        updated_document_xml
+                        if info.filename == "Document.xml"
+                        else archive.read(info.filename)
+                    )
+                    updated_archive.writestr(info, content)
+    except BadZipFile as exc:
+        raise WorkspaceError(f"Ungueltige FCStd-Datei: {path}") from exc
+    except ElementTree.ParseError as exc:
+        raise WorkspaceError(f"Document.xml konnte nicht gelesen werden: {path}") from exc
+
+    updated_data = target.getvalue()
+    if updated_data != original_data:
+        path.write_bytes(updated_data)
+
+
+def update_changed_files_plm_revisions(changed_files):
+    updated = []
+    for item in changed_files:
+        revision_code = next_revision_code(item.get("revision_code"))
+        set_fcstd_plm_revision(item["local_path"], revision_code)
+        updated.append({**item, "expected_revision_code": revision_code})
+    return updated
 
 
 def root_file_path(manifest, path):

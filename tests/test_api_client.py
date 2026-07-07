@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 from freecad_plm_addon.api_client import PLMClient
-from freecad_plm_addon.errors import AuthenticationError, ConflictError
+from freecad_plm_addon.errors import APIError, AuthenticationError, ConflictError
 
 
 class FakeResponse:
@@ -57,6 +57,23 @@ class PLMClientTests(unittest.TestCase):
         with patch("urllib.request.urlopen", side_effect=error):
             with self.assertRaises(ConflictError):
                 client.checkout_revision(1)
+
+    def test_html_error_response_is_shortened(self):
+        client = PLMClient("https://plm.example", "token")
+        error = HTTPError(
+            "https://plm.example/api/checkouts/1/checkin/",
+            500,
+            "Internal Server Error",
+            {},
+            FakeResponse(b"<html><body><h1>Server Error (500)</h1></body></html>"),
+        )
+
+        with patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(APIError) as raised:
+                client.get_projects()
+
+        self.assertIn("HTTP 500: Internal Server Error", str(raised.exception))
+        self.assertNotIn("<html>", str(raised.exception))
 
     def test_download_revision_file_checks_hash(self):
         client = PLMClient("https://plm.example", "token")

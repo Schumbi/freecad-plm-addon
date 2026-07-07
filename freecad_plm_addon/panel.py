@@ -1,18 +1,22 @@
 import json
 
 from .api_client import PLMClient
-from .errors import PLMError
+from .errors import ConflictError, PLMError
 from .workspace import (
-    changed_manifest_files,
+    build_checkout_metadata,
     checkout_dir,
     download_manifest_files,
+    ensure_checkout_metadata,
     ensure_checkout_manifest_files,
     prune_readonly_cache,
     read_manifest,
     readonly_revision_dir,
     root_file_path,
+    technically_changed_manifest_files,
     touch_directory,
+    update_changed_files_plm_revisions,
     write_manifest,
+    write_checkout_metadata,
 )
 
 
@@ -207,7 +211,31 @@ def checkin_result_text(response):
         if count:
             suffix = "" if count == 1 else "en"
             parts.append(f"Neue Revision{suffix}: {count}.")
+    ignored_files = response.get("ignored_files")
+    if isinstance(ignored_files, list) and ignored_files:
+        parts.append(f"Ignoriert: {len(ignored_files)}.")
     return " ".join(parts)
+
+
+def checkin_created_revision_count(response):
+    if not isinstance(response, dict):
+        return 0
+    revisions = response.get("revisions")
+    if isinstance(revisions, list):
+        return len(revisions)
+    revision = response.get("revision")
+    return 1 if isinstance(revision, dict) and revision.get("id") is not None else 0
+
+
+def checkin_conflict_text(exc):
+    details = str(exc).strip()
+    prefix = (
+        "Check-in-Konflikt: Der Serverstand passt nicht mehr zum lokalen Checkout. "
+        "Bitte aktive Checkouts aktualisieren und den Checkout neu laden oder abbrechen."
+    )
+    if details:
+        return f"{prefix} Servermeldung: {details}"
+    return prefix
 
 
 def _load_qt():
@@ -417,6 +445,15 @@ class PLMPanel:
             return None
         revision = items[0].data(self.QtCore.Qt.UserRole)
         return revision if isinstance(revision, dict) else None
+
+    def select_revision_by_id(self, revision_id):
+        for index in range(self.revisions.count()):
+            item = self.revisions.item(index)
+            revision = item.data(self.QtCore.Qt.UserRole)
+            if isinstance(revision, dict) and revision.get("id") == revision_id:
+                self.revisions.setCurrentItem(item)
+                return True
+        return False
 
     def selected_active_checkout(self):
         items = self.active_checkouts.selectedItems()
@@ -780,6 +817,7 @@ class PLMPanel:
             target_dir = checkout_dir(workspace_root, server_url, project_code, checkout_id)
             write_manifest(target_dir, manifest)
             downloaded = ensure_checkout_manifest_files(client, manifest, target_dir)
+            write_checkout_metadata(target_dir, build_checkout_metadata(manifest, target_dir))
             root_path = root_file_path(manifest, target_dir)
 
             before_documents = fcstd.document_names()
@@ -853,6 +891,7 @@ class PLMPanel:
                 manifest = response_manifest(client.get_checkout_manifest(checkout_id))
             write_manifest(target_dir, manifest)
             downloaded = ensure_checkout_manifest_files(client, manifest, target_dir)
+            ensure_checkout_metadata(manifest, target_dir)
             root_path = root_file_path(manifest, target_dir)
 
             before_documents = fcstd.document_names()
@@ -904,37 +943,70 @@ class PLMPanel:
             self.status.setText("Änderungskommentar ist erforderlich.")
             return
 
+        saved = []
+        closed = []
+        close_failed = []
         try:
-            saved, failed = fcstd.save_documents(self.checkout_document_names)
-            if failed:
-                failed_names = ", ".join(failed)
-                self.status.setText(
-                    f"Dokumente konnten nicht gespeichert werden: {failed_names}"
-                )
+            manifest = read_manifest(self.active_checkout_dir)
+            checkout_metadata = ensure_checkout_metadata(manifest, self.active_checkout_dir)
+            checkout_document_names = fcstd.document_names_in_directory(
+                self.active_checkout_dir / "files"
+            )
+            if not checkout_document_names:
+                checkout_document_names = list(self.checkout_document_names)
+            if checkout_document_names:
+                saved, failed = fcstd.save_documents(checkout_document_names)
+                if failed:
+                    failed_names = ", ".join(failed)
+                    self.status.setText(
+                        f"Dokumente konnten nicht gespeichert werden: {failed_names}"
+                    )
+                    return
+
+            changed_files = technically_changed_manifest_files(
+                manifest,
+                checkout_metadata,
+                self.active_checkout_dir,
+            )
+            if not changed_files:
+                self.status.setText("Keine modellrelevanten Änderungen im Checkout.")
                 return
 
-            manifest = read_manifest(self.active_checkout_dir)
-            changed_files = changed_manifest_files(manifest, self.active_checkout_dir)
-            if not changed_files:
-                self.status.setText("Keine geänderten Dateien im Checkout.")
-                return
+            update_changed_files_plm_revisions(changed_files)
+            changed_files = technically_changed_manifest_files(
+                manifest,
+                checkout_metadata,
+                self.active_checkout_dir,
+            )
 
             self.status.setText("Sende Check-in...")
-            if len(changed_files) == 1 and changed_files[0].get("is_root"):
-                response = self.client().checkin(
-                    checkout_id,
-                    self.active_checkout_root_path,
-                    change_summary,
-                )
-            else:
-                response = self.client().checkin_files(
-                    checkout_id,
-                    changed_files,
-                    change_summary,
-                )
+            response = self.client().checkin_files(
+                checkout_id,
+                changed_files,
+                change_summary,
+            )
+            if checkin_created_revision_count(response) == 0:
+                self.refresh_active_checkouts()
+                message = "Keine modellrelevanten Änderungen; Checkout bleibt aktiv."
+                result_text = checkin_result_text(response)
+                if result_text:
+                    message = f"{message} {result_text}"
+                if saved:
+                    message = f"{message} Gespeichert: {len(saved)}."
+                self.status.setText(message)
+                return
+
             closed, close_failed = fcstd.close_documents(self.checkout_document_names)
             self.reset_active_checkout()
+            self.refresh_revisions()
+            revision = response.get("revision") if isinstance(response, dict) else None
+            if isinstance(revision, dict) and revision.get("id") is not None:
+                self.select_revision_by_id(revision["id"])
             self.refresh_active_checkouts()
+        except ConflictError as exc:
+            self.refresh_active_checkouts()
+            self.status.setText(checkin_conflict_text(exc))
+            return
         except PLMError as exc:
             self.status.setText(f"PLM-Fehler: {exc}")
             return

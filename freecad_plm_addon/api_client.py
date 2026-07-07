@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from urllib import error, parse, request
 
@@ -154,7 +155,15 @@ class PLMClient:
                 payload = json.loads(raw.decode("utf-8"))
                 message = payload.get("error") or message
             except (UnicodeDecodeError, json.JSONDecodeError):
-                message = raw.decode("utf-8", errors="replace")
+                text = raw.decode("utf-8", errors="replace")
+                if "<html" in text.lower() or "<!doctype html" in text.lower():
+                    text = re.sub(r"<[^>]+>", " ", text)
+                    text = " ".join(text.split())
+                if len(text) > 300:
+                    text = f"{text[:300]}..."
+                message = f"HTTP {exc.code}: {message}"
+                if text:
+                    message = f"{message} - {text}"
         error_class = {
             401: AuthenticationError,
             403: PermissionDeniedError,

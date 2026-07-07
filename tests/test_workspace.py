@@ -3,13 +3,18 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.workspace import (
+    build_checkout_metadata,
     changed_manifest_files,
     checkout_dir,
     download_manifest_files,
+    ensure_checkout_metadata,
     ensure_checkout_manifest_files,
+    fcstd_technical_hashes,
     prune_readonly_cache,
     read_manifest,
     readonly_revision_dir,
@@ -17,13 +22,68 @@ from freecad_plm_addon.workspace import (
     safe_join,
     safe_download_filename,
     server_slug,
+    set_fcstd_plm_revision,
+    set_document_string_property,
     sha256_file,
+    technically_changed_manifest_files,
     touch_directory,
+    update_changed_files_plm_revisions,
+    write_checkout_metadata,
     write_manifest,
 )
 
 
 class WorkspaceTests(unittest.TestCase):
+    def make_fcstd(self, path, revision_code="R0001"):
+        document_xml = f"""<?xml version='1.0' encoding='utf-8'?>
+<Document>
+  <Properties Count="1">
+    <Property name="PLMRevision" type="App::PropertyString">
+      <String value="{revision_code}" />
+    </Property>
+  </Properties>
+</Document>
+""".encode("utf-8")
+        with ZipFile(path, "w") as archive:
+            archive.writestr("Document.xml", document_xml)
+            archive.writestr("PartShape.brp", b"shape")
+            archive.writestr("GuiDocument.xml", b"<GuiDocument />")
+
+    def read_fcstd_plm_revision(self, path):
+        with ZipFile(path) as archive:
+            document_xml = archive.read("Document.xml")
+        root = ElementTree.fromstring(document_xml)
+        node = root.find("./Properties/Property[@name='PLMRevision']/String")
+        return node.attrib["value"]
+
+    def replace_fcstd_member(self, path, member_name, content):
+        with ZipFile(path) as archive:
+            entries = {
+                info.filename: archive.read(info.filename)
+                for info in archive.infolist()
+                if info.filename != member_name
+            }
+        entries[member_name] = content
+        with ZipFile(path, "w") as archive:
+            for name, data in entries.items():
+                archive.writestr(name, data)
+
+    def set_fcstd_string_property(self, path, name, value):
+        with ZipFile(path) as archive:
+            document_xml = archive.read("Document.xml")
+        updated = set_document_string_property(document_xml, name, value)
+        self.replace_fcstd_member(path, "Document.xml", updated)
+
+    def mutate_fcstd_document_xml(self, path, mutate):
+        with ZipFile(path) as archive:
+            root = ElementTree.fromstring(archive.read("Document.xml"))
+        mutate(root)
+        self.replace_fcstd_member(
+            path,
+            "Document.xml",
+            ElementTree.tostring(root, encoding="utf-8", xml_declaration=True),
+        )
+
     def test_safe_join_rejects_absolute_paths(self):
         with self.assertRaises(WorkspaceError):
             safe_join("/tmp/root", "/etc/passwd")
@@ -225,6 +285,229 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(changed[0]["revision_id"], 10)
             self.assertTrue(changed[0]["is_root"])
             self.assertNotEqual(changed[0]["sha256"], changed[0]["base_sha256"])
+
+    def test_fcstd_technical_hashes_ignore_gui_document(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+            before = fcstd_technical_hashes(path)
+
+            self.replace_fcstd_member(path, "GuiDocument.xml", b"<GuiDocument camera='changed' />")
+
+            self.assertEqual(fcstd_technical_hashes(path), before)
+
+    def test_fcstd_technical_hashes_ignore_volatile_document_properties(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+            before = fcstd_technical_hashes(path)
+
+            self.set_fcstd_string_property(path, "LastModifiedDate", "2026-07-07T14:04:28+02:00")
+            self.set_fcstd_string_property(path, "LastModifiedBy", "ralf")
+            set_fcstd_plm_revision(path, "R0002")
+
+            self.assertEqual(fcstd_technical_hashes(path), before)
+
+    def test_fcstd_technical_hashes_ignore_freecad_save_noise_attributes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+            before = fcstd_technical_hashes(path)
+
+            def mutate(root):
+                root.attrib["Touched"] = "1"
+                property_node = root.find("./Properties/Property[@name='PLMRevision']")
+                property_node.attrib["status"] = "128"
+                property_node.attrib["stamp"] = "2026-07-07T14:27:49+02:00"
+
+            self.mutate_fcstd_document_xml(path, mutate)
+
+            self.assertEqual(fcstd_technical_hashes(path), before)
+
+    def test_fcstd_technical_hashes_detect_checkout_path_rewrites_like_server(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+
+            def add_bom_cell(root):
+                object_data = ElementTree.SubElement(root, "ObjectData")
+                obj = ElementTree.SubElement(object_data, "Object", {"name": "Bill_of_Materials"})
+                properties = ElementTree.SubElement(obj, "Properties", {"Count": "1"})
+                prop = ElementTree.SubElement(properties, "Property", {"name": "cells"})
+                cells = ElementTree.SubElement(prop, "Cells", {"Count": "1"})
+                ElementTree.SubElement(
+                    cells,
+                    "Cell",
+                    {
+                        "address": "D2",
+                        "content": "'/home/ralf/FreeCAD-PLM/plm-lan-schumbi-de/CB2/checkout-29/files/Box.FCStd",
+                    },
+                )
+
+            self.mutate_fcstd_document_xml(path, add_bom_cell)
+            before = fcstd_technical_hashes(path)
+
+            def rewrite_checkout_path(root):
+                cell = root.find("./ObjectData/Object/Properties/Property/Cells/Cell")
+                cell.attrib[
+                    "content"
+                ] = "'/home/ralf/FreeCAD-PLM/plm-lan-schumbi-de/CB2/checkout-30/files/Box.FCStd"
+
+            self.mutate_fcstd_document_xml(path, rewrite_checkout_path)
+
+            self.assertNotEqual(fcstd_technical_hashes(path), before)
+
+    def test_fcstd_technical_hashes_detect_tiny_placement_rounding_like_server(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+
+            def add_placement(root):
+                object_data = ElementTree.SubElement(root, "ObjectData")
+                obj = ElementTree.SubElement(object_data, "Object", {"name": "Body"})
+                properties = ElementTree.SubElement(obj, "Properties", {"Count": "1"})
+                prop = ElementTree.SubElement(properties, "Property", {"name": "Placement"})
+                ElementTree.SubElement(
+                    prop,
+                    "PropertyPlacement",
+                    {
+                        "Px": "44.4999999999896332",
+                        "Py": "-0.0000000000014071",
+                        "Pz": "25.6250000000000000",
+                    },
+                )
+
+            self.mutate_fcstd_document_xml(path, add_placement)
+            before = fcstd_technical_hashes(path)
+
+            def rewrite_rounding(root):
+                placement = root.find(
+                    "./ObjectData/Object/Properties/Property/PropertyPlacement"
+                )
+                placement.attrib["Px"] = "44.4999999999896332"
+                placement.attrib["Py"] = "-0.0000000000014085"
+                placement.attrib["Pz"] = "25.6250000000000000"
+
+            self.mutate_fcstd_document_xml(path, rewrite_rounding)
+
+            self.assertNotEqual(fcstd_technical_hashes(path), before)
+
+    def test_fcstd_technical_hashes_detect_brep_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+            before = fcstd_technical_hashes(path)
+
+            self.replace_fcstd_member(path, "PartShape.brp", b"changed-shape")
+
+            self.assertNotEqual(fcstd_technical_hashes(path)["brep_sha256"], before["brep_sha256"])
+
+    def test_technically_changed_manifest_files_ignores_gui_only_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "part.FCStd"
+            path.parent.mkdir(parents=True)
+            self.make_fcstd(path, "R0001")
+            manifest = {
+                "files": [
+                    {
+                        "path": "part.FCStd",
+                        "revision_id": 10,
+                        "revision_code": "R0001",
+                        "sha256": sha256_file(path),
+                        "is_root": True,
+                    }
+                ]
+            }
+            metadata = build_checkout_metadata(manifest, tmp)
+
+            self.replace_fcstd_member(path, "GuiDocument.xml", b"<GuiDocument camera='changed' />")
+
+            self.assertEqual(technically_changed_manifest_files(manifest, metadata, tmp), [])
+
+    def test_technically_changed_manifest_files_ignores_brep_only_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "part.FCStd"
+            path.parent.mkdir(parents=True)
+            self.make_fcstd(path, "R0001")
+            manifest = {
+                "files": [
+                    {
+                        "path": "part.FCStd",
+                        "revision_id": 10,
+                        "revision_code": "R0001",
+                        "sha256": sha256_file(path),
+                        "is_root": True,
+                    }
+                ]
+            }
+            metadata = build_checkout_metadata(manifest, tmp)
+
+            self.replace_fcstd_member(path, "PartShape.brp", b"rewritten-shape-cache")
+
+            self.assertEqual(technically_changed_manifest_files(manifest, metadata, tmp), [])
+
+    def test_technically_changed_manifest_files_detects_document_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "part.FCStd"
+            path.parent.mkdir(parents=True)
+            self.make_fcstd(path, "R0001")
+            manifest = {
+                "files": [
+                    {
+                        "path": "part.FCStd",
+                        "revision_id": 10,
+                        "revision_code": "R0001",
+                        "sha256": sha256_file(path),
+                        "is_root": True,
+                    }
+                ]
+            }
+            metadata = build_checkout_metadata(manifest, tmp)
+
+            self.set_fcstd_string_property(path, "Label", "Changed label")
+            changed = technically_changed_manifest_files(manifest, metadata, tmp)
+
+            self.assertEqual(len(changed), 1)
+            self.assertEqual(changed[0]["path"], "part.FCStd")
+            self.assertEqual(changed[0]["revision_code"], "R0001")
+
+    def test_ensure_checkout_metadata_rejects_missing_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(WorkspaceError):
+                ensure_checkout_metadata({"files": []}, tmp)
+
+    def test_ensure_checkout_metadata_rejects_old_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_checkout_metadata(tmp, {"version": 1, "files": []})
+
+            with self.assertRaises(WorkspaceError):
+                ensure_checkout_metadata({"files": []}, tmp)
+
+    def test_set_fcstd_plm_revision_updates_document_xml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+
+            set_fcstd_plm_revision(path, "R0002")
+
+            self.assertEqual(self.read_fcstd_plm_revision(path), "R0002")
+
+    def test_update_changed_files_plm_revisions_uses_next_manifest_revision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0002")
+            changed_files = [
+                {
+                    "path": "part.FCStd",
+                    "local_path": path,
+                    "revision_code": "R0002",
+                }
+            ]
+
+            updated = update_changed_files_plm_revisions(changed_files)
+
+            self.assertEqual(updated[0]["expected_revision_code"], "R0003")
+            self.assertEqual(self.read_fcstd_plm_revision(path), "R0003")
 
 
 if __name__ == "__main__":

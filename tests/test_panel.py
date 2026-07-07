@@ -3,6 +3,8 @@ import unittest
 from freecad_plm_addon.panel import (
     annotation_label,
     annotations_for_revision,
+    checkin_conflict_text,
+    checkin_created_revision_count,
     checkin_result_text,
     checkout_label,
     checkout_project_code,
@@ -16,6 +18,7 @@ from freecad_plm_addon.panel import (
     revision_technical_text,
     revisions_from_part_detail,
 )
+from freecad_plm_addon.errors import ConflictError
 
 
 class PanelTests(unittest.TestCase):
@@ -83,6 +86,76 @@ class PanelTests(unittest.TestCase):
             ),
             "Neue Revision: 1.",
         )
+
+    def test_checkin_result_text_reports_ignored_files(self):
+        self.assertEqual(
+            checkin_result_text(
+                {
+                    "revision": None,
+                    "revisions": [],
+                    "ignored_files": [
+                        {"path": "Druck.FCStd", "reason": "no_model_change"},
+                    ],
+                }
+            ),
+            "Ignoriert: 1.",
+        )
+
+    def test_checkin_result_text_reports_revisions_and_ignored_files(self):
+        self.assertEqual(
+            checkin_result_text(
+                {
+                    "revision": None,
+                    "revisions": [
+                        {"path": "Box.FCStd", "revision": {"id": 21}},
+                    ],
+                    "ignored_files": [
+                        {"path": "Deckel.FCStd", "reason": "no_model_change"},
+                    ],
+                }
+            ),
+            "Neue Revision: 1. Ignoriert: 1.",
+        )
+
+    def test_checkin_created_revision_count_uses_revisions_list(self):
+        self.assertEqual(
+            checkin_created_revision_count(
+                {
+                    "revision": None,
+                    "revisions": [
+                        {"path": "Box.FCStd", "revision": {"id": 21}},
+                    ],
+                    "ignored_files": [],
+                }
+            ),
+            1,
+        )
+
+    def test_checkin_created_revision_count_handles_ignored_only_response(self):
+        self.assertEqual(
+            checkin_created_revision_count(
+                {
+                    "revision": None,
+                    "revisions": [],
+                    "ignored_files": [
+                        {"path": "Druck.FCStd", "reason": "no_model_change"},
+                    ],
+                }
+            ),
+            0,
+        )
+
+    def test_checkin_conflict_text_explains_stale_checkout(self):
+        text = checkin_conflict_text(
+            ConflictError(
+                409,
+                "PLMRevision in der FCStd-Datei ist R0002, erwartet wird R0003.",
+            )
+        )
+
+        self.assertIn("Check-in-Konflikt", text)
+        self.assertIn("Checkout neu laden oder abbrechen", text)
+        self.assertIn("erwartet wird R0003", text)
 
     def test_part_label_uses_number_name_and_status(self):
         self.assertEqual(

@@ -7,10 +7,13 @@ from freecad_plm_addon import fcstd
 
 
 class FakeDocument:
-    def __init__(self, name="Doc"):
+    def __init__(self, name="Doc", modified=False, file_name=None):
         self.Name = name
         self.recompute = Mock()
         self.save = Mock()
+        self.Modified = modified
+        self.isModified = Mock(return_value=modified)
+        self.FileName = file_name or f"/tmp/{name}.FCStd"
 
 
 class FCStdTests(unittest.TestCase):
@@ -79,6 +82,55 @@ class FCStdTests(unittest.TestCase):
         self.assertEqual(saved, ["A"])
         self.assertEqual(failed, [])
         document.save.assert_called_once_with()
+
+    def test_document_is_modified_prefers_callable(self):
+        modified = FakeDocument("A", modified=True)
+        unmodified = FakeDocument("B", modified=False)
+
+        self.assertTrue(fcstd.document_is_modified(modified))
+        self.assertFalse(fcstd.document_is_modified(unmodified))
+
+    def test_modified_document_names_filters_unmodified_documents(self):
+        modified = FakeDocument("A", modified=True)
+        unmodified = FakeDocument("B", modified=False)
+        freecad = types.SimpleNamespace(
+            listDocuments=Mock(return_value={"A": modified, "B": unmodified}),
+        )
+        sys.modules["FreeCAD"] = freecad
+
+        self.assertEqual(fcstd.modified_document_names(["A", "B", "Missing"]), ["A"])
+
+    def test_document_names_in_directory_filters_by_path(self):
+        checkout_root = "/tmp/checkout/files"
+        inside = FakeDocument("A", file_name="/tmp/checkout/files/A.FCStd")
+        nested = FakeDocument("B", file_name="/tmp/checkout/files/sub/B.FCStd")
+        outside = FakeDocument("C", file_name="/tmp/other/C.FCStd")
+        freecad = types.SimpleNamespace(
+            listDocuments=Mock(return_value={"A": inside, "B": nested, "C": outside}),
+        )
+        sys.modules["FreeCAD"] = freecad
+
+        self.assertEqual(fcstd.document_names_in_directory(checkout_root), ["A", "B"])
+
+    def test_active_document_name_in_directory_requires_checkout_path(self):
+        document = FakeDocument("A", file_name="/tmp/checkout/files/A.FCStd")
+        freecad = types.SimpleNamespace(
+            listDocuments=Mock(return_value={"A": document}),
+            ActiveDocument=document,
+        )
+        sys.modules["FreeCAD"] = freecad
+
+        self.assertEqual(fcstd.active_document_name_in_directory("/tmp/checkout/files"), "A")
+
+    def test_active_document_name_in_directory_rejects_other_paths(self):
+        document = FakeDocument("A", file_name="/tmp/other/A.FCStd")
+        freecad = types.SimpleNamespace(
+            listDocuments=Mock(return_value={"A": document}),
+            ActiveDocument=document,
+        )
+        sys.modules["FreeCAD"] = freecad
+
+        self.assertEqual(fcstd.active_document_name_in_directory("/tmp/checkout/files"), "")
 
 
 if __name__ == "__main__":
