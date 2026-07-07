@@ -324,7 +324,7 @@ class WorkspaceTests(unittest.TestCase):
 
             self.assertEqual(fcstd_technical_hashes(path), before)
 
-    def test_fcstd_technical_hashes_detect_checkout_path_rewrites_like_server(self):
+    def test_fcstd_technical_hashes_ignore_checkout_path_rewrites(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "part.FCStd"
             self.make_fcstd(path, "R0001")
@@ -355,9 +355,9 @@ class WorkspaceTests(unittest.TestCase):
 
             self.mutate_fcstd_document_xml(path, rewrite_checkout_path)
 
-            self.assertNotEqual(fcstd_technical_hashes(path), before)
+            self.assertEqual(fcstd_technical_hashes(path), before)
 
-    def test_fcstd_technical_hashes_detect_tiny_placement_rounding_like_server(self):
+    def test_fcstd_technical_hashes_ignore_tiny_placement_rounding_noise(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "part.FCStd"
             self.make_fcstd(path, "R0001")
@@ -390,7 +390,7 @@ class WorkspaceTests(unittest.TestCase):
 
             self.mutate_fcstd_document_xml(path, rewrite_rounding)
 
-            self.assertNotEqual(fcstd_technical_hashes(path), before)
+            self.assertEqual(fcstd_technical_hashes(path), before)
 
     def test_fcstd_technical_hashes_detect_brep_change(self):
         with tempfile.TemporaryDirectory() as tmp:

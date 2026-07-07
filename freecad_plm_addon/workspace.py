@@ -21,6 +21,12 @@ IGNORED_DOCUMENT_ATTRIBUTES = {
     "stamp",
     "status",
 }
+CHECKOUT_FILE_REFERENCE_RE = re.compile(
+    r"(?P<prefix>'?)(?:[A-Za-z]:)?[/\\][^'\"<>]*[/\\]checkout-\d+[/\\]files[/\\]"
+    r"(?P<filename>[^'\"<>]+?\.FCStd)",
+    re.IGNORECASE,
+)
+FLOAT_RE = re.compile(r"^[+-]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?$")
 
 
 def safe_join(root, relative_path):
@@ -281,6 +287,27 @@ def _is_brep_member(name):
     return lower.endswith(".brp") or lower.endswith(".brep")
 
 
+def _normalize_checkout_file_references(value):
+    return CHECKOUT_FILE_REFERENCE_RE.sub(
+        lambda match: f"{match.group('prefix')}{match.group('filename')}",
+        value,
+    )
+
+
+def _normalize_document_attribute_value(value):
+    value = _normalize_checkout_file_references(value)
+    if not FLOAT_RE.match(value):
+        return value
+
+    try:
+        number = float(value)
+    except ValueError:
+        return value
+    if abs(number) < 1e-9:
+        return "0"
+    return format(number, ".12g")
+
+
 def normalized_document_xml(document_xml):
     try:
         root = ElementTree.fromstring(document_xml)
@@ -297,6 +324,8 @@ def normalized_document_xml(document_xml):
     for node in root.iter():
         for name in IGNORED_DOCUMENT_ATTRIBUTES:
             node.attrib.pop(name, None)
+        for name, value in list(node.attrib.items()):
+            node.attrib[name] = _normalize_document_attribute_value(value)
         node.attrib = dict(sorted(node.attrib.items()))
         if node.text is not None and not node.text.strip():
             node.text = None
