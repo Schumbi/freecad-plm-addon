@@ -1,6 +1,7 @@
 import unittest
 
 from freecad_plm_addon.panel import (
+    annotation_create_payload,
     annotation_label,
     annotation_matches_filter,
     annotation_update_payload,
@@ -21,6 +22,7 @@ from freecad_plm_addon.panel import (
     revision_overview_text,
     revision_technical_text,
     revisions_from_part_detail,
+    unchanged_checkout_text,
 )
 from freecad_plm_addon.errors import ConflictError
 
@@ -160,6 +162,12 @@ class PanelTests(unittest.TestCase):
         self.assertIn("Check-in-Konflikt", text)
         self.assertIn("Checkout neu laden oder abbrechen", text)
         self.assertIn("erwartet wird R0003", text)
+
+    def test_unchanged_checkout_text_includes_saved_count(self):
+        self.assertEqual(
+            unchanged_checkout_text(saved_count=2),
+            "Keine modellrelevanten Änderungen; Checkout bleibt aktiv. Gespeichert: 2.",
+        )
 
     def test_part_label_uses_number_name_and_status(self):
         self.assertEqual(
@@ -308,6 +316,17 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(
             annotation_update_payload(status="open"),
             {"status": "open"},
+        )
+
+    def test_annotation_create_payload_ignores_qt_clicked_bool(self):
+        self.assertEqual(
+            annotation_create_payload(7, " Pruefen ", False, ""),
+            {
+                "revision_id": 7,
+                "text": "Pruefen",
+                "object_name": "",
+                "subelement": "",
+            },
         )
 
     def test_annotation_matches_filter(self):

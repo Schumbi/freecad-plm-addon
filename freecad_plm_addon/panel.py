@@ -178,6 +178,17 @@ def annotation_update_payload(text=None, status=None):
     return payload
 
 
+def annotation_create_payload(revision_id, text, object_name="", subelement=""):
+    object_name = object_name.strip() if isinstance(object_name, str) else ""
+    subelement = subelement.strip() if isinstance(subelement, str) else ""
+    return {
+        "revision_id": revision_id,
+        "text": text.strip(),
+        "object_name": object_name,
+        "subelement": subelement,
+    }
+
+
 def annotation_matches_filter(annotation, filter_key, revision_id):
     status = annotation.get("status") or "open"
     annotation_revision_id = annotation.get("revision_id")
@@ -275,6 +286,13 @@ def checkin_conflict_text(exc):
     if details:
         return f"{prefix} Servermeldung: {details}"
     return prefix
+
+
+def unchanged_checkout_text(saved_count=0):
+    message = "Keine modellrelevanten Änderungen; Checkout bleibt aktiv."
+    if saved_count:
+        message = f"{message} Gespeichert: {saved_count}."
+    return message
 
 
 def _load_qt():
@@ -526,7 +544,9 @@ class PLMPanel:
         self.revert_revision_notes_button.clicked.connect(self.revert_revision_notes)
         self.annotation_filter.currentIndexChanged.connect(self.apply_current_annotation_filter)
         self.annotations.itemSelectionChanged.connect(self.update_annotation_controls)
-        self.new_annotation_button.clicked.connect(self.create_annotation_for_current_revision)
+        self.new_annotation_button.clicked.connect(
+            lambda: self.create_annotation_for_current_revision()
+        )
         self.edit_annotation_button.clicked.connect(self.edit_selected_annotation)
         self.resolve_annotation_button.clicked.connect(
             lambda: self.update_selected_annotation_status("resolved")
@@ -1056,12 +1076,7 @@ class PLMPanel:
             self.status.setText("Anmerkungstext ist erforderlich.")
             return
 
-        payload = {
-            "revision_id": revision_id,
-            "text": text,
-            "object_name": object_name,
-            "subelement": subelement,
-        }
+        payload = annotation_create_payload(revision_id, text, object_name, subelement)
         try:
             annotation = self.client().create_annotation(part_id, payload)
         except PLMError as exc:
@@ -1393,21 +1408,6 @@ class PLMPanel:
             self.status.setText("Kein aktiver Checkout.")
             return
 
-        summary, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
-            self.widget,
-            "Einchecken",
-            "Änderungskommentar",
-            "",
-        )
-        if not accepted:
-            self.status.setText("Einchecken abgebrochen.")
-            return
-
-        change_summary = summary.strip()
-        if not change_summary:
-            self.status.setText("Änderungskommentar ist erforderlich.")
-            return
-
         saved = []
         closed = []
         close_failed = []
@@ -1434,7 +1434,7 @@ class PLMPanel:
                 self.active_checkout_dir,
             )
             if not changed_files:
-                self.status.setText("Keine modellrelevanten Änderungen im Checkout.")
+                self.offer_cancel_unchanged_checkout(saved_count=len(saved))
                 return
 
             update_changed_files_plm_revisions(changed_files)
@@ -1443,6 +1443,24 @@ class PLMPanel:
                 checkout_metadata,
                 self.active_checkout_dir,
             )
+            if not changed_files:
+                self.offer_cancel_unchanged_checkout(saved_count=len(saved))
+                return
+
+            summary, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
+                self.widget,
+                "Einchecken",
+                "Änderungskommentar",
+                "",
+            )
+            if not accepted:
+                self.status.setText("Einchecken abgebrochen.")
+                return
+
+            change_summary = summary.strip()
+            if not change_summary:
+                self.status.setText("Änderungskommentar ist erforderlich.")
+                return
 
             self.status.setText("Sende Check-in...")
             response = self.client().checkin_files(
@@ -1452,12 +1470,10 @@ class PLMPanel:
             )
             if checkin_created_revision_count(response) == 0:
                 self.refresh_active_checkouts()
-                message = "Keine modellrelevanten Änderungen; Checkout bleibt aktiv."
+                message = unchanged_checkout_text(saved_count=len(saved))
                 result_text = checkin_result_text(response)
                 if result_text:
                     message = f"{message} {result_text}"
-                if saved:
-                    message = f"{message} Gespeichert: {len(saved)}."
                 self.status.setText(message)
                 return
 
@@ -1492,7 +1508,18 @@ class PLMPanel:
             message = f"{message} Schließen fehlgeschlagen: {', '.join(close_failed)}."
         self.status.setText(message)
 
-    def cancel_active_checkout(self):
+    def offer_cancel_unchanged_checkout(self, saved_count=0):
+        answer = self.QtWidgets.QMessageBox.question(
+            self.widget,
+            "Keine Änderungen",
+            "Keine modellrelevanten Änderungen gefunden. Checkout abbrechen?",
+        )
+        if answer != self.QtWidgets.QMessageBox.Yes:
+            self.status.setText(unchanged_checkout_text(saved_count=saved_count))
+            return
+        self.cancel_active_checkout(confirm=False)
+
+    def cancel_active_checkout(self, confirm=True):
         from . import fcstd
 
         checkout_id = self.active_checkout_id()
@@ -1500,14 +1527,15 @@ class PLMPanel:
             self.status.setText("Kein aktiver Checkout.")
             return
 
-        answer = self.QtWidgets.QMessageBox.question(
-            self.widget,
-            "Checkout abbrechen",
-            "Aktiven Checkout wirklich abbrechen?",
-        )
-        if answer != self.QtWidgets.QMessageBox.Yes:
-            self.status.setText("Checkout-Abbruch abgebrochen.")
-            return
+        if confirm:
+            answer = self.QtWidgets.QMessageBox.question(
+                self.widget,
+                "Checkout abbrechen",
+                "Aktiven Checkout wirklich abbrechen?",
+            )
+            if answer != self.QtWidgets.QMessageBox.Yes:
+                self.status.setText("Checkout-Abbruch abgebrochen.")
+                return
 
         try:
             self.status.setText("Breche Checkout ab...")
