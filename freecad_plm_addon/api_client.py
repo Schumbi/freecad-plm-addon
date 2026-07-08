@@ -40,6 +40,13 @@ class PLMClient:
     def get_revision(self, revision_id):
         return self._json("GET", f"/api/revisions/{revision_id}/")["revision"]
 
+    def update_revision_notes(self, revision_id, notes):
+        return self._json(
+            "POST",
+            f"/api/revisions/{revision_id}/notes/",
+            {"notes": notes},
+        )["revision"]
+
     def get_revision_manifest(self, revision_id, snapshot_id=None):
         path = f"/api/revisions/{revision_id}/manifest/"
         if snapshot_id is not None:
@@ -116,6 +123,9 @@ class PLMClient:
 
     def update_annotation(self, annotation_id, data):
         return self._json("POST", f"/api/annotations/{annotation_id}/", data)["annotation"]
+
+    def delete_annotation(self, annotation_id):
+        return self._json("DELETE", f"/api/annotations/{annotation_id}/")
 
     def _url(self, path, absolute=False):
         if absolute:

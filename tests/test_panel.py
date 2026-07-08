@@ -2,6 +2,7 @@ import unittest
 
 from freecad_plm_addon.panel import (
     annotation_label,
+    annotation_matches_filter,
     annotation_update_payload,
     annotations_for_revision,
     checkin_conflict_text,
@@ -15,6 +16,7 @@ from freecad_plm_addon.panel import (
     part_edit_payload,
     project_label,
     revision_label,
+    revision_notes_payload,
     revision_notes_text,
     revision_overview_text,
     revision_technical_text,
@@ -272,6 +274,12 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(revision_notes_text({"notes": "Initial import"}), "Initial import")
         self.assertEqual(revision_notes_text({}), "Keine Notizen vorhanden.")
 
+    def test_revision_notes_payload_trims_notes(self):
+        self.assertEqual(
+            revision_notes_payload("  Vor Montage pruefen.  "),
+            {"notes": "Vor Montage pruefen."},
+        )
+
     def test_revision_technical_text_contains_metadata(self):
         self.assertIn('"Label": "Part"', revision_technical_text({"extracted_metadata": {"Label": "Part"}}))
 
@@ -301,6 +309,18 @@ class PanelTests(unittest.TestCase):
             annotation_update_payload(status="open"),
             {"status": "open"},
         )
+
+    def test_annotation_matches_filter(self):
+        open_revision_annotation = {"status": "open", "revision_id": 7}
+        resolved_part_annotation = {"status": "resolved", "revision_id": None}
+
+        self.assertTrue(annotation_matches_filter(open_revision_annotation, "all", 7))
+        self.assertTrue(annotation_matches_filter(open_revision_annotation, "open", 7))
+        self.assertFalse(annotation_matches_filter(open_revision_annotation, "resolved", 7))
+        self.assertTrue(annotation_matches_filter(open_revision_annotation, "revision", 7))
+        self.assertFalse(annotation_matches_filter(open_revision_annotation, "part", 7))
+        self.assertTrue(annotation_matches_filter(resolved_part_annotation, "part", 7))
+        self.assertFalse(annotation_matches_filter(resolved_part_annotation, "open", 7))
 
     def test_annotations_for_revision_includes_general_and_matching_annotations(self):
         annotations = [

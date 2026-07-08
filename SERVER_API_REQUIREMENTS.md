@@ -391,3 +391,95 @@ eine Root-Datei eingecheckt wurde.
 - Der Server lehnt unbekannte oder unsichere Manifest-Pfade ab.
 - Bei erfolgreichem Multi-Datei-Check-in ist der Checkout `completed`.
 - Die Antwort enthaelt alle erzeugten Revisionen mit Manifest-Pfadbezug.
+
+---
+
+# Server API Requirement: Revisionsnotizen und Anmerkungs-CRUD
+
+## Ziel
+
+Das Addon soll Revisionsnotizen direkt im FreeCAD-Workflow pflegen koennen und
+Anmerkungen vollstaendig verwalten: lesen, anlegen, bearbeiten, Status setzen
+und loeschen.
+
+## Revisionsnotizen
+
+```http
+POST /api/revisions/<revision_id>/notes/
+```
+
+Scope:
+
+```text
+write
+```
+
+Request:
+
+```json
+{
+  "notes": "Vor Serienfreigabe in Baugruppe pruefen."
+}
+```
+
+Antwort:
+
+```json
+{
+  "revision": {
+    "id": 10,
+    "revision_code": "R0002",
+    "notes": "Vor Serienfreigabe in Baugruppe pruefen."
+  }
+}
+```
+
+Verhalten:
+
+- Aktualisiert nur das Feld `Revision.notes`.
+- Erzeugt keine neue Revision.
+- Erzeugt ein AuditEvent `revision_notes_updated`.
+- Leere Notizen sind erlaubt und loeschen den Notiztext.
+
+## Anmerkungen loeschen
+
+Der bestehende Endpunkt soll zusaetzlich `DELETE` akzeptieren:
+
+```http
+DELETE /api/annotations/<annotation_id>/
+```
+
+Scope:
+
+```text
+write
+```
+
+Antwort:
+
+```http
+204 No Content
+```
+
+Verhalten:
+
+- Loescht die Anmerkung oder markiert sie serverseitig als geloescht.
+- Erzeugt ein AuditEvent `annotation_deleted`.
+- Darf keine Revision erzeugen.
+- Darf keine Anmerkungen anderer Projekte ohne Berechtigung loeschen.
+
+## Addon-Nutzung
+
+```text
+Revision auswaehlen
+-> Notizen im Detail-Tab bearbeiten
+-> POST /api/revisions/<id>/notes/
+-> Revisionsliste und Detailkontext aktualisieren
+```
+
+```text
+Anmerkung auswaehlen
+-> Bearbeiten, Erledigt/Wieder offen oder Loeschen
+-> POST oder DELETE /api/annotations/<id>/
+-> Anmerkungsliste mit aktuellem Filter neu laden
+```

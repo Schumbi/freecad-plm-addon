@@ -121,6 +121,18 @@ class PLMClientTests(unittest.TestCase):
                 "https://plm.example/api/revisions/17/manifest/?snapshot_id=3",
             )
 
+    def test_update_revision_notes_posts_json_payload(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"revision": {"id": 17, "notes": "Pruefen"}}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(
+                client.update_revision_notes(17, "Pruefen"),
+                {"id": 17, "notes": "Pruefen"},
+            )
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/revisions/17/notes/")
+            self.assertEqual(json.loads(req.data.decode("utf-8")), {"notes": "Pruefen"})
+
     def test_create_part_posts_json_payload(self):
         client = PLMClient("https://plm.example", "token")
         payload = {"part": {"id": 5, "name": "Halter"}}
@@ -207,6 +219,14 @@ class PLMClientTests(unittest.TestCase):
             req = urlopen.call_args.args[0]
             self.assertEqual(req.full_url, "https://plm.example/api/annotations/7/")
             self.assertEqual(json.loads(req.data.decode("utf-8")), {"status": "resolved"})
+
+    def test_delete_annotation_uses_delete_method(self):
+        client = PLMClient("https://plm.example", "token")
+        with patch("urllib.request.urlopen", return_value=FakeResponse({})) as urlopen:
+            self.assertEqual(client.delete_annotation(7), {})
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/annotations/7/")
+            self.assertEqual(req.get_method(), "DELETE")
 
     def test_checkin_posts_multipart_file_and_summary(self):
         client = PLMClient("https://plm.example", "token")

@@ -133,6 +133,10 @@ def revision_notes_text(revision):
     return revision.get("notes") or "Keine Notizen vorhanden."
 
 
+def revision_notes_payload(notes):
+    return {"notes": (notes or "").strip()}
+
+
 def revision_technical_text(revision):
     metadata = revision.get("extracted_metadata")
     if not metadata:
@@ -172,6 +176,20 @@ def annotation_update_payload(text=None, status=None):
     if status is not None:
         payload["status"] = status
     return payload
+
+
+def annotation_matches_filter(annotation, filter_key, revision_id):
+    status = annotation.get("status") or "open"
+    annotation_revision_id = annotation.get("revision_id")
+    if filter_key == "open":
+        return status != "resolved"
+    if filter_key == "resolved":
+        return status == "resolved"
+    if filter_key == "revision":
+        return annotation_revision_id == revision_id
+    if filter_key == "part":
+        return annotation_revision_id is None
+    return True
 
 
 def annotations_for_revision(annotations, revision_id):
@@ -289,6 +307,7 @@ class PLMPanel:
         self.active_checkout = None
         self.active_checkout_dir = None
         self.active_checkout_root_path = None
+        self.current_annotations = []
 
         layout = self.QtWidgets.QVBoxLayout(self.widget)
 
@@ -403,12 +422,32 @@ class PLMPanel:
         self.detail_tabs.addTab(self.revision_overview, "Übersicht")
 
         self.revision_notes = self.QtWidgets.QPlainTextEdit()
-        self.revision_notes.setReadOnly(True)
         self.revision_notes.setPlainText("Keine Revision ausgewählt.")
-        self.detail_tabs.addTab(self.revision_notes, "Notizen")
+        revision_notes_action_row = self.QtWidgets.QHBoxLayout()
+        self.save_revision_notes_button = self.QtWidgets.QPushButton("Notizen speichern")
+        self.revert_revision_notes_button = self.QtWidgets.QPushButton("Zurücksetzen")
+        self.save_revision_notes_button.setEnabled(False)
+        self.revert_revision_notes_button.setEnabled(False)
+        revision_notes_action_row.addWidget(self.save_revision_notes_button)
+        revision_notes_action_row.addWidget(self.revert_revision_notes_button)
+        revision_notes_widget = self.QtWidgets.QWidget()
+        revision_notes_layout = self.QtWidgets.QVBoxLayout(revision_notes_widget)
+        revision_notes_layout.addWidget(self.revision_notes)
+        revision_notes_layout.addLayout(revision_notes_action_row)
+        self.detail_tabs.addTab(revision_notes_widget, "Notizen")
 
         annotation_widget = self.QtWidgets.QWidget()
         annotation_layout = self.QtWidgets.QVBoxLayout(annotation_widget)
+        annotation_filter_row = self.QtWidgets.QHBoxLayout()
+        annotation_filter_row.addWidget(self.QtWidgets.QLabel("Filter"))
+        self.annotation_filter = self.QtWidgets.QComboBox()
+        self.annotation_filter.addItem("Alle", "all")
+        self.annotation_filter.addItem("Offen", "open")
+        self.annotation_filter.addItem("Erledigt", "resolved")
+        self.annotation_filter.addItem("Nur diese Revision", "revision")
+        self.annotation_filter.addItem("Teil allgemein", "part")
+        annotation_filter_row.addWidget(self.annotation_filter)
+        annotation_layout.addLayout(annotation_filter_row)
         self.annotations = self.QtWidgets.QListWidget()
         annotation_layout.addWidget(self.annotations)
         annotation_action_row = self.QtWidgets.QHBoxLayout()
@@ -416,14 +455,17 @@ class PLMPanel:
         self.edit_annotation_button = self.QtWidgets.QPushButton("Bearbeiten")
         self.resolve_annotation_button = self.QtWidgets.QPushButton("Erledigt")
         self.reopen_annotation_button = self.QtWidgets.QPushButton("Wieder öffnen")
+        self.delete_annotation_button = self.QtWidgets.QPushButton("Löschen")
         self.new_annotation_button.setEnabled(False)
         self.edit_annotation_button.setEnabled(False)
         self.resolve_annotation_button.setEnabled(False)
         self.reopen_annotation_button.setEnabled(False)
+        self.delete_annotation_button.setEnabled(False)
         annotation_action_row.addWidget(self.new_annotation_button)
         annotation_action_row.addWidget(self.edit_annotation_button)
         annotation_action_row.addWidget(self.resolve_annotation_button)
         annotation_action_row.addWidget(self.reopen_annotation_button)
+        annotation_action_row.addWidget(self.delete_annotation_button)
         annotation_layout.addLayout(annotation_action_row)
         self.detail_tabs.addTab(annotation_widget, "Anmerkungen")
 
@@ -480,6 +522,9 @@ class PLMPanel:
         self.new_part_button.clicked.connect(self.create_part_dialog)
         self.save_part_button.clicked.connect(self.save_selected_part)
         self.revisions.itemSelectionChanged.connect(self.show_revision_details)
+        self.save_revision_notes_button.clicked.connect(self.save_revision_notes)
+        self.revert_revision_notes_button.clicked.connect(self.revert_revision_notes)
+        self.annotation_filter.currentIndexChanged.connect(self.apply_current_annotation_filter)
         self.annotations.itemSelectionChanged.connect(self.update_annotation_controls)
         self.new_annotation_button.clicked.connect(self.create_annotation_for_current_revision)
         self.edit_annotation_button.clicked.connect(self.edit_selected_annotation)
@@ -489,6 +534,7 @@ class PLMPanel:
         self.reopen_annotation_button.clicked.connect(
             lambda: self.update_selected_annotation_status("open")
         )
+        self.delete_annotation_button.clicked.connect(self.delete_selected_annotation)
         self.open_readonly_button.clicked.connect(self.open_selected_revision_readonly)
         self.checkout_button.clicked.connect(self.checkout_selected_revision)
         self.checkin_button.clicked.connect(self.checkin_active_checkout)
@@ -558,6 +604,7 @@ class PLMPanel:
         annotation = self.selected_annotation()
         has_annotation = annotation is not None and annotation.get("id") is not None
         self.edit_annotation_button.setEnabled(has_annotation)
+        self.delete_annotation_button.setEnabled(has_annotation)
         self.resolve_annotation_button.setEnabled(
             has_annotation and annotation.get("status") != "resolved"
         )
@@ -595,7 +642,10 @@ class PLMPanel:
     def clear_revision_context(self):
         self.revision_overview.setPlainText("Keine Revision ausgewählt.")
         self.revision_notes.setPlainText("Keine Revision ausgewählt.")
+        self.save_revision_notes_button.setEnabled(False)
+        self.revert_revision_notes_button.setEnabled(False)
         self.technical_details.setPlainText("Keine Revision ausgewählt.")
+        self.current_annotations = []
         self.annotations.clear()
         self.new_annotation_button.setEnabled(False)
         self.update_annotation_controls()
@@ -646,7 +696,9 @@ class PLMPanel:
 
     def set_revision_context(self, revision):
         self.revision_overview.setPlainText(revision_overview_text(revision))
-        self.revision_notes.setPlainText(revision_notes_text(revision))
+        self.revision_notes.setPlainText(revision.get("notes") or "")
+        self.save_revision_notes_button.setEnabled(revision.get("id") is not None)
+        self.revert_revision_notes_button.setEnabled(revision.get("id") is not None)
         self.technical_details.setPlainText(revision_technical_text(revision))
         self.new_annotation_button.setEnabled(True)
         self.open_readonly_button.setEnabled(True)
@@ -895,7 +947,40 @@ class PLMPanel:
 
         self.set_revision_context(revision)
 
+    def save_revision_notes(self):
+        revision = self.selected_revision()
+        revision_id = revision.get("id") if isinstance(revision, dict) else None
+        if revision_id is None:
+            self.status.setText("Keine Revision ausgewählt.")
+            return
+
+        payload = revision_notes_payload(self.revision_notes.toPlainText())
+        try:
+            updated_revision = self.client().update_revision_notes(revision_id, payload["notes"])
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Notizen konnten nicht gespeichert werden: {exc}")
+            return
+
+        items = self.revisions.selectedItems()
+        if items:
+            items[0].setData(self.QtCore.Qt.UserRole, updated_revision)
+            items[0].setText(revision_label(updated_revision))
+        self.set_revision_context(updated_revision)
+        self.status.setText("Revisionsnotizen gespeichert.")
+
+    def revert_revision_notes(self):
+        revision = self.selected_revision()
+        if not isinstance(revision, dict):
+            self.status.setText("Keine Revision ausgewählt.")
+            return
+        self.revision_notes.setPlainText(revision.get("notes") or "")
+        self.status.setText("Revisionsnotizen zurückgesetzt.")
+
     def refresh_annotations(self, revision):
+        self.current_annotations = []
         self.annotations.clear()
         self.update_annotation_controls()
         part = self.selected_part()
@@ -915,8 +1000,29 @@ class PLMPanel:
             self.annotations.addItem(f"Anmerkungen konnten nicht geladen werden: {exc}")
             return
 
+        self.current_annotations = annotations
+        self.apply_current_annotation_filter()
+
+    def apply_current_annotation_filter(self, *_args):
+        self.annotations.clear()
+        revision = self.selected_revision()
+        revision_id = revision.get("id") if isinstance(revision, dict) else None
+        current_data = getattr(self.annotation_filter, "currentData", None)
+        filter_key = current_data() if callable(current_data) else None
+        if filter_key is None:
+            filter_key = self.annotation_filter.itemData(self.annotation_filter.currentIndex())
+
+        annotations = [
+            annotation
+            for annotation in self.current_annotations
+            if annotation_matches_filter(annotation, filter_key or "all", revision_id)
+        ]
+
         if not annotations:
-            self.annotations.addItem("Keine Anmerkungen vorhanden.")
+            message = "Keine Anmerkungen vorhanden."
+            if self.current_annotations:
+                message = "Keine Anmerkungen für diesen Filter."
+            self.annotations.addItem(message)
             self.update_annotation_controls()
             return
 
@@ -1016,6 +1122,36 @@ class PLMPanel:
         if isinstance(revision, dict):
             self.refresh_annotations(revision)
         self.status.setText(f"{success_prefix}: {annotation_label(updated)}")
+
+    def delete_selected_annotation(self):
+        annotation = self.selected_annotation()
+        annotation_id = annotation.get("id") if isinstance(annotation, dict) else None
+        if annotation_id is None:
+            self.status.setText("Keine Anmerkung ausgewählt.")
+            return
+
+        answer = self.QtWidgets.QMessageBox.question(
+            self.widget,
+            "Anmerkung löschen",
+            "Ausgewählte Anmerkung wirklich löschen?",
+        )
+        if answer != self.QtWidgets.QMessageBox.Yes:
+            self.status.setText("Löschen abgebrochen.")
+            return
+
+        try:
+            self.client().delete_annotation(annotation_id)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Anmerkung konnte nicht gelöscht werden: {exc}")
+            return
+
+        revision = self.selected_revision()
+        if isinstance(revision, dict):
+            self.refresh_annotations(revision)
+        self.status.setText("Anmerkung gelöscht.")
 
     def open_selected_revision_readonly(self):
         from . import fcstd
