@@ -483,3 +483,60 @@ Anmerkung auswaehlen
 -> POST oder DELETE /api/annotations/<id>/
 -> Anmerkungsliste mit aktuellem Filter neu laden
 ```
+
+---
+
+# Server API Requirement: Projektmetadaten im Addon
+
+## Ziel
+
+Das Addon soll die Projektdaten spiegeln, die im WebUI am Projekt gepflegt
+werden: Code, Name, Status, Datum und Beschreibung.
+
+## Endpunkt
+
+```http
+GET /api/projects/<project_id>/
+POST /api/projects/<project_id>/
+```
+
+Scope fuer `GET`:
+
+```text
+read
+```
+
+Scope fuer `POST`:
+
+```text
+admin
+```
+
+## Payload
+
+Der Server liefert und akzeptiert folgende Felder:
+
+```json
+{
+  "code": "PRJ",
+  "name": "Projekt",
+  "status": "running",
+  "project_date": "2026-07-08",
+  "description": "Optional"
+}
+```
+
+`status` nutzt dieselben Werte wie das WebUI: `running`, `completed`, `idea`,
+`important`, `order`. `project_date` ist leer oder ein Datum im Format
+`YYYY-MM-DD`. Der Server normalisiert `code` auf Grossbuchstaben und schreibt
+bei Aenderungen ein AuditEvent `project_updated`.
+
+## Addon-Nutzung
+
+```text
+Projekt auswaehlen
+-> Projektdaten im Tab "Projekt" anzeigen
+-> Bearbeiten
+-> POST /api/projects/<id>/
+-> Projektliste und Formular mit Serverantwort aktualisieren
+```

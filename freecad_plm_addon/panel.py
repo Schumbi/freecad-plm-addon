@@ -32,6 +32,16 @@ def project_label(project):
     return code or name or f"Projekt {project.get('id', '')}".strip()
 
 
+def project_edit_payload(values):
+    payload = {}
+    fields = ("code", "name", "status", "project_date", "description")
+    for field in fields:
+        value = values.get(field, "")
+        payload[field] = value.strip() if isinstance(value, str) else value
+    payload["code"] = payload.get("code", "").upper()
+    return payload
+
+
 def connection_label(server_url):
     text = server_url.replace("https://", "").replace("http://", "").strip("/")
     return f"Verbunden mit {text}" if text else "Nicht verbunden."
@@ -407,6 +417,30 @@ class PLMPanel:
 
         self.detail_tabs = self.QtWidgets.QTabWidget()
 
+        self.project_details = self.QtWidgets.QWidget()
+        project_form = self.QtWidgets.QFormLayout(self.project_details)
+        self.project_code = self.QtWidgets.QLineEdit()
+        self.project_name = self.QtWidgets.QLineEdit()
+        self.project_status = self.QtWidgets.QComboBox()
+        self.project_status.addItem("Laufend", "running")
+        self.project_status.addItem("Abgeschlossen", "completed")
+        self.project_status.addItem("Idee", "idea")
+        self.project_status.addItem("Wichtig", "important")
+        self.project_status.addItem("Auftrag", "order")
+        self.project_date = self.QtWidgets.QLineEdit()
+        self.project_date.setPlaceholderText("YYYY-MM-DD")
+        self.project_description = self.QtWidgets.QPlainTextEdit()
+        self.project_description.setMaximumHeight(100)
+        self.save_project_button = self.QtWidgets.QPushButton("Projekt speichern")
+        self.save_project_button.setEnabled(False)
+        project_form.addRow("Code", self.project_code)
+        project_form.addRow("Name", self.project_name)
+        project_form.addRow("Status", self.project_status)
+        project_form.addRow("Datum", self.project_date)
+        project_form.addRow("Beschreibung", self.project_description)
+        project_form.addRow("", self.save_project_button)
+        self.detail_tabs.addTab(self.project_details, "Projekt")
+
         self.part_details = self.QtWidgets.QWidget()
         part_form = self.QtWidgets.QFormLayout(self.part_details)
         self.part_number = self.QtWidgets.QLineEdit()
@@ -537,6 +571,7 @@ class PLMPanel:
         self.settings_button.clicked.connect(self.toggle_settings)
         self.projects.itemSelectionChanged.connect(self.refresh_parts)
         self.parts.itemSelectionChanged.connect(self.refresh_revisions)
+        self.save_project_button.clicked.connect(self.save_selected_project)
         self.new_part_button.clicked.connect(self.create_part_dialog)
         self.save_part_button.clicked.connect(self.save_selected_part)
         self.revisions.itemSelectionChanged.connect(self.show_revision_details)
@@ -672,6 +707,37 @@ class PLMPanel:
         self.open_readonly_button.setEnabled(False)
         self.checkout_button.setEnabled(False)
 
+    def clear_project_form(self):
+        self.project_code.setText("")
+        self.project_name.setText("")
+        self.project_status.setCurrentIndex(0)
+        self.project_date.setText("")
+        self.project_description.setPlainText("")
+        self.save_project_button.setEnabled(False)
+
+    def set_project_form(self, project):
+        self.project_code.setText(project.get("code", "") or "")
+        self.project_name.setText(project.get("name", "") or "")
+        status = project.get("status") or "running"
+        index = self.project_status.findData(status)
+        self.project_status.setCurrentIndex(index if index >= 0 else 0)
+        self.project_date.setText(project.get("project_date", "") or "")
+        self.project_description.setPlainText(project.get("description", "") or "")
+        self.save_project_button.setEnabled(project.get("id") is not None)
+
+    def project_form_values(self):
+        current_data = getattr(self.project_status, "currentData", None)
+        status = current_data() if callable(current_data) else None
+        if status is None:
+            status = self.project_status.itemData(self.project_status.currentIndex())
+        return {
+            "code": self.project_code.text(),
+            "name": self.project_name.text(),
+            "status": status or "running",
+            "project_date": self.project_date.text(),
+            "description": self.project_description.toPlainText(),
+        }
+
     def clear_part_form(self):
         self.part_number.setText("")
         self.part_name.setText("")
@@ -754,6 +820,7 @@ class PLMPanel:
         self.new_part_button.setEnabled(False)
         self.update_reopen_checkout_button()
         self.clear_revision_context()
+        self.clear_project_form()
         self.clear_part_form()
 
         try:
@@ -804,6 +871,7 @@ class PLMPanel:
         self.revisions.clear()
         self.clear_revision_context()
         self.clear_part_form()
+        self.clear_project_form()
         self.new_part_button.setEnabled(False)
         if not items:
             return
@@ -813,6 +881,7 @@ class PLMPanel:
         if project_id is None:
             self.status.setText("Projekt hat keine ID.")
             return
+        self.set_project_form(project)
         self.new_part_button.setEnabled(True)
 
         self.status.setText("Lade Teile...")
@@ -834,6 +903,30 @@ class PLMPanel:
         count = len(parts)
         suffix = "" if count == 1 else "e"
         self.status.setText(f"{count} Teil{suffix} geladen.")
+
+    def save_selected_project(self):
+        project = self.selected_project()
+        project_id = project.get("id") if isinstance(project, dict) else None
+        if project_id is None:
+            self.status.setText("Kein Projekt ausgewählt.")
+            return
+
+        payload = project_edit_payload(self.project_form_values())
+        try:
+            updated_project = self.client().update_project(project_id, payload)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Projekt konnte nicht gespeichert werden: {exc}")
+            return
+
+        items = self.projects.selectedItems()
+        if items:
+            items[0].setData(self.QtCore.Qt.UserRole, updated_project)
+            items[0].setText(project_label(updated_project))
+        self.set_project_form(updated_project)
+        self.status.setText(f"Projekt gespeichert: {project_label(updated_project)}")
 
     def refresh_revisions(self):
         items = self.parts.selectedItems()

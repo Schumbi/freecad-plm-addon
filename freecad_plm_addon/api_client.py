@@ -25,6 +25,9 @@ class PLMClient:
     def get_project(self, project_id):
         return self._json("GET", f"/api/projects/{project_id}/")["project"]
 
+    def update_project(self, project_id, data):
+        return self._json("POST", f"/api/projects/{project_id}/", data)["project"]
+
     def get_parts(self, project_id):
         return self._json("GET", f"/api/projects/{project_id}/parts/")["parts"]
 

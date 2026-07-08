@@ -15,6 +15,7 @@ from freecad_plm_addon.panel import (
     format_bytes,
     part_label,
     part_edit_payload,
+    project_edit_payload,
     project_label,
     revision_label,
     revision_notes_payload,
@@ -36,6 +37,26 @@ class PanelTests(unittest.TestCase):
 
     def test_project_label_falls_back_to_id(self):
         self.assertEqual(project_label({"id": 7}), "Projekt 7")
+
+    def test_project_edit_payload_trims_and_uppercases_code(self):
+        self.assertEqual(
+            project_edit_payload(
+                {
+                    "code": " prj ",
+                    "name": " Demo ",
+                    "status": " order ",
+                    "project_date": " 2026-07-08 ",
+                    "description": " Test ",
+                }
+            ),
+            {
+                "code": "PRJ",
+                "name": "Demo",
+                "status": "order",
+                "project_date": "2026-07-08",
+                "description": "Test",
+            },
+        )
 
     def test_connection_label(self):
         self.assertEqual(connection_label("https://plm.lan.schumbi.de"), "Verbunden mit plm.lan.schumbi.de")

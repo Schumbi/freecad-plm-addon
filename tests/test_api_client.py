@@ -148,6 +148,22 @@ class PLMClientTests(unittest.TestCase):
                 {"name": "Halter", "category": "part"},
             )
 
+    def test_update_project_posts_metadata_payload(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"project": {"id": 3, "code": "PRJ", "name": "Demo"}}
+        data = {
+            "code": "PRJ",
+            "name": "Demo",
+            "status": "running",
+            "project_date": "2026-07-08",
+            "description": "Test",
+        }
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(client.update_project(3, data), payload["project"])
+            req = urlopen.call_args.args[0]
+            self.assertEqual(req.full_url, "https://plm.example/api/projects/3/")
+            self.assertEqual(json.loads(req.data.decode("utf-8")), data)
+
     def test_checkout_revision_posts_workspace_hint_and_snapshot(self):
         client = PLMClient("https://plm.example", "token")
         payload = {"checkout": {"id": 9}, "manifest": {"files": []}}
