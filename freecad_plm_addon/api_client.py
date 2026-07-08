@@ -28,6 +28,26 @@ class PLMClient:
     def update_project(self, project_id, data):
         return self._json("POST", f"/api/projects/{project_id}/", data)["project"]
 
+    def import_project(self, zip_path, project_data, snapshot_name):
+        fields = dict(project_data)
+        fields["snapshot_name"] = snapshot_name
+        return self._multipart(
+            "/api/projects/import/",
+            fields,
+            "file",
+            Path(zip_path),
+            "application/zip",
+        )
+
+    def import_project_snapshot(self, project_id, zip_path, snapshot_name):
+        return self._multipart(
+            f"/api/projects/{project_id}/snapshots/import/",
+            {"name": snapshot_name},
+            "file",
+            Path(zip_path),
+            "application/zip",
+        )
+
     def get_parts(self, project_id):
         return self._json("GET", f"/api/projects/{project_id}/parts/")["parts"]
 

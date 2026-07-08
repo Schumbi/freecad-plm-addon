@@ -16,6 +16,7 @@ from freecad_plm_addon.panel import (
     part_label,
     part_edit_payload,
     project_edit_payload,
+    project_import_result_text,
     project_label,
     revision_label,
     revision_notes_payload,
@@ -56,6 +57,23 @@ class PanelTests(unittest.TestCase):
                 "project_date": "2026-07-08",
                 "description": "Test",
             },
+        )
+
+    def test_project_import_result_text_summarizes_import(self):
+        self.assertEqual(
+            project_import_result_text(
+                {
+                    "snapshot": {"name": "Initial"},
+                    "import_summary": {
+                        "created_parts": 2,
+                        "created_revisions": 3,
+                        "reused_revisions": 1,
+                        "files": [{"path": "A.FCStd"}, {"path": "B.FCStd"}],
+                    },
+                }
+            ),
+            "Import abgeschlossen: Initial (2 Datei(en), 2 neue Teile, "
+            "3 neue Revisionen, 1 wiederverwendet).",
         )
 
     def test_connection_label(self):

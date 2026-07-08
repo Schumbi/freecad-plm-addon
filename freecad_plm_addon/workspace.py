@@ -37,6 +37,40 @@ def safe_join(root, relative_path):
     return root.joinpath(*path.parts)
 
 
+def safe_zip_path(path):
+    path = PurePosixPath(path)
+    if path.is_absolute() or ".." in path.parts or not str(path).strip():
+        raise WorkspaceError(f"Unsicherer ZIP-Pfad: {path}")
+    return str(path)
+
+
+def collect_project_fcstd_files(source_dir):
+    source_dir = Path(source_dir).expanduser()
+    if not source_dir.exists() or not source_dir.is_dir():
+        raise WorkspaceError(f"Projektordner existiert nicht: {source_dir}")
+
+    files = []
+    for path in sorted(source_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() != ".fcstd":
+            continue
+        relative_path = safe_zip_path(path.relative_to(source_dir).as_posix())
+        files.append((relative_path, path))
+
+    if not files:
+        raise WorkspaceError("Projektordner enthaelt keine FCStd-Dateien.")
+    return files
+
+
+def build_project_import_zip(source_dir, target_path):
+    target_path = Path(target_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    files = collect_project_fcstd_files(source_dir)
+    with ZipFile(target_path, "w") as archive:
+        for relative_path, local_path in files:
+            archive.write(local_path, relative_path)
+    return [relative_path for relative_path, _local_path in files]
+
+
 def server_slug(server_url):
     parsed = urlparse(server_url)
     host = parsed.netloc or parsed.path

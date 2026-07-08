@@ -540,3 +540,68 @@ Projekt auswaehlen
 -> POST /api/projects/<id>/
 -> Projektliste und Formular mit Serverantwort aktualisieren
 ```
+
+---
+
+# Server API Requirement: Lokalen FreeCAD-Ordner importieren
+
+## Ziel
+
+Das Addon soll neue lokale FreeCAD-Teile und Baugruppen inklusive abhaengiger
+`.FCStd`-Dateien in das PLM aufnehmen koennen. Dafuer wird ein lokaler Ordner
+als ZIP mit relativen Pfaden an den Server gesendet. Der Server legt daraus
+Teile/Baugruppen, Revisionen und einen Projektstand an.
+
+## Bestehendes Projekt
+
+```http
+POST /api/projects/<project_id>/snapshots/import/
+```
+
+Scope:
+
+```text
+write
+```
+
+Multipart:
+
+- `file`: ZIP mit `.FCStd`-Dateien
+- `name`: Name des Projektstands
+
+## Neues Projekt plus Import
+
+```http
+POST /api/projects/import/
+```
+
+Scope:
+
+```text
+admin
+```
+
+Multipart:
+
+- `file`: ZIP mit `.FCStd`-Dateien
+- `code`, `name`, `status`, `project_date`, `description`
+- `snapshot_name`
+
+Der Kombiflow muss atomar sein: Wenn der ZIP-Import fehlschlaegt, darf kein
+leeres Projekt uebrig bleiben.
+
+## Addon-Nutzung
+
+```text
+Projekt importieren
+-> neues Projekt oder ausgewaehltes Projekt waehlen
+-> Projektmetadaten und Projektstandsname erfassen
+-> lokalen Ordner waehlen
+-> alle .FCStd rekursiv mit relativen Pfaden ins ZIP packen
+-> passenden Import-Endpunkt aufrufen
+-> Projektliste und Teileliste aktualisieren
+```
+
+Der Ordnerimport ist der V1-Hauptpfad, weil er FreeCAD-Baugruppen mit
+relativen Referenzen robuster abbildet als das reine Einsammeln geoeffneter
+Dokumente.

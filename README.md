@@ -21,6 +21,19 @@ Der Server erwartet Bearer Token:
 Authorization: Bearer plm_pat_...
 ```
 
+Fuer den vollstaendigen Addon-Workflow werden typischerweise diese Scopes
+benoetigt:
+
+```text
+read write checkout admin
+```
+
+`Projekt importieren` packt alle `.FCStd`-Dateien unterhalb eines gewaehlten
+lokalen Ordners in ein ZIP mit relativen Pfaden. Das Addon kann damit entweder
+einen Projektstand in ein vorhandenes Projekt importieren oder ein neues
+Projekt mit Code, Name, Status, Datum und Beschreibung anlegen und direkt
+befuellen.
+
 ## Tests
 
 ```bash

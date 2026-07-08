@@ -1,9 +1,12 @@
 import json
+import tempfile
+from pathlib import Path
 
 from .api_client import PLMClient
 from .errors import ConflictError, PLMError
 from .workspace import (
     build_checkout_metadata,
+    build_project_import_zip,
     checkout_dir,
     download_manifest_files,
     ensure_checkout_metadata,
@@ -40,6 +43,19 @@ def project_edit_payload(values):
         payload[field] = value.strip() if isinstance(value, str) else value
     payload["code"] = payload.get("code", "").upper()
     return payload
+
+
+def project_import_result_text(result):
+    summary = result.get("import_summary") or {}
+    snapshot = result.get("snapshot") or {}
+    files = summary.get("files") or snapshot.get("entries") or []
+    return (
+        f"Import abgeschlossen: {snapshot.get('name') or 'Projektstand'} "
+        f"({len(files)} Datei(en), "
+        f"{summary.get('created_parts', 0)} neue Teile, "
+        f"{summary.get('created_revisions', 0)} neue Revisionen, "
+        f"{summary.get('reused_revisions', 0)} wiederverwendet)."
+    )
 
 
 def connection_label(server_url):
@@ -397,6 +413,9 @@ class PLMPanel:
         browser_layout.addWidget(self.QtWidgets.QLabel("Projekte"))
         self.projects = self.QtWidgets.QListWidget()
         browser_layout.addWidget(self.projects)
+        self.import_project_button = self.QtWidgets.QPushButton("Projekt importieren")
+        self.import_project_button.setEnabled(False)
+        browser_layout.addWidget(self.import_project_button)
 
         browser_layout.addWidget(self.QtWidgets.QLabel("Teile"))
         self.parts = self.QtWidgets.QListWidget()
@@ -572,6 +591,7 @@ class PLMPanel:
         self.projects.itemSelectionChanged.connect(self.refresh_parts)
         self.parts.itemSelectionChanged.connect(self.refresh_revisions)
         self.save_project_button.clicked.connect(self.save_selected_project)
+        self.import_project_button.clicked.connect(self.import_project_dialog)
         self.new_part_button.clicked.connect(self.create_part_dialog)
         self.save_part_button.clicked.connect(self.save_selected_part)
         self.revisions.itemSelectionChanged.connect(self.show_revision_details)
@@ -604,6 +624,7 @@ class PLMPanel:
         self.connection_summary.setText(connection_label(server_url))
         self.settings_widget.setVisible(False)
         self.refresh_button.setVisible(True)
+        self.import_project_button.setEnabled(True)
 
     def client(self):
         return PLMClient(self.server_url.text().strip(), self.api_token.text().strip())
@@ -614,6 +635,15 @@ class PLMPanel:
             return None
         project = items[0].data(self.QtCore.Qt.UserRole)
         return project if isinstance(project, dict) else None
+
+    def select_project_by_id(self, project_id):
+        for index in range(self.projects.count()):
+            item = self.projects.item(index)
+            project = item.data(self.QtCore.Qt.UserRole)
+            if isinstance(project, dict) and project.get("id") == project_id:
+                self.projects.setCurrentItem(item)
+                return True
+        return False
 
     def selected_part(self):
         items = self.parts.selectedItems()
@@ -807,6 +837,7 @@ class PLMPanel:
         config.set_cache_max_fcstd_files(max_fcstd_files)
         config.set_cache_max_projects(max_projects)
         config.set_cache_max_revisions_per_project(max_revisions_per_project)
+        self.import_project_button.setEnabled(False)
 
         if not server_url or not api_token:
             self.status.setText("Server und API-Token eintragen.")
@@ -927,6 +958,145 @@ class PLMPanel:
             items[0].setText(project_label(updated_project))
         self.set_project_form(updated_project)
         self.status.setText(f"Projekt gespeichert: {project_label(updated_project)}")
+
+    def import_project_dialog(self):
+        selected_project = self.selected_project()
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Projekt importieren")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+
+        mode_group = self.QtWidgets.QButtonGroup(dialog)
+        new_project_radio = self.QtWidgets.QRadioButton("Neues Projekt")
+        existing_project_radio = self.QtWidgets.QRadioButton("Ausgewähltes Projekt")
+        mode_group.addButton(new_project_radio)
+        mode_group.addButton(existing_project_radio)
+        mode_row = self.QtWidgets.QHBoxLayout()
+        mode_row.addWidget(new_project_radio)
+        mode_row.addWidget(existing_project_radio)
+        layout.addLayout(mode_row)
+
+        form = self.QtWidgets.QFormLayout()
+        code = self.QtWidgets.QLineEdit()
+        name = self.QtWidgets.QLineEdit()
+        status = self.QtWidgets.QComboBox()
+        status.addItem("Laufend", "running")
+        status.addItem("Abgeschlossen", "completed")
+        status.addItem("Idee", "idea")
+        status.addItem("Wichtig", "important")
+        status.addItem("Auftrag", "order")
+        project_date = self.QtWidgets.QLineEdit()
+        project_date.setPlaceholderText("YYYY-MM-DD")
+        description = self.QtWidgets.QPlainTextEdit()
+        description.setMaximumHeight(80)
+        snapshot_name = self.QtWidgets.QLineEdit()
+        snapshot_name.setText("Initial")
+        source_dir = self.QtWidgets.QLineEdit()
+        browse_button = self.QtWidgets.QPushButton("Ordner wählen")
+        source_row = self.QtWidgets.QHBoxLayout()
+        source_row.addWidget(source_dir)
+        source_row.addWidget(browse_button)
+        source_widget = self.QtWidgets.QWidget()
+        source_widget.setLayout(source_row)
+
+        try:
+            from . import fcstd
+
+            active_path = fcstd.active_document_path()
+        except Exception:
+            active_path = None
+        if active_path:
+            source_dir.setText(str(Path(active_path).parent))
+
+        form.addRow("Code", code)
+        form.addRow("Name", name)
+        form.addRow("Status", status)
+        form.addRow("Datum", project_date)
+        form.addRow("Beschreibung", description)
+        form.addRow("Projektstand", snapshot_name)
+        form.addRow("Ordner", source_widget)
+        layout.addLayout(form)
+
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        buttons.button(self.QtWidgets.QDialogButtonBox.Ok).setText("Importieren")
+        layout.addWidget(buttons)
+
+        def set_new_project_enabled(enabled):
+            for widget in (code, name, status, project_date, description):
+                widget.setEnabled(enabled)
+            existing_project_radio.setEnabled(selected_project is not None)
+
+        def update_mode():
+            set_new_project_enabled(new_project_radio.isChecked())
+
+        def browse():
+            chosen = self.QtWidgets.QFileDialog.getExistingDirectory(
+                dialog,
+                "Projektordner wählen",
+                source_dir.text().strip(),
+            )
+            if chosen:
+                source_dir.setText(chosen)
+
+        if selected_project is None:
+            new_project_radio.setChecked(True)
+        else:
+            existing_project_radio.setChecked(True)
+        update_mode()
+        new_project_radio.toggled.connect(update_mode)
+        browse_button.clicked.connect(browse)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            self.status.setText("Projektimport abgebrochen.")
+            return
+
+        source = source_dir.text().strip()
+        if not source:
+            self.status.setText("Projektordner ist erforderlich.")
+            return
+        snapshot = snapshot_name.text().strip() or "Initial"
+
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                zip_path = Path(tmp) / "freecad-plm-import.zip"
+                paths = build_project_import_zip(source, zip_path)
+                client = self.client()
+                if new_project_radio.isChecked():
+                    project_data = project_edit_payload(
+                        {
+                            "code": code.text(),
+                            "name": name.text(),
+                            "status": status.itemData(status.currentIndex()) or "running",
+                            "project_date": project_date.text(),
+                            "description": description.toPlainText(),
+                        }
+                    )
+                    if not project_data["code"] or not project_data["name"]:
+                        self.status.setText("Code und Name sind erforderlich.")
+                        return
+                    result = client.import_project(zip_path, project_data, snapshot)
+                else:
+                    project_id = selected_project.get("id") if isinstance(selected_project, dict) else None
+                    if project_id is None:
+                        self.status.setText("Kein Projekt ausgewählt.")
+                        return
+                    result = client.import_project_snapshot(project_id, zip_path, snapshot)
+        except PLMError as exc:
+            self.status.setText(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.status.setText(f"Projektimport fehlgeschlagen: {exc}")
+            return
+
+        imported_project = result.get("project") or {}
+        imported_project_id = imported_project.get("id")
+        self.refresh_projects()
+        if imported_project_id is not None:
+            self.select_project_by_id(imported_project_id)
+        self.status.setText(f"{project_import_result_text(result)} ZIP: {len(paths)} Datei(en).")
 
     def refresh_revisions(self):
         items = self.parts.selectedItems()

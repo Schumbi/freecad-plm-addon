@@ -164,6 +164,57 @@ class PLMClientTests(unittest.TestCase):
             self.assertEqual(req.full_url, "https://plm.example/api/projects/3/")
             self.assertEqual(json.loads(req.data.decode("utf-8")), data)
 
+    def test_import_project_posts_zip_and_metadata(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"project": {"id": 3}, "snapshot": {"id": 5}}
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = Path(tmp) / "project.zip"
+            zip_path.write_bytes(b"zip")
+            with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+                self.assertEqual(
+                    client.import_project(
+                        zip_path,
+                        {
+                            "code": "PRJ",
+                            "name": "Demo",
+                            "status": "running",
+                            "project_date": "2026-07-08",
+                            "description": "Test",
+                        },
+                        "Initial",
+                    ),
+                    payload,
+                )
+                req = urlopen.call_args.args[0]
+                body = req.data
+                self.assertEqual(req.full_url, "https://plm.example/api/projects/import/")
+                self.assertIn(b'name="code"', body)
+                self.assertIn(b"PRJ", body)
+                self.assertIn(b'name="snapshot_name"', body)
+                self.assertIn(b"Initial", body)
+                self.assertIn(b'name="file"; filename="project.zip"', body)
+
+    def test_import_project_snapshot_posts_zip(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"project": {"id": 3}, "snapshot": {"id": 5}}
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = Path(tmp) / "project.zip"
+            zip_path.write_bytes(b"zip")
+            with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+                self.assertEqual(
+                    client.import_project_snapshot(3, zip_path, "Arbeitsstand"),
+                    payload,
+                )
+                req = urlopen.call_args.args[0]
+                body = req.data
+                self.assertEqual(
+                    req.full_url,
+                    "https://plm.example/api/projects/3/snapshots/import/",
+                )
+                self.assertIn(b'name="name"', body)
+                self.assertIn(b"Arbeitsstand", body)
+                self.assertIn(b'name="file"; filename="project.zip"', body)
+
     def test_checkout_revision_posts_workspace_hint_and_snapshot(self):
         client = PLMClient("https://plm.example", "token")
         payload = {"checkout": {"id": 9}, "manifest": {"files": []}}

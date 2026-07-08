@@ -9,7 +9,9 @@ from zipfile import ZipFile
 from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.workspace import (
     build_checkout_metadata,
+    build_project_import_zip,
     changed_manifest_files,
+    collect_project_fcstd_files,
     checkout_dir,
     download_manifest_files,
     ensure_checkout_metadata,
@@ -115,6 +117,41 @@ class WorkspaceTests(unittest.TestCase):
                 sha256_file(path),
                 "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
             )
+
+    def test_collect_project_fcstd_files_returns_relative_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.make_fcstd(root / "Root.FCStd")
+            (root / "parts").mkdir()
+            self.make_fcstd(root / "parts" / "Box.FCStd")
+            (root / "notes.txt").write_text("ignore", encoding="utf-8")
+
+            files = collect_project_fcstd_files(root)
+
+            self.assertEqual(
+                [relative_path for relative_path, _local_path in files],
+                ["Root.FCStd", "parts/Box.FCStd"],
+            )
+
+    def test_collect_project_fcstd_files_requires_fcstd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(WorkspaceError):
+                collect_project_fcstd_files(tmp)
+
+    def test_build_project_import_zip_keeps_relative_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            root.mkdir()
+            self.make_fcstd(root / "Assembly.FCStd")
+            (root / "parts").mkdir()
+            self.make_fcstd(root / "parts" / "Box.FCStd")
+            target = Path(tmp) / "project.zip"
+
+            paths = build_project_import_zip(root, target)
+
+            self.assertEqual(paths, ["Assembly.FCStd", "parts/Box.FCStd"])
+            with ZipFile(target) as archive:
+                self.assertEqual(archive.namelist(), ["Assembly.FCStd", "parts/Box.FCStd"])
 
     def test_checkout_dir(self):
         path = checkout_dir("~/FreeCAD-PLM", "https://plm.lan.schumbi.de", "PRJ", 17)
