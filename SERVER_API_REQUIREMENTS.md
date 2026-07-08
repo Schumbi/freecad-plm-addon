@@ -599,6 +599,9 @@ Projekt importieren
 -> lokalen Ordner waehlen
 -> alle .FCStd rekursiv mit relativen Pfaden ins ZIP packen
 -> passenden Import-Endpunkt aufrufen
+-> optional importiertes Root-Teil auswaehlen
+-> optional ueber bestehenden Checkout-Endpunkt auschecken
+-> optional lokalen Importordner nach ~/FreeCAD-PLM/imported/... verschieben
 -> Projektliste und Teileliste aktualisieren
 ```
 

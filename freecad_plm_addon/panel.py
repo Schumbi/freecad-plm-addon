@@ -5,6 +5,7 @@ from pathlib import Path
 from .api_client import PLMClient
 from .errors import ConflictError, PLMError
 from .workspace import (
+    archive_import_source_dir,
     build_checkout_metadata,
     build_project_import_zip,
     checkout_dir,
@@ -56,6 +57,39 @@ def project_import_result_text(result):
         f"{summary.get('created_revisions', 0)} neue Revisionen, "
         f"{summary.get('reused_revisions', 0)} wiederverwendet)."
     )
+
+
+def import_checkout_candidates(result):
+    snapshot = result.get("snapshot") or {}
+    snapshot_id = snapshot.get("id")
+    candidates = []
+    for entry in snapshot.get("entries") or []:
+        revision_id = entry.get("revision_id")
+        if revision_id is None:
+            continue
+        path = entry.get("path") or entry.get("filename") or ""
+        part_number = entry.get("part_number") or ""
+        part_name = entry.get("part_name") or ""
+        category = entry.get("part_category") or ""
+        label = path
+        part_label_text = " - ".join(item for item in (part_number, part_name) if item)
+        if part_label_text:
+            label = f"{label} ({part_label_text})" if label else part_label_text
+        if category:
+            label = f"{label} [{category}]"
+        candidates.append(
+            {
+                "label": label or f"Revision {revision_id}",
+                "path": path,
+                "revision_id": revision_id,
+                "snapshot_id": snapshot_id,
+                "part_id": entry.get("part_id"),
+                "part_number": part_number,
+                "part_name": part_name,
+                "part_category": category,
+            }
+        )
+    return candidates
 
 
 def connection_label(server_url):
@@ -1093,10 +1127,84 @@ class PLMPanel:
 
         imported_project = result.get("project") or {}
         imported_project_id = imported_project.get("id")
+        followup_message = self.checkout_imported_project_dialog(result, source)
         self.refresh_projects()
         if imported_project_id is not None:
             self.select_project_by_id(imported_project_id)
-        self.status.setText(f"{project_import_result_text(result)} ZIP: {len(paths)} Datei(en).")
+        message = f"{project_import_result_text(result)} ZIP: {len(paths)} Datei(en)."
+        if followup_message:
+            message = f"{message} {followup_message}"
+        self.status.setText(message)
+
+    def checkout_imported_project_dialog(self, import_result, source_dir):
+        candidates = import_checkout_candidates(import_result)
+        if not candidates:
+            return "Kein importiertes Teil fuer Checkout gefunden."
+
+        answer = self.QtWidgets.QMessageBox.question(
+            self.widget,
+            "Import abgeschlossen",
+            "Soll ein importiertes Teil jetzt ausgecheckt werden?",
+            self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+            self.QtWidgets.QMessageBox.Yes,
+        )
+        if answer != self.QtWidgets.QMessageBox.Yes:
+            return ""
+
+        labels = [candidate["label"] for candidate in candidates]
+        label, accepted = self.QtWidgets.QInputDialog.getItem(
+            self.widget,
+            "Root-Teil auschecken",
+            "Importiertes Teil",
+            labels,
+            0,
+            False,
+        )
+        if not accepted:
+            return "Checkout nach Import abgebrochen."
+
+        candidate = candidates[labels.index(label)]
+        archive_answer = self.QtWidgets.QMessageBox.question(
+            self.widget,
+            "Importordner archivieren",
+            "Soll der lokale Importordner nach erfolgreichem Checkout ins PLM-Archiv verschoben werden?",
+            self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+            self.QtWidgets.QMessageBox.Yes,
+        )
+        archive_source = archive_answer == self.QtWidgets.QMessageBox.Yes
+
+        project = import_result.get("project") or {}
+        revision_id = candidate.get("revision_id")
+        snapshot_id = candidate.get("snapshot_id")
+        try:
+            self.status.setText("Starte Checkout des importierten Teils...")
+            checkout_result = self.checkout_revision_to_workspace(
+                project,
+                revision_id,
+                snapshot_id=snapshot_id,
+            )
+        except PLMError as exc:
+            return f"Checkout nach Import fehlgeschlagen: {exc}"
+        except Exception as exc:
+            return f"Checkout nach Import fehlgeschlagen: {exc}"
+
+        message = (
+            f"Checkout geöffnet: {checkout_result['root_path']} "
+            f"({len(checkout_result['downloaded'])} Datei(en))."
+        )
+        if archive_source:
+            try:
+                archived_path = archive_import_source_dir(
+                    source_dir,
+                    self.workspace_root.text().strip(),
+                    self.server_url.text().strip(),
+                    project.get("code") or f"project-{project.get('id')}",
+                )
+            except Exception as exc:
+                message = f"{message} Importordner konnte nicht archiviert werden: {exc}"
+            else:
+                message = f"{message} Importordner archiviert: {archived_path}"
+        return message
 
     def refresh_revisions(self):
         items = self.parts.selectedItems()
@@ -1504,9 +1612,69 @@ class PLMPanel:
             message = f"{message}; Cache bereinigt: {len(pruned)}"
         self.status.setText(message)
 
-    def checkout_selected_revision(self):
+    def checkout_revision_to_workspace(self, project, revision_id, snapshot_id=None):
         from . import fcstd
 
+        project_code = (
+            project.get("code")
+            or project.get("project_code")
+            or f"project-{project.get('id')}"
+        )
+        workspace_root = self.workspace_root.text().strip()
+        server_url = self.server_url.text().strip()
+
+        closed, failed = fcstd.close_documents(self.readonly_document_names)
+        self.readonly_document_names = []
+        if failed:
+            failed_names = ", ".join(failed)
+            raise RuntimeError(
+                f"Vorherige read-only Dokumente konnten nicht geschlossen werden: {failed_names}"
+            )
+
+        client = self.client()
+        response = client.checkout_revision(
+            revision_id,
+            snapshot_id=snapshot_id,
+            workspace_hint=workspace_root,
+        )
+        checkout = response.get("checkout") or {}
+        checkout_id = (
+            checkout.get("id")
+            or response.get("checkout_id")
+            or response.get("id")
+        )
+        if checkout_id is None:
+            raise RuntimeError("Checkout-Antwort enthaelt keine Checkout-ID.")
+
+        manifest = response.get("manifest")
+        if manifest is None:
+            manifest_response = client.get_checkout_manifest(checkout_id)
+            manifest = manifest_response.get("manifest", manifest_response)
+
+        target_dir = checkout_dir(workspace_root, server_url, project_code, checkout_id)
+        write_manifest(target_dir, manifest)
+        downloaded = ensure_checkout_manifest_files(client, manifest, target_dir)
+        write_checkout_metadata(target_dir, build_checkout_metadata(manifest, target_dir))
+        root_path = root_file_path(manifest, target_dir)
+
+        before_documents = fcstd.document_names()
+        document = fcstd.open_document(root_path)
+        self.checkout_document_names = fcstd.opened_document_names(before_documents, document)
+        self.active_checkout = dict(checkout)
+        self.active_checkout.setdefault("id", checkout_id)
+        self.active_checkout_dir = target_dir
+        self.active_checkout_root_path = root_path
+        touch_directory(target_dir)
+        self.update_checkout_controls()
+        self.refresh_active_checkouts(client)
+        return {
+            "root_path": root_path,
+            "downloaded": downloaded,
+            "closed_readonly": closed,
+            "checkout": self.active_checkout,
+        }
+
+    def checkout_selected_revision(self):
         project = self.selected_project()
         revision = self.selected_revision()
         if project is None:
@@ -1521,58 +1689,9 @@ class PLMPanel:
             self.status.setText("Revision hat keine ID.")
             return
 
-        project_code = (
-            project.get("code")
-            or project.get("project_code")
-            or f"project-{project.get('id')}"
-        )
-        workspace_root = self.workspace_root.text().strip()
-        server_url = self.server_url.text().strip()
-
         try:
-            closed, failed = fcstd.close_documents(self.readonly_document_names)
-            self.readonly_document_names = []
-            if failed:
-                failed_names = ", ".join(failed)
-                self.status.setText(
-                    f"Vorherige read-only Dokumente konnten nicht geschlossen werden: {failed_names}"
-                )
-                return
-
             self.status.setText("Starte Checkout und lade Dateien herunter...")
-            client = self.client()
-            response = client.checkout_revision(revision_id, workspace_hint=workspace_root)
-            checkout = response.get("checkout") or {}
-            checkout_id = (
-                checkout.get("id")
-                or response.get("checkout_id")
-                or response.get("id")
-            )
-            if checkout_id is None:
-                self.status.setText("Checkout-Antwort enthält keine Checkout-ID.")
-                return
-
-            manifest = response.get("manifest")
-            if manifest is None:
-                manifest_response = client.get_checkout_manifest(checkout_id)
-                manifest = manifest_response.get("manifest", manifest_response)
-
-            target_dir = checkout_dir(workspace_root, server_url, project_code, checkout_id)
-            write_manifest(target_dir, manifest)
-            downloaded = ensure_checkout_manifest_files(client, manifest, target_dir)
-            write_checkout_metadata(target_dir, build_checkout_metadata(manifest, target_dir))
-            root_path = root_file_path(manifest, target_dir)
-
-            before_documents = fcstd.document_names()
-            document = fcstd.open_document(root_path)
-            self.checkout_document_names = fcstd.opened_document_names(before_documents, document)
-            self.active_checkout = dict(checkout)
-            self.active_checkout.setdefault("id", checkout_id)
-            self.active_checkout_dir = target_dir
-            self.active_checkout_root_path = root_path
-            touch_directory(target_dir)
-            self.update_checkout_controls()
-            self.refresh_active_checkouts(client)
+            result = self.checkout_revision_to_workspace(project, revision_id)
         except PLMError as exc:
             self.status.setText(f"PLM-Fehler: {exc}")
             return
@@ -1580,6 +1699,9 @@ class PLMPanel:
             self.status.setText(f"Checkout fehlgeschlagen: {exc}")
             return
 
+        root_path = result["root_path"]
+        downloaded = result["downloaded"]
+        closed = result["closed_readonly"]
         message = f"Checkout geöffnet: {root_path} ({len(downloaded)} Datei(en))"
         if closed:
             message = f"{message}; read-only geschlossen: {len(closed)}"

@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 import shutil
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
@@ -69,6 +70,57 @@ def build_project_import_zip(source_dir, target_path):
         for relative_path, local_path in files:
             archive.write(local_path, relative_path)
     return [relative_path for relative_path, _local_path in files]
+
+
+def import_archive_root(base_root, server_url, project_code):
+    return (
+        Path(base_root).expanduser()
+        / "imported"
+        / server_slug(server_url)
+        / project_code
+    )
+
+
+def archived_import_dir(base_root, server_url, project_code, source_dir, now=None):
+    source_dir = Path(source_dir).expanduser()
+    if not source_dir.name:
+        raise WorkspaceError("Importordner hat keinen gueltigen Namen.")
+
+    timestamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    root = import_archive_root(base_root, server_url, project_code)
+    target = root / f"{timestamp}-{source_dir.name}"
+    candidate = target
+    index = 2
+    while candidate.exists():
+        candidate = root / f"{target.name}-{index}"
+        index += 1
+    return candidate
+
+
+def archive_import_source_dir(source_dir, base_root, server_url, project_code, now=None):
+    source_dir = Path(source_dir).expanduser().resolve()
+    if not source_dir.exists() or not source_dir.is_dir():
+        raise WorkspaceError(f"Importordner existiert nicht: {source_dir}")
+
+    target = archived_import_dir(
+        base_root,
+        server_url,
+        project_code,
+        source_dir,
+        now=now,
+    ).resolve()
+    if target == source_dir:
+        raise WorkspaceError("Importordner kann nicht in sich selbst archiviert werden.")
+    try:
+        target.relative_to(source_dir)
+    except ValueError:
+        pass
+    else:
+        raise WorkspaceError("Archivziel liegt innerhalb des Importordners.")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source_dir), str(target))
+    return target
 
 
 def server_slug(server_url):

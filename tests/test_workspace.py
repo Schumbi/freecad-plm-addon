@@ -2,12 +2,15 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
 from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.workspace import (
+    archive_import_source_dir,
+    archived_import_dir,
     build_checkout_metadata,
     build_project_import_zip,
     changed_manifest_files,
@@ -152,6 +155,55 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(paths, ["Assembly.FCStd", "parts/Box.FCStd"])
             with ZipFile(target) as archive:
                 self.assertEqual(archive.namelist(), ["Assembly.FCStd", "parts/Box.FCStd"])
+
+    def test_archived_import_dir_adds_timestamp_server_and_project(self):
+        path = archived_import_dir(
+            "/tmp/workspace",
+            "https://plm.example",
+            "PRJ",
+            "/tmp/source-folder",
+            now=datetime(2026, 7, 8, 12, 30, 5),
+        )
+
+        self.assertEqual(
+            path,
+            Path("/tmp/workspace/imported/plm-example/PRJ/20260708-123005-source-folder"),
+        )
+
+    def test_archive_import_source_dir_moves_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            source.mkdir()
+            (source / "part.FCStd").write_text("data", encoding="utf-8")
+
+            target = archive_import_source_dir(
+                source,
+                root / "workspace",
+                "https://plm.example",
+                "PRJ",
+                now=datetime(2026, 7, 8, 12, 30, 5),
+            )
+
+            self.assertFalse(source.exists())
+            self.assertEqual(
+                target,
+                root / "workspace/imported/plm-example/PRJ/20260708-123005-source",
+            )
+            self.assertEqual((target / "part.FCStd").read_text(encoding="utf-8"), "data")
+
+    def test_archive_import_source_dir_rejects_target_inside_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            with self.assertRaises(WorkspaceError):
+                archive_import_source_dir(
+                    source,
+                    source,
+                    "https://plm.example",
+                    "PRJ",
+                    now=datetime(2026, 7, 8, 12, 30, 5),
+                )
 
     def test_checkout_dir(self):
         path = checkout_dir("~/FreeCAD-PLM", "https://plm.lan.schumbi.de", "PRJ", 17)

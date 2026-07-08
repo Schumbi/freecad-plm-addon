@@ -32,7 +32,10 @@ read write checkout admin
 lokalen Ordners in ein ZIP mit relativen Pfaden. Das Addon kann damit entweder
 einen Projektstand in ein vorhandenes Projekt importieren oder ein neues
 Projekt mit Code, Name, Status, Datum und Beschreibung anlegen und direkt
-befuellen.
+befuellen. Nach erfolgreichem Import kann ein importiertes Teil/Baugruppe als
+Root ausgewaehlt und sofort ueber den normalen Checkout-Workflow geoeffnet
+werden. Der urspruengliche Importordner wird auf Wunsch erst danach nach
+`~/FreeCAD-PLM/imported/...` verschoben.
 
 ## Tests
 

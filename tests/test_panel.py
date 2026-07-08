@@ -13,6 +13,7 @@ from freecad_plm_addon.panel import (
     checkout_project_code,
     connection_label,
     format_bytes,
+    import_checkout_candidates,
     part_label,
     part_edit_payload,
     project_edit_payload,
@@ -74,6 +75,39 @@ class PanelTests(unittest.TestCase):
             ),
             "Import abgeschlossen: Initial (2 Datei(en), 2 neue Teile, "
             "3 neue Revisionen, 1 wiederverwendet).",
+        )
+
+    def test_import_checkout_candidates_uses_snapshot_entries(self):
+        self.assertEqual(
+            import_checkout_candidates(
+                {
+                    "snapshot": {
+                        "id": 9,
+                        "entries": [
+                            {
+                                "path": "Assembly.FCStd",
+                                "revision_id": 17,
+                                "part_id": 5,
+                                "part_number": "A-001",
+                                "part_name": "Assembly",
+                                "part_category": "assembly",
+                            }
+                        ],
+                    }
+                }
+            ),
+            [
+                {
+                    "label": "Assembly.FCStd (A-001 - Assembly) [assembly]",
+                    "path": "Assembly.FCStd",
+                    "revision_id": 17,
+                    "snapshot_id": 9,
+                    "part_id": 5,
+                    "part_number": "A-001",
+                    "part_name": "Assembly",
+                    "part_category": "assembly",
+                }
+            ],
         )
 
     def test_connection_label(self):
