@@ -4,8 +4,28 @@ FreeCAD Workbench fuer das Django-basierte FreeCAD-PLM.
 
 ## Status
 
-Grundgeruest fuer die Addon-Entwicklung. Die HTTP- und Workspace-Schicht ist so
-angelegt, dass sie ohne FreeCAD getestet werden kann.
+Arbeitsfaehige FreeCAD-Workbench fuer den aktuellen PLM-Addon-Workflow. Die
+HTTP- und Workspace-Schicht ist so angelegt, dass sie ohne FreeCAD getestet
+werden kann.
+
+Aktuell umgesetzt:
+
+- Server verbinden und Projekte, Teile/Baugruppen, Revisionen und aktive
+  Checkouts laden.
+- Revisionen read-only ueber ein Server-Manifest oeffnen.
+- Revisionen auschecken, Manifest-Dateien mit SHA-256 pruefen und Root-Datei in
+  FreeCAD oeffnen.
+- Check-in fuer Root- und referenzierte Dateien; unveraenderte Dateien und
+  technische FreeCAD-Speicherartefakte werden nicht als neue Revision
+  eingecheckt.
+- Checkout abbrechen.
+- Projektmetadaten im Addon bearbeiten: Code, Name, Status, Datum und
+  Beschreibung.
+- Neue Teile/Baugruppen als PLM-Metadatensatz anlegen.
+- Revisionsnotizen bearbeiten.
+- Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder oeffnen und
+  loeschen.
+- Lokale FreeCAD-Ordner als Projektstand oder neues Projekt importieren.
 
 ## Konfiguration
 
@@ -27,6 +47,10 @@ benoetigt:
 ```text
 read write checkout admin
 ```
+
+Ohne `admin` funktionieren Lesen, Checkout/Check-in, Notizen, Anmerkungen und
+Import in ein vorhandenes Projekt. `admin` ist noetig fuer Projektanlage,
+Projektmetadaten und den Kombiflow "neues Projekt plus Import".
 
 `Projekt importieren` packt alle `.FCStd`-Dateien unterhalb eines gewaehlten
 lokalen Ordners in ein ZIP mit relativen Pfaden. Das Addon kann damit entweder
