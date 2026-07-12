@@ -75,7 +75,7 @@ kann das Addon als benutzerdefiniertes Repository installiert werden.
 Repository-URL:
 
 ```text
-ssh://forgejo@home.schumbi.de/ralf/freecad-plm-addon.git
+https://git.home.schumbi.de/ralf/freecad-plm-addon
 ```
 
 Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Fuer die

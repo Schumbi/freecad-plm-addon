@@ -6,7 +6,7 @@
   <date>2026-07-12</date>
   <maintainer email="ralf@home.schumbi.de">Ralf</maintainer>
   <license>UNLICENSED</license>
-  <url type="repository" branch="main">ssh://forgejo@home.schumbi.de/ralf/freecad-plm-addon.git</url>
+  <url type="repository" branch="main">https://git.home.schumbi.de/ralf/freecad-plm-addon</url>
   <url type="readme">https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/README.md</url>
   <url type="documentation">https://git.home.schumbi.de/ralf/freecad-plm/wiki/FreeCAD-Addon-Handbuch</url>
   <icon>freecad_plm_addon/icons/activate-connection.svg</icon>
