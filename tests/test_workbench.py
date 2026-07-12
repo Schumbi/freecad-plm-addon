@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 
 from freecad_plm_addon.workbench import create_workbench
 
@@ -18,6 +19,11 @@ class WorkbenchTests(unittest.TestCase):
 
         self.assertIsInstance(workbench, BaseWorkbench)
         self.assertEqual(workbench.GetClassName(), "Gui::PythonWorkbench")
+
+    def test_workbench_has_icon_for_addon_manager_metadata(self):
+        workbench = create_workbench(BaseWorkbench)
+
+        self.assertTrue(Path(workbench.Icon).is_file())
 
     def test_initialize_adds_activate_connection_to_toolbar(self):
         workbench = create_workbench(BaseWorkbench)

@@ -67,6 +67,21 @@ werden. Der urspruengliche Importordner wird auf Wunsch erst danach nach
 python3 -m unittest discover -s tests
 ```
 
+## Installation ueber den FreeCAD Addon Manager
+
+Das Repo enthaelt ein `package.xml` fuer den FreeCAD Addon Manager. In FreeCAD
+kann das Addon als benutzerdefiniertes Repository installiert werden.
+
+Repository-URL:
+
+```text
+ssh://forgejo@home.schumbi.de/ralf/freecad-plm-addon.git
+```
+
+Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Fuer die
+Nutzung muss anschliessend im Addon unter `Verbindungseinstellungen` die
+Server-URL, ein API-Token und der lokale Workspace gesetzt werden.
+
 ## FreeCAD Installation Fuer Entwicklung
 
 FreeCAD laedt externe Workbenches aus seinem Benutzer-`Mod`-Verzeichnis.

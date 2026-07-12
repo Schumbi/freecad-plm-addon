@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>FreeCAD-PLM</name>
+  <description>FreeCAD workbench for connecting to a FreeCAD-PLM server, browsing projects and revisions, opening read-only revisions, checking out files, checking changes back in, and managing notes and annotations.</description>
+  <version>0.1.0</version>
+  <date>2026-07-12</date>
+  <maintainer email="ralf@home.schumbi.de">Ralf</maintainer>
+  <license>UNLICENSED</license>
+  <url type="repository" branch="main">ssh://forgejo@home.schumbi.de/ralf/freecad-plm-addon.git</url>
+  <url type="readme">https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/README.md</url>
+  <url type="documentation">https://git.home.schumbi.de/ralf/freecad-plm/wiki/FreeCAD-Addon-Handbuch</url>
+  <icon>freecad_plm_addon/icons/activate-connection.svg</icon>
+  <tag>PLM</tag>
+  <tag>PDM</tag>
+  <tag>FreeCAD</tag>
+  <freecadmin>1.0.0</freecadmin>
+  <pythonmin>3.10</pythonmin>
+  <content>
+    <workbench>
+      <name>FreeCAD-PLM</name>
+      <description>Workbench for day-to-day FreeCAD-PLM workflows inside FreeCAD.</description>
+      <classname>FreeCADPLMWorkbench</classname>
+      <subdirectory>./</subdirectory>
+      <icon>freecad_plm_addon/icons/activate-connection.svg</icon>
+      <tag>PLM</tag>
+      <tag>PDM</tag>
+    </workbench>
+  </content>
+</package>

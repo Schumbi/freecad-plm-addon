@@ -1,6 +1,10 @@
+from pathlib import Path
+
+
 class FreeCADPLMWorkbenchMixin:
     MenuText = "FreeCAD-PLM"
     ToolTip = "FreeCAD-PLM Workbench"
+    Icon = str(Path(__file__).resolve().parent / "icons" / "activate-connection.svg")
 
     def Initialize(self):
         from .commands import register_commands

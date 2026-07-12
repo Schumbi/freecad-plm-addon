@@ -2,7 +2,17 @@
 
 import FreeCADGui
 
-from freecad_plm_addon.workbench import create_workbench
+from freecad_plm_addon.workbench import FreeCADPLMWorkbenchMixin
 
 
-FreeCADGui.addWorkbench(create_workbench(globals().get("Workbench")))
+_WorkbenchBase = globals().get("Workbench")
+
+if _WorkbenchBase is None:
+    class FreeCADPLMWorkbench(FreeCADPLMWorkbenchMixin):
+        pass
+else:
+    class FreeCADPLMWorkbench(FreeCADPLMWorkbenchMixin, _WorkbenchBase):
+        pass
+
+
+FreeCADGui.addWorkbench(FreeCADPLMWorkbench())
