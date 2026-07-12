@@ -148,11 +148,82 @@ def revision_label(revision):
     status = revision.get("status") or revision.get("release_status") or ""
     filename = revision.get("original_filename") or revision.get("filename") or revision.get("file_name") or ""
     created = revision.get("created_at") or revision.get("created") or revision.get("uploaded_at") or ""
-    label = f"Revision {number}" if number else f"Revision {revision.get('id', '')}".strip()
+    if number:
+        label = f"R{number}" if str(number).isdigit() else str(number)
+    else:
+        label = f"Revision {revision.get('id', '')}".strip()
     details = [value for value in (status, filename, created[:10]) if value]
     if details:
-        return f"{label} - {', '.join(details)}"
+        return " · ".join([label, *details])
     return label
+
+
+def active_checkout_revision_id(checkout):
+    if not isinstance(checkout, dict):
+        return None
+    for key in ("revision_id", "base_revision_id", "root_revision_id"):
+        if checkout.get(key) is not None:
+            return checkout.get(key)
+    for key in ("revision", "base_revision", "root_revision"):
+        revision = checkout.get(key)
+        if isinstance(revision, dict) and revision.get("id") is not None:
+            return revision.get("id")
+    return None
+
+
+def checkout_guard_action(active_checkout, target_revision):
+    if not isinstance(target_revision, dict) or target_revision.get("id") is None:
+        return "missing_revision"
+    if not active_checkout:
+        return "checkout"
+    if active_checkout_revision_id(active_checkout) == target_revision.get("id"):
+        return "same_checkout"
+    return "blocked_by_other_checkout"
+
+
+def checkout_display_name(path):
+    if not path:
+        return ""
+    return Path(path).name or str(path)
+
+
+def print_freecad_console(message):
+    if not message:
+        return
+    text = str(message)
+    if text.startswith("[FreeCAD-PLM]"):
+        output = text
+    elif text.startswith("FreeCAD-PLM "):
+        output = f"[FreeCAD-PLM] {text[len('FreeCAD-PLM '):]}"
+    else:
+        output = f"[FreeCAD-PLM] {text}"
+    try:
+        import FreeCAD
+    except Exception:
+        return
+    console = getattr(FreeCAD, "Console", None)
+    printer = getattr(console, "PrintMessage", None)
+    if callable(printer):
+        printer(f"{output}\n")
+
+
+def compact_revision_summary(revision):
+    if not isinstance(revision, dict) or revision.get("id") is None:
+        return "Keine Revision ausgewählt."
+    number = (
+        revision.get("revision")
+        or revision.get("revision_code")
+        or revision.get("version")
+        or revision.get("number")
+        or revision.get("label")
+        or revision.get("id")
+    )
+    status = revision.get("status") or revision.get("release_status")
+    filename = revision.get("original_filename") or revision.get("filename") or revision.get("file_name")
+    created = revision.get("created_at") or revision.get("created") or revision.get("uploaded_at")
+    details = [f"R{number}" if str(number).isdigit() else str(number)]
+    details.extend(str(value) for value in (status, filename, (created or "")[:10]) if value)
+    return " · ".join(details)
 
 
 def format_bytes(size_bytes):
@@ -388,16 +459,34 @@ class PLMPanel:
         self.current_annotations = []
 
         layout = self.QtWidgets.QVBoxLayout(self.widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        header = self.QtWidgets.QWidget()
+        header_layout = self.QtWidgets.QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(4)
+        header_height = self.connection_summary_height()
+        header.setFixedHeight(header_height)
 
         self.connection_summary = self.QtWidgets.QLabel("Nicht verbunden.")
-        layout.addWidget(self.connection_summary)
+        self.connection_summary.setWordWrap(False)
+        self.connection_summary.setSizePolicy(
+            self.QtWidgets.QSizePolicy.Ignored,
+            self.QtWidgets.QSizePolicy.Preferred,
+        )
+        self.connection_summary.setFixedHeight(header_height)
+        header_layout.addWidget(self.connection_summary, 1)
 
-        self.settings_button = self.QtWidgets.QPushButton("Einstellungen")
-        layout.addWidget(self.settings_button)
+        self.refresh_button = self.QtWidgets.QPushButton("Aktualisieren")
+        self.refresh_button.setVisible(False)
+        self.refresh_button.setFixedHeight(header_height)
+        header_layout.addWidget(self.refresh_button)
 
-        self.settings_widget = self.QtWidgets.QWidget()
-        settings_layout = self.QtWidgets.QVBoxLayout(self.settings_widget)
-        form = self.QtWidgets.QFormLayout()
+        self.settings_button = self.QtWidgets.QPushButton("Verbindungseinstellungen")
+        self.settings_button.setFixedHeight(header_height)
+        header_layout.addWidget(self.settings_button)
+        layout.addWidget(header)
 
         self.server_url = self.QtWidgets.QLineEdit(config.get_server_url())
         self.api_token = self.QtWidgets.QLineEdit(config.get_api_token())
@@ -420,53 +509,91 @@ class PLMPanel:
             config.get_cache_max_revisions_per_project()
         )
 
-        form.addRow("Server", self.server_url)
-        form.addRow("API-Token", self.api_token)
-        form.addRow("Workspace", self.workspace_root)
-        form.addRow("Max. FCStd-Dateien", self.cache_max_fcstd_files)
-        form.addRow("Max. Projekte", self.cache_max_projects)
-        form.addRow("Max. Revisionen je Projekt", self.cache_max_revisions_per_project)
-        settings_layout.addLayout(form)
-
-        button_row = self.QtWidgets.QHBoxLayout()
-        self.connect_button = self.QtWidgets.QPushButton("Verbinden")
-        self.refresh_button = self.QtWidgets.QPushButton("Aktualisieren")
-        button_row.addWidget(self.connect_button)
-        button_row.addWidget(self.refresh_button)
-        settings_layout.addLayout(button_row)
-        layout.addWidget(self.settings_widget)
-
-        self.refresh_button.setVisible(False)
-
-        splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Horizontal)
-        layout.addWidget(splitter)
+        splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Vertical)
+        layout.addWidget(splitter, 1)
 
         browser_widget = self.QtWidgets.QWidget()
         browser_layout = self.QtWidgets.QVBoxLayout(browser_widget)
+        browser_layout.setContentsMargins(2, 2, 2, 2)
+        browser_layout.setSpacing(4)
 
-        browser_layout.addWidget(self.QtWidgets.QLabel("Projekte"))
+        browser_splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Vertical)
+        browser_layout.addWidget(browser_splitter, 1)
+
+        projects_widget = self.QtWidgets.QWidget()
+        projects_layout = self.QtWidgets.QVBoxLayout(projects_widget)
+        projects_layout.setContentsMargins(0, 0, 0, 0)
+        projects_layout.setSpacing(3)
+        projects_layout.addWidget(self.QtWidgets.QLabel("Projekte"))
         self.projects = self.QtWidgets.QListWidget()
-        browser_layout.addWidget(self.projects)
+        projects_layout.addWidget(self.projects)
+        project_action_row = self.QtWidgets.QHBoxLayout()
+        project_action_row.setContentsMargins(0, 0, 0, 0)
+        project_action_row.setSpacing(4)
         self.import_project_button = self.QtWidgets.QPushButton("Projekt importieren")
         self.import_project_button.setEnabled(False)
-        browser_layout.addWidget(self.import_project_button)
+        self.edit_project_button = self.QtWidgets.QPushButton("Projekt bearbeiten")
+        self.edit_project_button.setEnabled(False)
+        project_action_row.addWidget(self.import_project_button)
+        project_action_row.addWidget(self.edit_project_button)
+        projects_layout.addLayout(project_action_row)
+        browser_splitter.addWidget(projects_widget)
 
-        browser_layout.addWidget(self.QtWidgets.QLabel("Teile"))
+        parts_widget = self.QtWidgets.QWidget()
+        parts_layout = self.QtWidgets.QVBoxLayout(parts_widget)
+        parts_layout.setContentsMargins(0, 0, 0, 0)
+        parts_layout.setSpacing(3)
+        parts_layout.addWidget(self.QtWidgets.QLabel("Teile"))
         self.parts = self.QtWidgets.QListWidget()
-        browser_layout.addWidget(self.parts)
+        parts_layout.addWidget(self.parts)
 
         part_action_row = self.QtWidgets.QHBoxLayout()
+        part_action_row.setContentsMargins(0, 0, 0, 0)
+        part_action_row.setSpacing(4)
         self.new_part_button = self.QtWidgets.QPushButton("Neues Teil")
         self.new_part_button.setEnabled(False)
+        self.edit_part_button = self.QtWidgets.QPushButton("Teil bearbeiten")
+        self.edit_part_button.setEnabled(False)
         part_action_row.addWidget(self.new_part_button)
-        browser_layout.addLayout(part_action_row)
+        part_action_row.addWidget(self.edit_part_button)
+        parts_layout.addLayout(part_action_row)
+        browser_splitter.addWidget(parts_widget)
 
-        browser_layout.addWidget(self.QtWidgets.QLabel("Revisionen"))
+        revisions_widget = self.QtWidgets.QWidget()
+        revisions_layout = self.QtWidgets.QVBoxLayout(revisions_widget)
+        revisions_layout.setContentsMargins(0, 0, 0, 0)
+        revisions_layout.setSpacing(3)
+        revisions_layout.addWidget(self.QtWidgets.QLabel("Revisionen"))
         self.revisions = self.QtWidgets.QListWidget()
-        browser_layout.addWidget(self.revisions)
+        revisions_layout.addWidget(self.revisions)
+        browser_splitter.addWidget(revisions_widget)
+
+        active_checkouts_widget = self.QtWidgets.QWidget()
+        active_checkouts_layout = self.QtWidgets.QVBoxLayout(active_checkouts_widget)
+        active_checkouts_layout.setContentsMargins(0, 0, 0, 0)
+        active_checkouts_layout.setSpacing(3)
+        self.active_checkouts_title = self.QtWidgets.QLabel("Aktive Checkouts")
+        active_checkouts_layout.addWidget(self.active_checkouts_title)
+        self.active_checkouts = self.QtWidgets.QListWidget()
+        active_checkouts_layout.addWidget(self.active_checkouts)
+        browser_splitter.addWidget(active_checkouts_widget)
+        browser_splitter.setStretchFactor(0, 1)
+        browser_splitter.setStretchFactor(1, 2)
+        browser_splitter.setStretchFactor(2, 3)
+        browser_splitter.setStretchFactor(3, 2)
 
         details_widget = self.QtWidgets.QWidget()
+        details_widget.setObjectName("PLMActionBar")
+        details_widget.setStyleSheet(
+            "#PLMActionBar {"
+            "border-top: 1px solid #c8c8c8;"
+            "background: #f6f6f6;"
+            "}"
+        )
+        details_widget.setMaximumHeight(112)
         details_layout = self.QtWidgets.QVBoxLayout(details_widget)
+        details_layout.setContentsMargins(4, 3, 4, 3)
+        details_layout.setSpacing(3)
 
         self.detail_tabs = self.QtWidgets.QTabWidget()
 
@@ -579,49 +706,91 @@ class PLMPanel:
         self.technical_details.setPlainText("Keine Revision ausgewählt.")
         self.detail_tabs.addTab(self.technical_details, "Technik")
 
-        details_layout.addWidget(self.detail_tabs)
+        self.detail_tabs.setVisible(False)
 
+        revision_row = self.QtWidgets.QHBoxLayout()
+        revision_row.setContentsMargins(0, 0, 0, 0)
+        revision_row.setSpacing(4)
+        self.revision_summary = self.QtWidgets.QLabel("Keine Revision ausgewählt.")
+        self.revision_summary.setWordWrap(False)
+        self.revision_summary.setMinimumWidth(80)
+        self.revision_summary.setSizePolicy(
+            self.QtWidgets.QSizePolicy.Ignored,
+            self.QtWidgets.QSizePolicy.Preferred,
+        )
+        revision_row.addWidget(self.revision_summary, 1)
         self.open_readonly_button = self.QtWidgets.QPushButton("Read-only öffnen")
         self.open_readonly_button.setEnabled(False)
-        details_layout.addWidget(self.open_readonly_button)
-
         self.checkout_button = self.QtWidgets.QPushButton("Auschecken")
         self.checkout_button.setEnabled(False)
-        details_layout.addWidget(self.checkout_button)
+        self.revision_details_button = self.QtWidgets.QPushButton("Details")
+        self.revision_notes_button = self.QtWidgets.QPushButton("Notizen")
+        self.revision_annotations_button = self.QtWidgets.QPushButton("Anmerkungen")
+        self.revision_details_button.setEnabled(False)
+        self.revision_notes_button.setEnabled(False)
+        self.revision_annotations_button.setEnabled(False)
+        for button in (
+            self.checkout_button,
+            self.open_readonly_button,
+            self.revision_details_button,
+            self.revision_notes_button,
+            self.revision_annotations_button,
+        ):
+            button.setFixedHeight(self.connection_summary_height())
+            revision_row.addWidget(button)
+        details_layout.addLayout(revision_row)
 
-        details_layout.addWidget(self.QtWidgets.QLabel("Aktive Checkouts"))
-        self.active_checkouts = self.QtWidgets.QListWidget()
-        details_layout.addWidget(self.active_checkouts)
-
-        self.reopen_checkout_button = self.QtWidgets.QPushButton("Checkout wieder öffnen")
-        self.reopen_checkout_button.setEnabled(False)
-        details_layout.addWidget(self.reopen_checkout_button)
-
+        self.active_checkout_card = self.QtWidgets.QWidget()
+        self.active_checkout_card.setObjectName("ActiveCheckoutCard")
+        self.active_checkout_card.setStyleSheet(
+            "#ActiveCheckoutCard {"
+            "border: 1px solid #8aa3c7;"
+            "background: #eef5ff;"
+            "border-radius: 4px;"
+            "}"
+        )
+        self.active_checkout_card.setMaximumHeight(self.connection_summary_height())
+        active_checkout_layout = self.QtWidgets.QHBoxLayout(self.active_checkout_card)
+        active_checkout_layout.setContentsMargins(6, 0, 6, 0)
+        active_checkout_layout.setSpacing(4)
+        self.active_checkout_title = self.QtWidgets.QLabel("Aktiver Checkout")
+        self.active_checkout_title.setStyleSheet("font-weight: 600;")
+        active_checkout_layout.addWidget(self.active_checkout_title)
         self.active_checkout_label = self.QtWidgets.QLabel("Kein aktiver Checkout.")
-        self.active_checkout_label.setWordWrap(True)
-        details_layout.addWidget(self.active_checkout_label)
+        self.active_checkout_label.setWordWrap(False)
+        self.active_checkout_label.setSizePolicy(
+            self.QtWidgets.QSizePolicy.Ignored,
+            self.QtWidgets.QSizePolicy.Preferred,
+        )
+        active_checkout_layout.addWidget(self.active_checkout_label, 1)
 
         checkout_action_row = self.QtWidgets.QHBoxLayout()
+        checkout_action_row.setContentsMargins(0, 0, 0, 0)
+        checkout_action_row.setSpacing(4)
+        checkout_action_row.addWidget(self.active_checkout_card, 1)
+        self.reopen_checkout_button = self.QtWidgets.QPushButton("Öffnen")
+        self.reopen_checkout_button.setEnabled(False)
         self.checkin_button = self.QtWidgets.QPushButton("Einchecken")
-        self.cancel_checkout_button = self.QtWidgets.QPushButton("Checkout abbrechen")
+        self.cancel_checkout_button = self.QtWidgets.QPushButton("Abbrechen")
+        for button in (self.reopen_checkout_button, self.checkin_button, self.cancel_checkout_button):
+            button.setFixedHeight(self.connection_summary_height())
         self.checkin_button.setEnabled(False)
         self.cancel_checkout_button.setEnabled(False)
+        checkout_action_row.addWidget(self.reopen_checkout_button)
         checkout_action_row.addWidget(self.checkin_button)
         checkout_action_row.addWidget(self.cancel_checkout_button)
         details_layout.addLayout(checkout_action_row)
 
-        self.status = self.QtWidgets.QLabel("Nicht verbunden.")
-        self.status.setWordWrap(True)
-        details_layout.addWidget(self.status)
+        self.status = self.QtWidgets.QLabel("")
+        self.status.setVisible(False)
 
         splitter.addWidget(browser_widget)
         splitter.addWidget(details_widget)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 0)
 
-        self.connect_button.clicked.connect(self.refresh_projects)
         self.refresh_button.clicked.connect(self.refresh_projects)
-        self.settings_button.clicked.connect(self.toggle_settings)
+        self.settings_button.clicked.connect(self.show_connection_settings_dialog)
         self.projects.itemSelectionChanged.connect(self.refresh_parts)
         self.parts.itemSelectionChanged.connect(self.refresh_revisions)
         self.save_project_button.clicked.connect(self.save_selected_project)
@@ -629,6 +798,12 @@ class PLMPanel:
         self.new_part_button.clicked.connect(self.create_part_dialog)
         self.save_part_button.clicked.connect(self.save_selected_part)
         self.revisions.itemSelectionChanged.connect(self.show_revision_details)
+        self.revisions.itemDoubleClicked.connect(self.checkout_selected_revision)
+        self.edit_project_button.clicked.connect(self.show_project_dialog)
+        self.edit_part_button.clicked.connect(self.show_part_dialog)
+        self.revision_details_button.clicked.connect(self.show_revision_details_dialog)
+        self.revision_notes_button.clicked.connect(self.show_revision_notes_dialog)
+        self.revision_annotations_button.clicked.connect(self.show_annotations_dialog)
         self.save_revision_notes_button.clicked.connect(self.save_revision_notes)
         self.revert_revision_notes_button.clicked.connect(self.revert_revision_notes)
         self.annotation_filter.currentIndexChanged.connect(self.apply_current_annotation_filter)
@@ -651,17 +826,78 @@ class PLMPanel:
         self.active_checkouts.itemSelectionChanged.connect(self.update_reopen_checkout_button)
         self.reopen_checkout_button.clicked.connect(self.reopen_selected_checkout)
 
-    def toggle_settings(self):
-        self.settings_widget.setVisible(not self.settings_widget.isVisible())
+    def connection_summary_height(self):
+        return self.widget.fontMetrics().lineSpacing() + 8
+
+    def set_status(self, message):
+        print_freecad_console(message)
 
     def set_connected(self, server_url):
         self.connection_summary.setText(connection_label(server_url))
-        self.settings_widget.setVisible(False)
         self.refresh_button.setVisible(True)
         self.import_project_button.setEnabled(True)
 
     def client(self):
         return PLMClient(self.server_url.text().strip(), self.api_token.text().strip())
+
+    def show_connection_settings_dialog(self):
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Verbindungseinstellungen")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        form = self.QtWidgets.QFormLayout()
+
+        server_url = self.QtWidgets.QLineEdit(self.server_url.text())
+        api_token = self.QtWidgets.QLineEdit(self.api_token.text())
+        api_token.setEchoMode(self.QtWidgets.QLineEdit.Password)
+        workspace_root = self.QtWidgets.QLineEdit(self.workspace_root.text())
+        cache_max_fcstd_files = self.QtWidgets.QSpinBox()
+        cache_max_fcstd_files.setMinimum(self.cache_max_fcstd_files.minimum())
+        cache_max_fcstd_files.setMaximum(self.cache_max_fcstd_files.maximum())
+        cache_max_fcstd_files.setValue(self.cache_max_fcstd_files.value())
+        cache_max_projects = self.QtWidgets.QSpinBox()
+        cache_max_projects.setMinimum(self.cache_max_projects.minimum())
+        cache_max_projects.setMaximum(self.cache_max_projects.maximum())
+        cache_max_projects.setValue(self.cache_max_projects.value())
+        cache_max_revisions_per_project = self.QtWidgets.QSpinBox()
+        cache_max_revisions_per_project.setMinimum(
+            self.cache_max_revisions_per_project.minimum()
+        )
+        cache_max_revisions_per_project.setMaximum(
+            self.cache_max_revisions_per_project.maximum()
+        )
+        cache_max_revisions_per_project.setValue(
+            self.cache_max_revisions_per_project.value()
+        )
+
+        form.addRow("Server", server_url)
+        form.addRow("API-Token", api_token)
+        form.addRow("Workspace", workspace_root)
+        form.addRow("Max. FCStd-Dateien", cache_max_fcstd_files)
+        form.addRow("Max. Projekte", cache_max_projects)
+        form.addRow("Max. Revisionen je Projekt", cache_max_revisions_per_project)
+        layout.addLayout(form)
+
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        buttons.button(self.QtWidgets.QDialogButtonBox.Ok).setText("Speichern und verbinden")
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            self.set_status("Verbindungseinstellungen abgebrochen.")
+            return
+
+        self.server_url.setText(server_url.text().strip())
+        self.api_token.setText(api_token.text().strip())
+        self.workspace_root.setText(workspace_root.text().strip())
+        self.cache_max_fcstd_files.setValue(cache_max_fcstd_files.value())
+        self.cache_max_projects.setValue(cache_max_projects.value())
+        self.cache_max_revisions_per_project.setValue(
+            cache_max_revisions_per_project.value()
+        )
+        self.refresh_projects()
 
     def selected_project(self):
         items = self.projects.selectedItems()
@@ -717,7 +953,9 @@ class PLMPanel:
         return checkout if isinstance(checkout, dict) else None
 
     def update_reopen_checkout_button(self):
-        self.reopen_checkout_button.setEnabled(self.selected_active_checkout() is not None)
+        self.reopen_checkout_button.setEnabled(
+            self.active_checkout_id() is not None or self.selected_active_checkout() is not None
+        )
 
     def update_annotation_controls(self):
         annotation = self.selected_annotation()
@@ -738,13 +976,49 @@ class PLMPanel:
         self.cancel_checkout_button.setEnabled(has_checkout)
         if not has_checkout:
             self.active_checkout_label.setText("Kein aktiver Checkout.")
+            self.active_checkout_card.setStyleSheet(
+                "#ActiveCheckoutCard {"
+                "border: 1px solid #d0d0d0;"
+                "background: #f7f7f7;"
+                "border-radius: 4px;"
+                "}"
+            )
+            self.update_reopen_checkout_button()
             return
 
-        path = str(self.active_checkout_root_path or "")
-        details = f"Aktiver Checkout: {checkout_id}"
+        self.active_checkout_card.setStyleSheet(
+            "#ActiveCheckoutCard {"
+            "border: 1px solid #5f8fc9;"
+            "background: #eaf3ff;"
+            "border-radius: 4px;"
+            "}"
+        )
+        path = checkout_display_name(self.active_checkout_root_path)
+        checkout = self.active_checkout if isinstance(self.active_checkout, dict) else {}
+        project_code = checkout_project_code(checkout) if checkout else ""
+        part = checkout.get("part") if isinstance(checkout.get("part"), dict) else {}
+        revision = checkout.get("revision") if isinstance(checkout.get("revision"), dict) else {}
+        part_text = " ".join(
+            value
+            for value in (
+                part.get("number") or part.get("part_number") or "",
+                part.get("name") or "",
+            )
+            if value
+        )
+        revision_text = (
+            revision.get("revision_code")
+            or revision.get("revision")
+            or revision.get("version")
+            or active_checkout_revision_id(checkout)
+            or checkout_id
+        )
+        headline = " · ".join(str(value) for value in (project_code, part_text, revision_text) if value)
+        details = headline or f"Checkout {checkout_id}"
         if path:
-            details = f"{details}\n{path}"
+            details = f"{details} · {path}"
         self.active_checkout_label.setText(details)
+        self.update_reopen_checkout_button()
 
     def active_checkout_id(self):
         if not isinstance(self.active_checkout, dict):
@@ -764,12 +1038,16 @@ class PLMPanel:
         self.save_revision_notes_button.setEnabled(False)
         self.revert_revision_notes_button.setEnabled(False)
         self.technical_details.setPlainText("Keine Revision ausgewählt.")
+        self.revision_summary.setText("Keine Revision ausgewählt.")
         self.current_annotations = []
         self.annotations.clear()
         self.new_annotation_button.setEnabled(False)
         self.update_annotation_controls()
         self.open_readonly_button.setEnabled(False)
         self.checkout_button.setEnabled(False)
+        self.revision_details_button.setEnabled(False)
+        self.revision_notes_button.setEnabled(False)
+        self.revision_annotations_button.setEnabled(False)
 
     def clear_project_form(self):
         self.project_code.setText("")
@@ -778,6 +1056,7 @@ class PLMPanel:
         self.project_date.setText("")
         self.project_description.setPlainText("")
         self.save_project_button.setEnabled(False)
+        self.edit_project_button.setEnabled(False)
 
     def set_project_form(self, project):
         self.project_code.setText(project.get("code", "") or "")
@@ -788,6 +1067,7 @@ class PLMPanel:
         self.project_date.setText(project.get("project_date", "") or "")
         self.project_description.setPlainText(project.get("description", "") or "")
         self.save_project_button.setEnabled(project.get("id") is not None)
+        self.edit_project_button.setEnabled(project.get("id") is not None)
 
     def project_form_values(self):
         current_data = getattr(self.project_status, "currentData", None)
@@ -812,6 +1092,7 @@ class PLMPanel:
         self.part_tags.setText("")
         self.part_archived.setChecked(False)
         self.save_part_button.setEnabled(False)
+        self.edit_part_button.setEnabled(False)
 
     def set_part_form(self, part):
         self.part_number.setText(part.get("number", "") or "")
@@ -825,6 +1106,7 @@ class PLMPanel:
         self.part_tags.setText(part.get("tags", "") or "")
         self.part_archived.setChecked(bool(part.get("is_archived", False)))
         self.save_part_button.setEnabled(part.get("id") is not None)
+        self.edit_part_button.setEnabled(part.get("id") is not None)
 
     def part_form_values(self, include_number=False):
         current_data = getattr(self.part_category, "currentData", None)
@@ -850,9 +1132,13 @@ class PLMPanel:
         self.save_revision_notes_button.setEnabled(revision.get("id") is not None)
         self.revert_revision_notes_button.setEnabled(revision.get("id") is not None)
         self.technical_details.setPlainText(revision_technical_text(revision))
+        self.revision_summary.setText(compact_revision_summary(revision))
         self.new_annotation_button.setEnabled(True)
         self.open_readonly_button.setEnabled(True)
         self.checkout_button.setEnabled(True)
+        self.revision_details_button.setEnabled(True)
+        self.revision_notes_button.setEnabled(True)
+        self.revision_annotations_button.setEnabled(True)
         self.refresh_annotations(revision)
 
     def refresh_projects(self):
@@ -874,10 +1160,10 @@ class PLMPanel:
         self.import_project_button.setEnabled(False)
 
         if not server_url or not api_token:
-            self.status.setText("Server und API-Token eintragen.")
+            self.set_status("Server und API-Token eintragen.")
             return
 
-        self.status.setText("Lade Projekte...")
+        self.set_status("Lade Projekte...")
         self.projects.clear()
         self.parts.clear()
         self.revisions.clear()
@@ -892,10 +1178,10 @@ class PLMPanel:
             client = self.client()
             projects = client.get_projects()
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Verbindung fehlgeschlagen: {exc}")
+            self.set_status(f"Verbindung fehlgeschlagen: {exc}")
             return
 
         for project in projects:
@@ -909,7 +1195,7 @@ class PLMPanel:
         message = f"{count} Projekt{suffix} geladen."
         if checkout_count is not None:
             message = f"{message} Aktive Checkouts: {checkout_count}."
-        self.status.setText(message)
+        self.set_status(message)
         self.set_connected(server_url)
 
     def refresh_active_checkouts(self, client=None):
@@ -928,6 +1214,32 @@ class PLMPanel:
             item = self.QtWidgets.QListWidgetItem(checkout_label(checkout))
             item.setData(self.QtCore.Qt.UserRole, checkout)
             self.active_checkouts.addItem(item)
+        if self.active_checkout_id() is None and len(checkouts) == 1:
+            self.active_checkouts.setCurrentRow(0)
+            checkout = checkouts[0]
+            path = checkout_display_name(
+                checkout.get("workspace_path") or checkout.get("local_path") or ""
+            )
+            details = checkout_label(checkout)
+            if path:
+                details = f"{details} · {path}"
+            self.active_checkout_label.setText(details)
+            self.active_checkout_card.setStyleSheet(
+                "#ActiveCheckoutCard {"
+                "border: 1px solid #5f8fc9;"
+                "background: #eaf3ff;"
+                "border-radius: 4px;"
+                "}"
+            )
+        elif self.active_checkout_id() is None and not checkouts:
+            self.active_checkout_label.setText("Kein aktiver Checkout.")
+            self.active_checkout_card.setStyleSheet(
+                "#ActiveCheckoutCard {"
+                "border: 1px solid #d0d0d0;"
+                "background: #f7f7f7;"
+                "border-radius: 4px;"
+                "}"
+            )
         return len(checkouts)
 
     def refresh_parts(self):
@@ -944,20 +1256,20 @@ class PLMPanel:
         project = items[0].data(self.QtCore.Qt.UserRole)
         project_id = project.get("id") if isinstance(project, dict) else None
         if project_id is None:
-            self.status.setText("Projekt hat keine ID.")
+            self.set_status("Projekt hat keine ID.")
             return
         self.set_project_form(project)
         self.new_part_button.setEnabled(True)
 
-        self.status.setText("Lade Teile...")
+        self.set_status("Lade Teile...")
 
         try:
             parts = self.client().get_parts(project_id)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Verbindung fehlgeschlagen: {exc}")
+            self.set_status(f"Verbindung fehlgeschlagen: {exc}")
             return
 
         for part in parts:
@@ -967,23 +1279,23 @@ class PLMPanel:
 
         count = len(parts)
         suffix = "" if count == 1 else "e"
-        self.status.setText(f"{count} Teil{suffix} geladen.")
+        self.set_status(f"{count} Teil{suffix} geladen.")
 
     def save_selected_project(self):
         project = self.selected_project()
         project_id = project.get("id") if isinstance(project, dict) else None
         if project_id is None:
-            self.status.setText("Kein Projekt ausgewählt.")
+            self.set_status("Kein Projekt ausgewählt.")
             return
 
         payload = project_edit_payload(self.project_form_values())
         try:
             updated_project = self.client().update_project(project_id, payload)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Projekt konnte nicht gespeichert werden: {exc}")
+            self.set_status(f"Projekt konnte nicht gespeichert werden: {exc}")
             return
 
         items = self.projects.selectedItems()
@@ -991,7 +1303,7 @@ class PLMPanel:
             items[0].setData(self.QtCore.Qt.UserRole, updated_project)
             items[0].setText(project_label(updated_project))
         self.set_project_form(updated_project)
-        self.status.setText(f"Projekt gespeichert: {project_label(updated_project)}")
+        self.set_status(f"Projekt gespeichert: {project_label(updated_project)}")
 
     def import_project_dialog(self):
         selected_project = self.selected_project()
@@ -1084,12 +1396,12 @@ class PLMPanel:
         buttons.rejected.connect(dialog.reject)
 
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
-            self.status.setText("Projektimport abgebrochen.")
+            self.set_status("Projektimport abgebrochen.")
             return
 
         source = source_dir.text().strip()
         if not source:
-            self.status.setText("Projektordner ist erforderlich.")
+            self.set_status("Projektordner ist erforderlich.")
             return
         snapshot = snapshot_name.text().strip() or "Initial"
 
@@ -1109,20 +1421,20 @@ class PLMPanel:
                         }
                     )
                     if not project_data["code"] or not project_data["name"]:
-                        self.status.setText("Code und Name sind erforderlich.")
+                        self.set_status("Code und Name sind erforderlich.")
                         return
                     result = client.import_project(zip_path, project_data, snapshot)
                 else:
                     project_id = selected_project.get("id") if isinstance(selected_project, dict) else None
                     if project_id is None:
-                        self.status.setText("Kein Projekt ausgewählt.")
+                        self.set_status("Kein Projekt ausgewählt.")
                         return
                     result = client.import_project_snapshot(project_id, zip_path, snapshot)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Projektimport fehlgeschlagen: {exc}")
+            self.set_status(f"Projektimport fehlgeschlagen: {exc}")
             return
 
         imported_project = result.get("project") or {}
@@ -1134,7 +1446,7 @@ class PLMPanel:
         message = f"{project_import_result_text(result)} ZIP: {len(paths)} Datei(en)."
         if followup_message:
             message = f"{message} {followup_message}"
-        self.status.setText(message)
+        self.set_status(message)
 
     def checkout_imported_project_dialog(self, import_result, source_dir):
         candidates = import_checkout_candidates(import_result)
@@ -1177,7 +1489,7 @@ class PLMPanel:
         revision_id = candidate.get("revision_id")
         snapshot_id = candidate.get("snapshot_id")
         try:
-            self.status.setText("Starte Checkout des importierten Teils...")
+            self.set_status("Starte Checkout des importierten Teils...")
             checkout_result = self.checkout_revision_to_workspace(
                 project,
                 revision_id,
@@ -1188,10 +1500,11 @@ class PLMPanel:
         except Exception as exc:
             return f"Checkout nach Import fehlgeschlagen: {exc}"
 
-        message = (
-            f"Checkout geöffnet: {checkout_result['root_path']} "
+        print_freecad_console(
+            f"FreeCAD-PLM Checkout geöffnet: {checkout_result['root_path']} "
             f"({len(checkout_result['downloaded'])} Datei(en))."
         )
+        message = f"Checkout geöffnet ({len(checkout_result['downloaded'])} Datei(en))."
         if archive_source:
             try:
                 archived_path = archive_import_source_dir(
@@ -1217,19 +1530,19 @@ class PLMPanel:
         part = items[0].data(self.QtCore.Qt.UserRole)
         part_id = part.get("id") if isinstance(part, dict) else None
         if part_id is None:
-            self.status.setText("Teil hat keine ID.")
+            self.set_status("Teil hat keine ID.")
             return
         self.set_part_form(part)
 
-        self.status.setText("Lade Revisionen...")
+        self.set_status("Lade Revisionen...")
 
         try:
             part_detail = self.client().get_part(part_id)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Verbindung fehlgeschlagen: {exc}")
+            self.set_status(f"Verbindung fehlgeschlagen: {exc}")
             return
 
         revisions = revisions_from_part_detail(part_detail)
@@ -1245,13 +1558,13 @@ class PLMPanel:
 
         count = len(revisions)
         suffix = "" if count == 1 else "en"
-        self.status.setText(f"{count} Revision{suffix} geladen.")
+        self.set_status(f"{count} Revision{suffix} geladen.")
 
     def create_part_dialog(self):
         project = self.selected_project()
         project_id = project.get("id") if isinstance(project, dict) else None
         if project_id is None:
-            self.status.setText("Kein Projekt ausgewählt.")
+            self.set_status("Kein Projekt ausgewählt.")
             return
 
         name, accepted = self.QtWidgets.QInputDialog.getText(
@@ -1262,12 +1575,12 @@ class PLMPanel:
             "",
         )
         if not accepted:
-            self.status.setText("Teilanlage abgebrochen.")
+            self.set_status("Teilanlage abgebrochen.")
             return
 
         name = name.strip()
         if not name:
-            self.status.setText("Name ist erforderlich.")
+            self.set_status("Name ist erforderlich.")
             return
 
         category, accepted = self.QtWidgets.QInputDialog.getItem(
@@ -1279,7 +1592,7 @@ class PLMPanel:
             False,
         )
         if not accepted:
-            self.status.setText("Teilanlage abgebrochen.")
+            self.set_status("Teilanlage abgebrochen.")
             return
 
         payload = {
@@ -1289,33 +1602,33 @@ class PLMPanel:
         try:
             part = self.client().create_part(project_id, payload)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Teil konnte nicht angelegt werden: {exc}")
+            self.set_status(f"Teil konnte nicht angelegt werden: {exc}")
             return
 
         item = self.QtWidgets.QListWidgetItem(part_label(part))
         item.setData(self.QtCore.Qt.UserRole, part)
         self.parts.addItem(item)
         self.parts.setCurrentItem(item)
-        self.status.setText(f"Teil angelegt: {part_label(part)}")
+        self.set_status(f"Teil angelegt: {part_label(part)}")
 
     def save_selected_part(self):
         part = self.selected_part()
         part_id = part.get("id") if isinstance(part, dict) else None
         if part_id is None:
-            self.status.setText("Kein Teil ausgewählt.")
+            self.set_status("Kein Teil ausgewählt.")
             return
 
         payload = part_edit_payload(self.part_form_values())
         try:
             updated_part = self.client().update_part(part_id, payload)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Teil konnte nicht gespeichert werden: {exc}")
+            self.set_status(f"Teil konnte nicht gespeichert werden: {exc}")
             return
 
         items = self.parts.selectedItems()
@@ -1323,7 +1636,302 @@ class PLMPanel:
             items[0].setData(self.QtCore.Qt.UserRole, updated_part)
             items[0].setText(part_label(updated_part))
         self.set_part_form(updated_part)
-        self.status.setText(f"Stammdaten gespeichert: {part_label(updated_part)}")
+        self.set_status(f"Stammdaten gespeichert: {part_label(updated_part)}")
+
+    def show_project_dialog(self):
+        project = self.selected_project()
+        project_id = project.get("id") if isinstance(project, dict) else None
+        if project_id is None:
+            self.set_status("Kein Projekt ausgewählt.")
+            return
+
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Projekt bearbeiten")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        form = self.QtWidgets.QFormLayout()
+        code = self.QtWidgets.QLineEdit(project.get("code", "") or "")
+        name = self.QtWidgets.QLineEdit(project.get("name", "") or "")
+        status = self.QtWidgets.QComboBox()
+        for label, value in (
+            ("Laufend", "running"),
+            ("Abgeschlossen", "completed"),
+            ("Idee", "idea"),
+            ("Wichtig", "important"),
+            ("Auftrag", "order"),
+        ):
+            status.addItem(label, value)
+        status_value = project.get("status") or "running"
+        status_index = status.findData(status_value)
+        status.setCurrentIndex(status_index if status_index >= 0 else 0)
+        project_date = self.QtWidgets.QLineEdit(project.get("project_date", "") or "")
+        project_date.setPlaceholderText("YYYY-MM-DD")
+        description = self.QtWidgets.QPlainTextEdit(project.get("description", "") or "")
+        description.setMaximumHeight(120)
+        form.addRow("Code", code)
+        form.addRow("Name", name)
+        form.addRow("Status", status)
+        form.addRow("Datum", project_date)
+        form.addRow("Beschreibung", description)
+        layout.addLayout(form)
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        buttons.button(self.QtWidgets.QDialogButtonBox.Ok).setText("Speichern")
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            self.set_status("Projektbearbeitung abgebrochen.")
+            return
+
+        payload = project_edit_payload(
+            {
+                "code": code.text(),
+                "name": name.text(),
+                "status": status.itemData(status.currentIndex()) or "running",
+                "project_date": project_date.text(),
+                "description": description.toPlainText(),
+            }
+        )
+        try:
+            updated_project = self.client().update_project(project_id, payload)
+        except PLMError as exc:
+            self.set_status(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.set_status(f"Projekt konnte nicht gespeichert werden: {exc}")
+            return
+        items = self.projects.selectedItems()
+        if items:
+            items[0].setData(self.QtCore.Qt.UserRole, updated_project)
+            items[0].setText(project_label(updated_project))
+        self.set_project_form(updated_project)
+        self.set_status(f"Projekt gespeichert: {project_label(updated_project)}")
+
+    def show_part_dialog(self):
+        part = self.selected_part()
+        part_id = part.get("id") if isinstance(part, dict) else None
+        if part_id is None:
+            self.set_status("Kein Teil ausgewählt.")
+            return
+
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Teil bearbeiten")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        form = self.QtWidgets.QFormLayout()
+        number = self.QtWidgets.QLineEdit(part.get("number", "") or "")
+        number.setReadOnly(True)
+        name = self.QtWidgets.QLineEdit(part.get("name", "") or "")
+        category = self.QtWidgets.QComboBox()
+        category.addItem("Teil", "part")
+        category.addItem("Baugruppe", "assembly")
+        category_index = category.findData(part.get("category") or "part")
+        category.setCurrentIndex(category_index if category_index >= 0 else 0)
+        description = self.QtWidgets.QPlainTextEdit(part.get("description", "") or "")
+        description.setMaximumHeight(100)
+        material = self.QtWidgets.QLineEdit(part.get("material", "") or "")
+        supplier = self.QtWidgets.QLineEdit(part.get("supplier", "") or "")
+        tags = self.QtWidgets.QLineEdit(part.get("tags", "") or "")
+        archived = self.QtWidgets.QCheckBox("Archiviert")
+        archived.setChecked(bool(part.get("is_archived", False)))
+        form.addRow("Nummer", number)
+        form.addRow("Name", name)
+        form.addRow("Kategorie", category)
+        form.addRow("Beschreibung", description)
+        form.addRow("Material", material)
+        form.addRow("Lieferant", supplier)
+        form.addRow("Tags", tags)
+        form.addRow("", archived)
+        layout.addLayout(form)
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        buttons.button(self.QtWidgets.QDialogButtonBox.Ok).setText("Speichern")
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            self.set_status("Teilbearbeitung abgebrochen.")
+            return
+
+        payload = part_edit_payload(
+            {
+                "name": name.text(),
+                "category": category.itemData(category.currentIndex()) or "part",
+                "description": description.toPlainText(),
+                "material": material.text(),
+                "supplier": supplier.text(),
+                "tags": tags.text(),
+                "is_archived": archived.isChecked(),
+            }
+        )
+        try:
+            updated_part = self.client().update_part(part_id, payload)
+        except PLMError as exc:
+            self.set_status(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.set_status(f"Teil konnte nicht gespeichert werden: {exc}")
+            return
+        items = self.parts.selectedItems()
+        if items:
+            items[0].setData(self.QtCore.Qt.UserRole, updated_part)
+            items[0].setText(part_label(updated_part))
+        self.set_part_form(updated_part)
+        self.set_status(f"Stammdaten gespeichert: {part_label(updated_part)}")
+
+    def show_revision_details_dialog(self):
+        revision = self.selected_revision()
+        if not isinstance(revision, dict):
+            self.set_status("Keine Revision ausgewählt.")
+            return
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Revisionsdetails")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        tabs = self.QtWidgets.QTabWidget()
+        overview = self.QtWidgets.QPlainTextEdit(revision_overview_text(revision))
+        overview.setReadOnly(True)
+        technical = self.QtWidgets.QPlainTextEdit(revision_technical_text(revision))
+        technical.setReadOnly(True)
+        tabs.addTab(overview, "Details")
+        tabs.addTab(technical, "Technik")
+        layout.addWidget(tabs)
+        buttons = self.QtWidgets.QDialogButtonBox(self.QtWidgets.QDialogButtonBox.Close)
+        layout.addWidget(buttons)
+        buttons.rejected.connect(dialog.reject)
+        dialog.exec_()
+
+    def show_revision_notes_dialog(self):
+        revision = self.selected_revision()
+        revision_id = revision.get("id") if isinstance(revision, dict) else None
+        if revision_id is None:
+            self.set_status("Keine Revision ausgewählt.")
+            return
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Revisionsnotizen")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        notes = self.QtWidgets.QPlainTextEdit(revision.get("notes") or "")
+        notes.setMinimumHeight(160)
+        layout.addWidget(notes)
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Save | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            self.set_status("Notizenbearbeitung abgebrochen.")
+            return
+        payload = revision_notes_payload(notes.toPlainText())
+        try:
+            updated_revision = self.client().update_revision_notes(revision_id, payload["notes"])
+        except PLMError as exc:
+            self.set_status(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
+            return
+        items = self.revisions.selectedItems()
+        if items:
+            items[0].setData(self.QtCore.Qt.UserRole, updated_revision)
+            items[0].setText(revision_label(updated_revision))
+        self.set_revision_context(updated_revision)
+        self.set_status("Revisionsnotizen gespeichert.")
+
+    def show_annotations_dialog(self):
+        revision = self.selected_revision()
+        if not isinstance(revision, dict):
+            self.set_status("Keine Revision ausgewählt.")
+            return
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Anmerkungen")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        filter_box = self.QtWidgets.QComboBox()
+        for label, value in (
+            ("Alle", "all"),
+            ("Offen", "open"),
+            ("Erledigt", "resolved"),
+            ("Nur diese Revision", "revision"),
+            ("Teil allgemein", "part"),
+        ):
+            filter_box.addItem(label, value)
+        annotation_list = self.QtWidgets.QListWidget()
+        layout.addWidget(filter_box)
+        layout.addWidget(annotation_list)
+        action_row = self.QtWidgets.QHBoxLayout()
+        new_button = self.QtWidgets.QPushButton("Neu")
+        edit_button = self.QtWidgets.QPushButton("Bearbeiten")
+        resolve_button = self.QtWidgets.QPushButton("Erledigt")
+        reopen_button = self.QtWidgets.QPushButton("Wieder öffnen")
+        delete_button = self.QtWidgets.QPushButton("Löschen")
+        for button in (new_button, edit_button, resolve_button, reopen_button, delete_button):
+            action_row.addWidget(button)
+        layout.addLayout(action_row)
+        close_buttons = self.QtWidgets.QDialogButtonBox(self.QtWidgets.QDialogButtonBox.Close)
+        layout.addWidget(close_buttons)
+
+        def selected_dialog_annotation():
+            items = annotation_list.selectedItems()
+            if not items:
+                return None
+            annotation = items[0].data(self.QtCore.Qt.UserRole)
+            return annotation if isinstance(annotation, dict) else None
+
+        def refill():
+            annotation_list.clear()
+            filter_key = filter_box.itemData(filter_box.currentIndex()) or "all"
+            revision_id = revision.get("id")
+            annotations = [
+                annotation
+                for annotation in self.current_annotations
+                if annotation_matches_filter(annotation, filter_key, revision_id)
+            ]
+            for annotation in annotations:
+                item = self.QtWidgets.QListWidgetItem(annotation_label(annotation))
+                item.setData(self.QtCore.Qt.UserRole, annotation)
+                annotation_list.addItem(item)
+
+        def reload_annotations():
+            self.refresh_annotations(revision)
+            refill()
+
+        def create():
+            self.create_annotation_for_current_revision()
+            reload_annotations()
+
+        def edit():
+            annotation = selected_dialog_annotation()
+            if not annotation:
+                self.set_status("Keine Anmerkung ausgewählt.")
+                return
+            self._edit_annotation(annotation)
+            reload_annotations()
+
+        def set_status(status):
+            annotation = selected_dialog_annotation()
+            if not annotation:
+                self.set_status("Keine Anmerkung ausgewählt.")
+                return
+            self._update_annotation(annotation, annotation_update_payload(status=status))
+            reload_annotations()
+
+        def delete():
+            annotation = selected_dialog_annotation()
+            if not annotation:
+                self.set_status("Keine Anmerkung ausgewählt.")
+                return
+            self._delete_annotation(annotation)
+            reload_annotations()
+
+        reload_annotations()
+        filter_box.currentIndexChanged.connect(refill)
+        new_button.clicked.connect(create)
+        edit_button.clicked.connect(edit)
+        resolve_button.clicked.connect(lambda: set_status("resolved"))
+        reopen_button.clicked.connect(lambda: set_status("open"))
+        delete_button.clicked.connect(delete)
+        close_buttons.rejected.connect(dialog.reject)
+        dialog.exec_()
 
     def show_revision_details(self):
         items = self.revisions.selectedItems()
@@ -1342,17 +1950,17 @@ class PLMPanel:
         revision = self.selected_revision()
         revision_id = revision.get("id") if isinstance(revision, dict) else None
         if revision_id is None:
-            self.status.setText("Keine Revision ausgewählt.")
+            self.set_status("Keine Revision ausgewählt.")
             return
 
         payload = revision_notes_payload(self.revision_notes.toPlainText())
         try:
             updated_revision = self.client().update_revision_notes(revision_id, payload["notes"])
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Notizen konnten nicht gespeichert werden: {exc}")
+            self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
             return
 
         items = self.revisions.selectedItems()
@@ -1360,15 +1968,15 @@ class PLMPanel:
             items[0].setData(self.QtCore.Qt.UserRole, updated_revision)
             items[0].setText(revision_label(updated_revision))
         self.set_revision_context(updated_revision)
-        self.status.setText("Revisionsnotizen gespeichert.")
+        self.set_status("Revisionsnotizen gespeichert.")
 
     def revert_revision_notes(self):
         revision = self.selected_revision()
         if not isinstance(revision, dict):
-            self.status.setText("Keine Revision ausgewählt.")
+            self.set_status("Keine Revision ausgewählt.")
             return
         self.revision_notes.setPlainText(revision.get("notes") or "")
-        self.status.setText("Revisionsnotizen zurückgesetzt.")
+        self.set_status("Revisionsnotizen zurückgesetzt.")
 
     def refresh_annotations(self, revision):
         self.current_annotations = []
@@ -1429,7 +2037,7 @@ class PLMPanel:
         part_id = part.get("id") if isinstance(part, dict) else None
         revision_id = revision.get("id") if isinstance(revision, dict) else None
         if part_id is None or revision_id is None:
-            self.status.setText("Teil und Revision auswählen.")
+            self.set_status("Teil und Revision auswählen.")
             return
 
         text, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
@@ -1439,32 +2047,35 @@ class PLMPanel:
             "",
         )
         if not accepted:
-            self.status.setText("Anmerkung abgebrochen.")
+            self.set_status("Anmerkung abgebrochen.")
             return
 
         text = text.strip()
         if not text:
-            self.status.setText("Anmerkungstext ist erforderlich.")
+            self.set_status("Anmerkungstext ist erforderlich.")
             return
 
         payload = annotation_create_payload(revision_id, text, object_name, subelement)
         try:
             annotation = self.client().create_annotation(part_id, payload)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Anmerkung konnte nicht gespeichert werden: {exc}")
+            self.set_status(f"Anmerkung konnte nicht gespeichert werden: {exc}")
             return
 
         self.refresh_annotations(revision)
-        self.status.setText(f"Anmerkung angelegt: {annotation_label(annotation)}")
+        self.set_status(f"Anmerkung angelegt: {annotation_label(annotation)}")
 
     def edit_selected_annotation(self):
         annotation = self.selected_annotation()
+        self._edit_annotation(annotation)
+
+    def _edit_annotation(self, annotation):
         annotation_id = annotation.get("id") if isinstance(annotation, dict) else None
         if annotation_id is None:
-            self.status.setText("Keine Anmerkung ausgewählt.")
+            self.set_status("Keine Anmerkung ausgewählt.")
             return
 
         text, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
@@ -1474,46 +2085,51 @@ class PLMPanel:
             annotation.get("text", ""),
         )
         if not accepted:
-            self.status.setText("Bearbeiten abgebrochen.")
+            self.set_status("Bearbeiten abgebrochen.")
             return
 
         payload = annotation_update_payload(text=text)
         if not payload.get("text"):
-            self.status.setText("Anmerkungstext ist erforderlich.")
+            self.set_status("Anmerkungstext ist erforderlich.")
             return
-        self.update_selected_annotation(payload, "Anmerkung gespeichert")
+        self._update_annotation(annotation, payload, "Anmerkung gespeichert")
 
     def update_selected_annotation_status(self, status):
         payload = annotation_update_payload(status=status)
         label = "Anmerkung erledigt" if status == "resolved" else "Anmerkung wieder geöffnet"
-        self.update_selected_annotation(payload, label)
+        self._update_annotation(self.selected_annotation(), payload, label)
 
     def update_selected_annotation(self, payload, success_prefix):
-        annotation = self.selected_annotation()
+        self._update_annotation(self.selected_annotation(), payload, success_prefix)
+
+    def _update_annotation(self, annotation, payload, success_prefix="Anmerkung gespeichert"):
         annotation_id = annotation.get("id") if isinstance(annotation, dict) else None
         if annotation_id is None:
-            self.status.setText("Keine Anmerkung ausgewählt.")
+            self.set_status("Keine Anmerkung ausgewählt.")
             return
 
         try:
             updated = self.client().update_annotation(annotation_id, payload)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Anmerkung konnte nicht gespeichert werden: {exc}")
+            self.set_status(f"Anmerkung konnte nicht gespeichert werden: {exc}")
             return
 
         revision = self.selected_revision()
         if isinstance(revision, dict):
             self.refresh_annotations(revision)
-        self.status.setText(f"{success_prefix}: {annotation_label(updated)}")
+        self.set_status(f"{success_prefix}: {annotation_label(updated)}")
 
     def delete_selected_annotation(self):
         annotation = self.selected_annotation()
+        self._delete_annotation(annotation)
+
+    def _delete_annotation(self, annotation):
         annotation_id = annotation.get("id") if isinstance(annotation, dict) else None
         if annotation_id is None:
-            self.status.setText("Keine Anmerkung ausgewählt.")
+            self.set_status("Keine Anmerkung ausgewählt.")
             return
 
         answer = self.QtWidgets.QMessageBox.question(
@@ -1522,22 +2138,22 @@ class PLMPanel:
             "Ausgewählte Anmerkung wirklich löschen?",
         )
         if answer != self.QtWidgets.QMessageBox.Yes:
-            self.status.setText("Löschen abgebrochen.")
+            self.set_status("Löschen abgebrochen.")
             return
 
         try:
             self.client().delete_annotation(annotation_id)
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Anmerkung konnte nicht gelöscht werden: {exc}")
+            self.set_status(f"Anmerkung konnte nicht gelöscht werden: {exc}")
             return
 
         revision = self.selected_revision()
         if isinstance(revision, dict):
             self.refresh_annotations(revision)
-        self.status.setText("Anmerkung gelöscht.")
+        self.set_status("Anmerkung gelöscht.")
 
     def open_selected_revision_readonly(self):
         from . import fcstd
@@ -1545,15 +2161,15 @@ class PLMPanel:
         project = self.selected_project()
         revision = self.selected_revision()
         if project is None:
-            self.status.setText("Kein Projekt ausgewählt.")
+            self.set_status("Kein Projekt ausgewählt.")
             return
         if revision is None:
-            self.status.setText("Keine Revision ausgewählt.")
+            self.set_status("Keine Revision ausgewählt.")
             return
 
         revision_id = revision.get("id")
         if revision_id is None:
-            self.status.setText("Revision hat keine ID.")
+            self.set_status("Revision hat keine ID.")
             return
 
         project_code = (
@@ -1573,12 +2189,12 @@ class PLMPanel:
             self.readonly_document_names = []
             if failed:
                 failed_names = ", ".join(failed)
-                self.status.setText(
+                self.set_status(
                     f"Vorherige read-only Dokumente konnten nicht geschlossen werden: {failed_names}"
                 )
                 return
 
-            self.status.setText("Lade Manifest und Dateien herunter...")
+            self.set_status("Lade Manifest und Dateien herunter...")
             manifest = self.client().get_revision_manifest(revision_id)
             write_manifest(target_dir, manifest)
             downloaded = download_manifest_files(self.client(), manifest, target_dir)
@@ -1599,18 +2215,21 @@ class PLMPanel:
                 max_revisions_per_project=self.cache_max_revisions_per_project.value(),
             )
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Öffnen fehlgeschlagen: {exc}")
+            self.set_status(f"Öffnen fehlgeschlagen: {exc}")
             return
 
-        message = f"Read-only geöffnet: {root_path} ({len(downloaded)} Datei(en))"
+        print_freecad_console(
+            f"FreeCAD-PLM Read-only geöffnet: {root_path} ({len(downloaded)} Datei(en))"
+        )
+        message = f"Read-only geöffnet ({len(downloaded)} Datei(en))"
         if closed:
             message = f"{message}; vorher geschlossen: {len(closed)}"
         if pruned:
             message = f"{message}; Cache bereinigt: {len(pruned)}"
-        self.status.setText(message)
+        self.set_status(message)
 
     def checkout_revision_to_workspace(self, project, revision_id, snapshot_id=None):
         from . import fcstd
@@ -1678,51 +2297,126 @@ class PLMPanel:
         project = self.selected_project()
         revision = self.selected_revision()
         if project is None:
-            self.status.setText("Kein Projekt ausgewählt.")
+            self.set_status("Kein Projekt ausgewählt.")
             return
         if revision is None:
-            self.status.setText("Keine Revision ausgewählt.")
+            self.set_status("Keine Revision ausgewählt.")
             return
 
         revision_id = revision.get("id")
         if revision_id is None:
-            self.status.setText("Revision hat keine ID.")
+            self.set_status("Revision hat keine ID.")
+            return
+
+        action = checkout_guard_action(self.active_checkout, revision)
+        if action == "missing_revision":
+            self.set_status("Revision hat keine ID.")
+            return
+        if action == "same_checkout":
+            self.open_active_checkout_root()
+            return
+        if action == "blocked_by_other_checkout":
+            conflict_action = self.ask_checkout_conflict_action(revision)
+            if conflict_action == "open_active":
+                self.open_active_checkout_root()
+            elif conflict_action == "checkin":
+                self.checkin_active_checkout()
+            elif conflict_action == "cancel":
+                self.cancel_active_checkout()
+            else:
+                self.set_status("Checkout nicht gestartet.")
             return
 
         try:
-            self.status.setText("Starte Checkout und lade Dateien herunter...")
+            self.set_status("Starte Checkout und lade Dateien herunter...")
             result = self.checkout_revision_to_workspace(project, revision_id)
+        except ConflictError as exc:
+            self.refresh_active_checkouts()
+            self.set_status(
+                f"Checkout bereits aktiv oder blockiert: {exc}. Aktive Checkouts wurden aktualisiert."
+            )
+            return
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Checkout fehlgeschlagen: {exc}")
+            self.set_status(f"Checkout fehlgeschlagen: {exc}")
             return
 
         root_path = result["root_path"]
         downloaded = result["downloaded"]
         closed = result["closed_readonly"]
-        message = f"Checkout geöffnet: {root_path} ({len(downloaded)} Datei(en))"
+        print_freecad_console(
+            f"FreeCAD-PLM Checkout geöffnet: {root_path} ({len(downloaded)} Datei(en))"
+        )
+        message = f"Checkout geöffnet ({len(downloaded)} Datei(en))"
         if closed:
             message = f"{message}; read-only geschlossen: {len(closed)}"
-        self.status.setText(message)
+        self.set_status(message)
+
+    def ask_checkout_conflict_action(self, target_revision):
+        box = self.QtWidgets.QMessageBox(self.widget)
+        box.setWindowTitle("Aktiver Checkout")
+        box.setText(
+            "Es ist bereits ein anderer Checkout aktiv.\n\n"
+            f"Gewünschte Revision: {compact_revision_summary(target_revision)}"
+        )
+        open_button = box.addButton("Aktiven Checkout öffnen", self.QtWidgets.QMessageBox.AcceptRole)
+        checkin_button = box.addButton("Einchecken", self.QtWidgets.QMessageBox.ActionRole)
+        cancel_button = box.addButton("Checkout abbrechen", self.QtWidgets.QMessageBox.DestructiveRole)
+        stop_button = box.addButton("Nicht starten", self.QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(open_button)
+        box.exec_()
+        clicked = box.clickedButton()
+        if clicked == open_button:
+            return "open_active"
+        if clicked == checkin_button:
+            return "checkin"
+        if clicked == cancel_button:
+            return "cancel"
+        if clicked == stop_button:
+            return "stop"
+        return "stop"
+
+    def open_active_checkout_root(self):
+        from . import fcstd
+
+        if self.active_checkout_root_path is None:
+            self.set_status("Aktiver Checkout ist lokal noch nicht geöffnet.")
+            return
+        try:
+            before_documents = fcstd.document_names()
+            document = fcstd.open_document(self.active_checkout_root_path)
+            opened = fcstd.opened_document_names(before_documents, document)
+            if opened:
+                self.checkout_document_names = opened
+        except Exception as exc:
+            self.set_status(f"Aktiver Checkout konnte nicht geöffnet werden: {exc}")
+            return
+        print_freecad_console(
+            f"FreeCAD-PLM aktiver Checkout geöffnet: {self.active_checkout_root_path}"
+        )
+        self.set_status("Aktiver Checkout geöffnet.")
 
     def reopen_selected_checkout(self):
         from . import fcstd
 
-        checkout = self.selected_active_checkout()
+        checkout = self.selected_active_checkout() or self.active_checkout
         if checkout is None:
-            self.status.setText("Kein aktiver Checkout ausgewählt.")
+            self.set_status("Kein aktiver Checkout ausgewählt.")
             return
 
         checkout_id = checkout.get("id")
         if checkout_id is None:
-            self.status.setText("Aktiver Checkout hat keine ID.")
+            self.set_status("Aktiver Checkout hat keine ID.")
             return
 
         active_id = self.active_checkout_id()
         if active_id is not None and active_id != checkout_id:
-            self.status.setText("Es ist bereits ein anderer Checkout geöffnet.")
+            self.set_status("Es ist bereits ein anderer Checkout geöffnet.")
+            return
+        if active_id == checkout_id and self.active_checkout_root_path is not None:
+            self.open_active_checkout_root()
             return
 
         workspace_root = self.workspace_root.text().strip()
@@ -1735,7 +2429,7 @@ class PLMPanel:
             self.readonly_document_names = []
             if failed_readonly:
                 failed_names = ", ".join(failed_readonly)
-                self.status.setText(
+                self.set_status(
                     f"Vorherige read-only Dokumente konnten nicht geschlossen werden: {failed_names}"
                 )
                 return
@@ -1744,13 +2438,13 @@ class PLMPanel:
             self.checkout_document_names = []
             if failed_checkout:
                 failed_names = ", ".join(failed_checkout)
-                self.status.setText(
+                self.set_status(
                     f"Vorherige Checkout-Dokumente konnten nicht geschlossen werden: {failed_names}"
                 )
                 return
 
             client = self.client()
-            self.status.setText("Öffne aktiven Checkout wieder...")
+            self.set_status("Öffne aktiven Checkout wieder...")
             manifest = response_manifest(checkout.get("manifest"))
             if manifest is None:
                 manifest = response_manifest(client.get_checkout_manifest(checkout_id))
@@ -1769,17 +2463,20 @@ class PLMPanel:
             touch_directory(target_dir)
             self.update_checkout_controls()
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Checkout konnte nicht wieder geöffnet werden: {exc}")
+            self.set_status(f"Checkout konnte nicht wieder geöffnet werden: {exc}")
             return
 
-        message = f"Checkout wieder geöffnet: {root_path} ({len(downloaded)} ergänzt)"
+        print_freecad_console(
+            f"FreeCAD-PLM Checkout wieder geöffnet: {root_path} ({len(downloaded)} ergänzt)"
+        )
+        message = f"Checkout wieder geöffnet ({len(downloaded)} ergänzt)"
         closed = len(closed_readonly) + len(closed_checkout)
         if closed:
             message = f"{message}; vorher geschlossen: {closed}"
-        self.status.setText(message)
+        self.set_status(message)
 
     def checkin_active_checkout(self):
         from . import fcstd
@@ -1790,7 +2487,7 @@ class PLMPanel:
             or self.active_checkout_dir is None
             or self.active_checkout_root_path is None
         ):
-            self.status.setText("Kein aktiver Checkout.")
+            self.set_status("Kein aktiver Checkout.")
             return
 
         saved = []
@@ -1808,7 +2505,7 @@ class PLMPanel:
                 saved, failed = fcstd.save_documents(checkout_document_names)
                 if failed:
                     failed_names = ", ".join(failed)
-                    self.status.setText(
+                    self.set_status(
                         f"Dokumente konnten nicht gespeichert werden: {failed_names}"
                     )
                     return
@@ -1839,15 +2536,15 @@ class PLMPanel:
                 "",
             )
             if not accepted:
-                self.status.setText("Einchecken abgebrochen.")
+                self.set_status("Einchecken abgebrochen.")
                 return
 
             change_summary = summary.strip()
             if not change_summary:
-                self.status.setText("Änderungskommentar ist erforderlich.")
+                self.set_status("Änderungskommentar ist erforderlich.")
                 return
 
-            self.status.setText("Sende Check-in...")
+            self.set_status("Sende Check-in...")
             response = self.client().checkin_files(
                 checkout_id,
                 changed_files,
@@ -1859,7 +2556,7 @@ class PLMPanel:
                 result_text = checkin_result_text(response)
                 if result_text:
                     message = f"{message} {result_text}"
-                self.status.setText(message)
+                self.set_status(message)
                 return
 
             closed, close_failed = fcstd.close_documents(self.checkout_document_names)
@@ -1871,13 +2568,13 @@ class PLMPanel:
             self.refresh_active_checkouts()
         except ConflictError as exc:
             self.refresh_active_checkouts()
-            self.status.setText(checkin_conflict_text(exc))
+            self.set_status(checkin_conflict_text(exc))
             return
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Einchecken fehlgeschlagen: {exc}")
+            self.set_status(f"Einchecken fehlgeschlagen: {exc}")
             return
 
         message = "Check-in abgeschlossen."
@@ -1891,7 +2588,7 @@ class PLMPanel:
             message = f"{message} Geschlossen: {len(closed)}."
         if close_failed:
             message = f"{message} Schließen fehlgeschlagen: {', '.join(close_failed)}."
-        self.status.setText(message)
+        self.set_status(message)
 
     def offer_cancel_unchanged_checkout(self, saved_count=0):
         answer = self.QtWidgets.QMessageBox.question(
@@ -1900,7 +2597,7 @@ class PLMPanel:
             "Keine modellrelevanten Änderungen gefunden. Checkout abbrechen?",
         )
         if answer != self.QtWidgets.QMessageBox.Yes:
-            self.status.setText(unchanged_checkout_text(saved_count=saved_count))
+            self.set_status(unchanged_checkout_text(saved_count=saved_count))
             return
         self.cancel_active_checkout(confirm=False)
 
@@ -1909,7 +2606,7 @@ class PLMPanel:
 
         checkout_id = self.active_checkout_id()
         if checkout_id is None:
-            self.status.setText("Kein aktiver Checkout.")
+            self.set_status("Kein aktiver Checkout.")
             return
 
         if confirm:
@@ -1919,20 +2616,20 @@ class PLMPanel:
                 "Aktiven Checkout wirklich abbrechen?",
             )
             if answer != self.QtWidgets.QMessageBox.Yes:
-                self.status.setText("Checkout-Abbruch abgebrochen.")
+                self.set_status("Checkout-Abbruch abgebrochen.")
                 return
 
         try:
-            self.status.setText("Breche Checkout ab...")
+            self.set_status("Breche Checkout ab...")
             self.client().cancel_checkout(checkout_id)
             closed, failed = fcstd.close_documents(self.checkout_document_names)
             self.reset_active_checkout()
             self.refresh_active_checkouts()
         except PLMError as exc:
-            self.status.setText(f"PLM-Fehler: {exc}")
+            self.set_status(f"PLM-Fehler: {exc}")
             return
         except Exception as exc:
-            self.status.setText(f"Checkout-Abbruch fehlgeschlagen: {exc}")
+            self.set_status(f"Checkout-Abbruch fehlgeschlagen: {exc}")
             return
 
         message = "Checkout abgebrochen."
@@ -1940,7 +2637,7 @@ class PLMPanel:
             message = f"{message} Geschlossen: {len(closed)}."
         if failed:
             message = f"{message} Schließen fehlgeschlagen: {', '.join(failed)}."
-        self.status.setText(message)
+        self.set_status(message)
 
 
 def _find_dock(main_window, QtWidgets):

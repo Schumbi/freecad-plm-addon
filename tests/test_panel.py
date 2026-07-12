@@ -1,3 +1,5 @@
+import sys
+import types
 import unittest
 
 from freecad_plm_addon.panel import (
@@ -9,13 +11,18 @@ from freecad_plm_addon.panel import (
     checkin_conflict_text,
     checkin_created_revision_count,
     checkin_result_text,
+    active_checkout_revision_id,
     checkout_label,
+    checkout_guard_action,
+    checkout_display_name,
     checkout_project_code,
+    compact_revision_summary,
     connection_label,
     format_bytes,
     import_checkout_candidates,
     part_label,
     part_edit_payload,
+    print_freecad_console,
     project_edit_payload,
     project_import_result_text,
     project_label,
@@ -137,6 +144,74 @@ class PanelTests(unittest.TestCase):
                 }
             ),
             "Checkout 42 - PRJ, A-001, Revision R0001",
+        )
+
+    def test_active_checkout_revision_id_uses_nested_revision(self):
+        self.assertEqual(
+            active_checkout_revision_id({"revision": {"id": 17}}),
+            17,
+        )
+
+    def test_active_checkout_revision_id_uses_revision_id_or_base_revision_id(self):
+        self.assertEqual(active_checkout_revision_id({"revision_id": 18}), 18)
+        self.assertEqual(active_checkout_revision_id({"base_revision_id": 19}), 19)
+
+    def test_checkout_guard_allows_checkout_without_active_checkout(self):
+        self.assertEqual(checkout_guard_action(None, {"id": 7}), "checkout")
+
+    def test_checkout_guard_detects_same_checkout(self):
+        self.assertEqual(
+            checkout_guard_action({"revision": {"id": 7}}, {"id": 7}),
+            "same_checkout",
+        )
+
+    def test_checkout_guard_blocks_other_checkout(self):
+        self.assertEqual(
+            checkout_guard_action({"revision_id": 8}, {"id": 7}),
+            "blocked_by_other_checkout",
+        )
+
+    def test_checkout_guard_requires_revision_id(self):
+        self.assertEqual(checkout_guard_action({"revision_id": 8}, {}), "missing_revision")
+
+    def test_checkout_display_name_uses_path_name(self):
+        self.assertEqual(
+            checkout_display_name("/home/ralf/FreeCAD-PLM/checkout/Box.FCStd"),
+            "Box.FCStd",
+        )
+
+    def test_print_freecad_console_without_freecad_is_noop(self):
+        print_freecad_console("Test")
+
+    def test_print_freecad_console_prefixes_messages(self):
+        messages = []
+        fake_freecad = types.SimpleNamespace(
+            Console=types.SimpleNamespace(PrintMessage=messages.append)
+        )
+        previous = sys.modules.get("FreeCAD")
+        sys.modules["FreeCAD"] = fake_freecad
+        try:
+            print_freecad_console("Test")
+        finally:
+            if previous is None:
+                sys.modules.pop("FreeCAD", None)
+            else:
+                sys.modules["FreeCAD"] = previous
+
+        self.assertEqual(messages, ["[FreeCAD-PLM] Test\n"])
+
+    def test_compact_revision_summary_shows_primary_fields(self):
+        self.assertEqual(
+            compact_revision_summary(
+                {
+                    "revision_code": "R0001",
+                    "status": "Entwurf",
+                    "filename": "Box.FCStd",
+                    "created_at": "2026-07-10T12:00:00Z",
+                    "id": 7,
+                }
+            ),
+            "R0001 · Entwurf · Box.FCStd · 2026-07-10",
         )
 
     def test_checkin_result_text_reports_root_and_revision_count(self):
@@ -300,7 +375,7 @@ class PanelTests(unittest.TestCase):
                     "created_at": "2026-07-06T09:30:00Z",
                 }
             ),
-            "Revision A - released, part.FCStd, 2026-07-06",
+            "A · released · part.FCStd · 2026-07-06",
         )
 
     def test_revision_label_falls_back_to_id(self):
