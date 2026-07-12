@@ -4,10 +4,10 @@
   <description>FreeCAD workbench for connecting to a FreeCAD-PLM server, browsing projects and revisions, opening read-only revisions, checking out files, checking changes back in, and managing notes and annotations.</description>
   <version>0.1.0</version>
   <date>2026-07-12</date>
-  <maintainer email="ralf@home.schumbi.de">Ralf</maintainer>
-  <license>UNLICENSED</license>
-  <url type="repository" branch="main">https://git.home.schumbi.de/ralf/freecad-plm-addon</url>
-  <url type="readme">https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/README.md</url>
+  <maintainer email="freecad-plm@schumbi.de">Ralf Warmuth</maintainer>
+  <license>MIT</license>
+  <url type="repository" branch="main">https://git.home.schumbi.de/ralf/freecad-plm-addon.git</url>
+  <url type="readme">https://git.home.schumbi.de/ralf/freecad-plm-addon.git/raw/branch/main/README.md</url>
   <url type="documentation">https://git.home.schumbi.de/ralf/freecad-plm/wiki/FreeCAD-Addon-Handbuch</url>
   <icon>freecad_plm_addon/icons/activate-connection.svg</icon>
   <tag>PLM</tag>
