@@ -78,9 +78,19 @@ Repository-URL:
 https://git.home.schumbi.de/ralf/freecad-plm-addon
 ```
 
+Branch:
+
+```text
+main
+```
+
 Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Fuer die
 Nutzung muss anschliessend im Addon unter `Verbindungseinstellungen` die
 Server-URL, ein API-Token und der lokale Workspace gesetzt werden.
+
+Die serverseitige Forgejo- und Reverse-Proxy-Konfiguration fuer eine Installation
+mit einem unveraenderten FreeCAD ist in
+[`docs/ADDON_MANAGER_HOSTING.md`](docs/ADDON_MANAGER_HOSTING.md) dokumentiert.
 
 ## FreeCAD Installation Fuer Entwicklung
 
