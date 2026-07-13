@@ -2,6 +2,9 @@
 
 FreeCAD Workbench für das Django-basierte FreeCAD-PLM.
 
+Die nutzerorientierte Darstellung für den Addon Manager steht in
+[`Resources/Documents/Overview.md`](Resources/Documents/Overview.md).
+
 ## Status
 
 Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die

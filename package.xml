@@ -1,29 +1,35 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
-  <name>FreeCAD-PLM</name>
-  <description>FreeCAD workbench for connecting to a FreeCAD-PLM server, browsing projects and revisions, opening read-only revisions, checking out files, checking changes back in, and managing notes and annotations.</description>
-  <version>0.1.0</version>
-  <date>2026-07-12</date>
+  <name>PLM Connector</name>
+  <description>Verbindet CAD-Projekte mit einem PLM-Server. Projekte, Teile und Revisionen durchsuchen, schreibgeschützte Stände öffnen, Dateien aus- und einchecken sowie Metadaten, Notizen und Anmerkungen verwalten.</description>
+  <version>0.1.1</version>
+  <date>2026-07-13</date>
+  <author email="freecad-plm@schumbi.de">Ralf Warmuth</author>
   <maintainer email="freecad-plm@schumbi.de">Ralf Warmuth</maintainer>
-  <license>MIT</license>
+  <license file="LICENSE">MIT</license>
   <url type="repository" branch="main">https://git.home.schumbi.de/ralf/freecad-plm-addon.git</url>
-  <url type="readme">https://git.home.schumbi.de/ralf/freecad-plm-addon.git/raw/branch/main/README.md</url>
+  <url type="readme">https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/Resources/Documents/Overview.md</url>
   <url type="documentation">https://git.home.schumbi.de/ralf/freecad-plm/wiki/FreeCAD-Addon-Handbuch</url>
   <icon>freecad_plm_addon/icons/activate-connection.svg</icon>
-  <tag>PLM</tag>
-  <tag>PDM</tag>
-  <tag>FreeCAD</tag>
+  <tag>plm</tag>
+  <tag>pdm</tag>
+  <tag>revision</tag>
+  <tag>checkout</tag>
+  <tag>collaboration</tag>
+  <tag>workbench</tag>
   <freecadmin>1.0.0</freecadmin>
   <pythonmin>3.10</pythonmin>
   <content>
     <workbench>
-      <name>FreeCAD-PLM</name>
-      <description>Workbench for day-to-day FreeCAD-PLM workflows inside FreeCAD.</description>
+      <name>PLM Connector</name>
+      <description>Verbindet CAD-Projekte mit einem PLM-Server und bündelt den täglichen Revisions- und Checkout-Workflow.</description>
       <classname>FreeCADPLMWorkbench</classname>
       <subdirectory>./</subdirectory>
       <icon>freecad_plm_addon/icons/activate-connection.svg</icon>
-      <tag>PLM</tag>
-      <tag>PDM</tag>
+      <tag>plm</tag>
+      <tag>pdm</tag>
+      <tag>revision</tag>
+      <tag>checkout</tag>
     </workbench>
   </content>
 </package>
