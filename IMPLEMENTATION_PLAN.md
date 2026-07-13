@@ -3,7 +3,7 @@
 ## Summary
 
 Das Addon ist ein eigenes Projekt unter `/home/ralf/devel/freecad-plm-addon`.
-Es wird als FreeCAD-Workbench entwickelt und spricht ausschliesslich per
+Es wird als FreeCAD-Workbench entwickelt und spricht ausschließlich per
 Bearer Token mit der `/api/`-Schnittstelle des PLM.
 
 Entwicklungsserver:
@@ -78,7 +78,7 @@ Scopes:
 - `read`: Projekte, Teile, Revisionen, Downloads, Manifest, Anmerkungen lesen
 - `write`: Teile bearbeiten und Anmerkungen schreiben
 - `checkout`: Checkout, Check-in, Cancel
-- `admin`: Projektanlage/-bearbeitung ueber API
+- `admin`: Projektanlage/-bearbeitung über API
 
 Fehler:
 
@@ -105,21 +105,21 @@ Regeln:
 
 - `manifest.files[].path` ist relativ zu `files/`.
 - Absolute Pfade und `..` werden lokal abgelehnt.
-- Nach jedem Download wird SHA-256 geprueft.
+- Nach jedem Download wird SHA-256 geprüft.
 - Root-Datei ist `is_root == true`.
 - V1 checkt nur die Root-`.FCStd` wieder ein.
-- Abhaengige Dateien bleiben lokale Referenzdateien.
+- Abhängige Dateien bleiben lokale Referenzdateien.
 
 ## Implementierungsreihenfolge
 
 1. Grundstruktur und Tests anlegen.
-2. `api_client.py` ohne FreeCAD-Abhaengigkeit implementieren.
+2. `api_client.py` ohne FreeCAD-Abhängigkeit implementieren.
 3. `workspace.py` implementieren und testen.
 4. Verbindungstest gegen `GET /api/projects/` bauen.
 5. FreeCAD-Workbench registrieren.
 6. Dock/Panel mit Verbindung, Projektliste, Teileliste, Revisionsliste.
-7. Checkout mit Manifest-Download, Hashpruefung und Root-Datei-Oeffnung.
-8. Check-in der Root-Datei mit Aenderungsnotiz.
+7. Checkout mit Manifest-Download, Hashprüfung und Root-Datei-Öffnung.
+8. Check-in der Root-Datei mit Änderungsnotiz.
 9. Cancel.
 10. Annotationen lesen und schreiben.
 
@@ -129,11 +129,11 @@ Automatisch ohne FreeCAD:
 
 - Authorization-Header wird immer gesetzt.
 - JSON-GET/POST serialisiert korrekt.
-- Multipart-Check-in enthaelt `file` und `change_summary`.
+- Multipart-Check-in enthält `file` und `change_summary`.
 - `401`, `403`, `404`, `409` werden zu eigenen Exceptions.
 - Unsichere Workspace-Pfade werden abgelehnt.
 - Manifest wird geschrieben/gelesen.
-- SHA-256-Pruefung erkennt falsche Downloads.
+- SHA-256-Prüfung erkennt falsche Downloads.
 - Root-Datei wird aus `is_root == true` bestimmt.
 
 Manueller FreeCAD-Smoke:
@@ -141,14 +141,14 @@ Manueller FreeCAD-Smoke:
 1. Token erzeugen.
 2. Server-URL und Token speichern.
 3. Projektliste laden.
-4. Teil und Revision auswaehlen.
+4. Teil und Revision auswählen.
 5. Revision auschecken.
-6. Dateien und Manifest im Workspace pruefen.
-7. Root-Datei oeffnet in FreeCAD.
+6. Dateien und Manifest im Workspace prüfen.
+7. Root-Datei öffnet in FreeCAD.
 8. Datei speichern.
-9. Check-in mit Aenderungsnotiz.
-10. Neue Revision im Web-PLM pruefen.
-11. Annotation aus FreeCAD erstellen und im Web pruefen.
+9. Check-in mit Änderungsnotiz.
+10. Neue Revision im Web-PLM prüfen.
+11. Annotation aus FreeCAD erstellen und im Web prüfen.
 
 ## Defaults
 
@@ -157,4 +157,4 @@ Manueller FreeCAD-Smoke:
 - Token-only API
 - HTTP-Bibliothek: Python-Standardbibliothek `urllib.request`
 - Token-Speicherung: FreeCAD Preferences
-- Keine Serveraenderungen im Addon-Projekt
+- Keine Serveränderungen im Addon-Projekt

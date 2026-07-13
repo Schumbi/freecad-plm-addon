@@ -1451,7 +1451,7 @@ class PLMPanel:
     def checkout_imported_project_dialog(self, import_result, source_dir):
         candidates = import_checkout_candidates(import_result)
         if not candidates:
-            return "Kein importiertes Teil fuer Checkout gefunden."
+            return "Kein importiertes Teil für Checkout gefunden."
 
         answer = self.QtWidgets.QMessageBox.question(
             self.widget,
@@ -2263,7 +2263,7 @@ class PLMPanel:
             or response.get("id")
         )
         if checkout_id is None:
-            raise RuntimeError("Checkout-Antwort enthaelt keine Checkout-ID.")
+            raise RuntimeError("Checkout-Antwort enthält keine Checkout-ID.")
 
         manifest = response.get("manifest")
         if manifest is None:

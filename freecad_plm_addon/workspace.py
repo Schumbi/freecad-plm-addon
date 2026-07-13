@@ -58,7 +58,7 @@ def collect_project_fcstd_files(source_dir):
         files.append((relative_path, path))
 
     if not files:
-        raise WorkspaceError("Projektordner enthaelt keine FCStd-Dateien.")
+        raise WorkspaceError("Projektordner enthält keine FCStd-Dateien.")
     return files
 
 

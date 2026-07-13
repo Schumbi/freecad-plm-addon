@@ -1,7 +1,7 @@
-# Hosting fuer den FreeCAD Addon Manager
+# Hosting für den FreeCAD Addon Manager
 
 Dieses Dokument beschreibt die serverseitige Konfiguration, mit der ein
-unveraendertes FreeCAD das Addon allein ueber die Repository-URL und den Branch
+unverändertes FreeCAD das Addon allein über die Repository-URL und den Branch
 installieren kann.
 
 ## Ziel
@@ -19,7 +19,7 @@ FreeCAD-`Mod`-Verzeichnis erforderlich.
 ## Hintergrund
 
 FreeCAD 1.1 behandelt unbekannte Git-Hosts wie eine selbst gehostete
-GitLab-Instanz. Fuer ein benutzerdefiniertes Repository leitet der Addon Manager
+GitLab-Instanz. Für ein benutzerdefiniertes Repository leitet der Addon Manager
 deshalb diese Pfade ab:
 
 ```text
@@ -36,13 +36,13 @@ Forgejo verwendet stattdessen:
 /archive/<branch>.zip
 ```
 
-Die `package.xml` kann das fuer die Erstinstallation nicht korrigieren. Sie wird
+Die `package.xml` kann das für die Erstinstallation nicht korrigieren. Sie wird
 bei einem benutzerdefinierten Repository erst nach dem Herunterladen lokal
-gelesen und kennt keinen separaten URL-Typ fuer ein Installationsarchiv.
+gelesen und kennt keinen separaten URL-Typ für ein Installationsarchiv.
 
 ## Nginx Proxy Manager
 
-Im Proxy Host fuer `git.home.schumbi.de` unter `Advanced` stehen diese Regeln:
+Im Proxy Host für `git.home.schumbi.de` unter `Advanced` stehen diese Regeln:
 
 ```nginx
 location ~ ^/ralf/freecad-plm-addon/-/raw/([^/]+)/(.*)$ {
@@ -59,12 +59,12 @@ location = /ralf/freecad-plm-addon/-/archive/main/freecad-plm-addon-main.zip {
 ```
 
 Die Regeln speichern keine Addon-Dateien im Nginx Proxy Manager. Sie leiten
-ausschliesslich auf die von Forgejo bereitgestellten Repository-Pfade um.
+ausschließlich auf die von Forgejo bereitgestellten Repository-Pfade um.
 
 ## Forgejo
 
-Forgejo legt standardmaessig alle Dateien eines Repository-Archivs in einen
-zusaetzlichen Ordner. FreeCAD wuerde dadurch zum Beispiel so installieren:
+Forgejo legt standardmäßig alle Dateien eines Repository-Archivs in einen
+zusätzlichen Ordner. FreeCAD würde dadurch zum Beispiel so installieren:
 
 ```text
 Mod/freecad-plm-addon/freecad-plm-addon/InitGui.py
@@ -78,18 +78,18 @@ muss deshalb im vorhandenen oder neuen Abschnitt `repository` stehen:
 PREFIX_ARCHIVE_FILES = false
 ```
 
-Diese Einstellung gilt fuer alle von der Forgejo-Instanz erzeugten
-Repository-Archive. Nach der Aenderung:
+Diese Einstellung gilt für alle von der Forgejo-Instanz erzeugten
+Repository-Archive. Nach der Änderung:
 
 1. Forgejo neu starten.
 2. Im Forgejo-Adminbereich unter den Wartungsoperationen die erzeugten
-   Repository-Archive loeschen.
+   Repository-Archive löschen.
 3. Das Archiv erneut abrufen, damit Forgejo es mit der neuen Einstellung
    erzeugt.
 
-## Pruefung
+## Prüfung
 
-README und Archiv muessen ueber FreeCADs abgeleitete URLs erreichbar sein:
+README und Archiv müssen über FreeCADs abgeleitete URLs erreichbar sein:
 
 ```bash
 curl -fL \
@@ -103,20 +103,20 @@ unzip -t /tmp/freecad-plm-addon-main.zip
 unzip -Z1 /tmp/freecad-plm-addon-main.zip | sed -n '1,20p'
 ```
 
-Im Archiv muessen `Init.py`, `InitGui.py`, `package.xml` und das Verzeichnis
-`freecad_plm_addon/` direkt auf oberster Ebene liegen. Ein zusaetzlicher
+Im Archiv müssen `Init.py`, `InitGui.py`, `package.xml` und das Verzeichnis
+`freecad_plm_addon/` direkt auf oberster Ebene liegen. Ein zusätzlicher
 Wurzelordner `freecad-plm-addon/` ist falsch.
 
 ## Installation testen
 
-1. In FreeCAD den Addon Manager oeffnen.
+1. In FreeCAD den Addon Manager öffnen.
 2. Unter den Einstellungen das benutzerdefinierte Repository und `main`
    eintragen.
 3. Den Addon Manager neu laden und `freecad-plm-addon` installieren.
-4. FreeCAD vollstaendig neu starten.
-5. Die Workbench `FreeCAD-PLM` auswaehlen.
+4. FreeCAD vollständig neu starten.
+5. Die Workbench `FreeCAD-PLM` auswählen.
 
 Wenn FreeCAD eine erfolgreiche Installation meldet, aber keine Workbench
-anzeigt, zuerst die innere ZIP-Struktur pruefen. Das ist das typische Symptom
-fuer ein noch aktives `PREFIX_ARCHIVE_FILES = true` oder ein altes, von Forgejo
+anzeigt, zuerst die innere ZIP-Struktur prüfen. Das ist das typische Symptom
+für ein noch aktives `PREFIX_ARCHIVE_FILES = true` oder ein altes, von Forgejo
 zwischengespeichertes Archiv.

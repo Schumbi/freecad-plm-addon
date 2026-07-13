@@ -123,15 +123,15 @@ class PLMClientTests(unittest.TestCase):
 
     def test_update_revision_notes_posts_json_payload(self):
         client = PLMClient("https://plm.example", "token")
-        payload = {"revision": {"id": 17, "notes": "Pruefen"}}
+        payload = {"revision": {"id": 17, "notes": "Prüfen"}}
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
             self.assertEqual(
-                client.update_revision_notes(17, "Pruefen"),
-                {"id": 17, "notes": "Pruefen"},
+                client.update_revision_notes(17, "Prüfen"),
+                {"id": 17, "notes": "Prüfen"},
             )
             req = urlopen.call_args.args[0]
             self.assertEqual(req.full_url, "https://plm.example/api/revisions/17/notes/")
-            self.assertEqual(json.loads(req.data.decode("utf-8")), {"notes": "Pruefen"})
+            self.assertEqual(json.loads(req.data.decode("utf-8")), {"notes": "Prüfen"})
 
     def test_create_part_posts_json_payload(self):
         client = PLMClient("https://plm.example", "token")
@@ -249,19 +249,19 @@ class PLMClientTests(unittest.TestCase):
 
     def test_create_annotation_posts_revision_and_selection_payload(self):
         client = PLMClient("https://plm.example", "token")
-        payload = {"annotation": {"id": 7, "text": "Pruefen"}}
+        payload = {"annotation": {"id": 7, "text": "Prüfen"}}
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
             self.assertEqual(
                 client.create_annotation(
                     5,
                     {
                         "revision_id": 11,
-                        "text": "Pruefen",
+                        "text": "Prüfen",
                         "object_name": "Body",
                         "subelement": "Face1",
                     },
                 ),
-                {"id": 7, "text": "Pruefen"},
+                {"id": 7, "text": "Prüfen"},
             )
             req = urlopen.call_args.args[0]
             self.assertEqual(req.full_url, "https://plm.example/api/parts/5/annotations/")
@@ -269,7 +269,7 @@ class PLMClientTests(unittest.TestCase):
                 json.loads(req.data.decode("utf-8")),
                 {
                     "revision_id": 11,
-                    "text": "Pruefen",
+                    "text": "Prüfen",
                     "object_name": "Body",
                     "subelement": "Face1",
                 },

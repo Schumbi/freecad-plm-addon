@@ -432,8 +432,8 @@ class PanelTests(unittest.TestCase):
 
     def test_revision_notes_payload_trims_notes(self):
         self.assertEqual(
-            revision_notes_payload("  Vor Montage pruefen.  "),
-            {"notes": "Vor Montage pruefen."},
+            revision_notes_payload("  Vor Montage prüfen.  "),
+            {"notes": "Vor Montage prüfen."},
         )
 
     def test_revision_technical_text_contains_metadata(self):
@@ -468,10 +468,10 @@ class PanelTests(unittest.TestCase):
 
     def test_annotation_create_payload_ignores_qt_clicked_bool(self):
         self.assertEqual(
-            annotation_create_payload(7, " Pruefen ", False, ""),
+            annotation_create_payload(7, " Prüfen ", False, ""),
             {
                 "revision_id": 7,
-                "text": "Pruefen",
+                "text": "Prüfen",
                 "object_name": "",
                 "subelement": "",
             },

@@ -2,9 +2,9 @@
 
 ## Ziel
 
-Das FreeCAD-PLM Addon soll read-only Revisionen und spaeter echte Checkouts ueber dieselbe Manifest-Struktur laden koennen.
+Das FreeCAD-PLM Addon soll read-only Revisionen und später echte Checkouts über dieselbe Manifest-Struktur laden können.
 
-Der aktuelle Addon-Read-only-Pfad rekonstruiert referenzierte FCStd-Dateien aus `extracted_metadata.freecad_document.references` und sucht passende Revisionen im Projekt ueber Dateinamen. Das funktioniert als Fallback, ist aber nicht exakt genug fuer Baugruppenstaende.
+Der aktuelle Addon-Read-only-Pfad rekonstruiert referenzierte FCStd-Dateien aus `extracted_metadata.freecad_document.references` und sucht passende Revisionen im Projekt über Dateinamen. Das funktioniert als Fallback, ist aber nicht exakt genug für Baugruppenstände.
 
 ## Neuer Endpunkt
 
@@ -30,11 +30,11 @@ Der Endpunkt darf keinen Checkout erzeugen, keinen Checkout-Lock setzen und kein
 
 ## Verhalten
 
-- Liefert ein Manifest fuer die angefragte Root-Revision.
-- Nutzt dieselbe Datei-Aufloesung wie der bestehende Checkout-Manifest-Pfad.
-- Wenn `snapshot_id` angegeben ist, werden Abhaengigkeiten exakt aus diesem Projektstand aufgeloest.
+- Liefert ein Manifest für die angefragte Root-Revision.
+- Nutzt dieselbe Datei-Auflösung wie der bestehende Checkout-Manifest-Pfad.
+- Wenn `snapshot_id` angegeben ist, werden Abhängigkeiten exakt aus diesem Projektstand aufgelöst.
 - Wenn keine Referenzen existieren, reicht eine Ein-Datei-Manifest-Antwort.
-- Wenn Referenzen existieren, aber kein geeigneter Snapshot verfuegbar/angegeben ist, soll der Server mit einem klaren Fehler antworten.
+- Wenn Referenzen existieren, aber kein geeigneter Snapshot verfügbar/angegeben ist, soll der Server mit einem klaren Fehler antworten.
 
 Empfohlene Fehler:
 
@@ -46,7 +46,7 @@ Payload:
 
 ```json
 {
-  "error": "Referenzierte Revisionen koennen nur mit Projektstand geladen werden."
+  "error": "Referenzierte Revisionen können nur mit Projektstand geladen werden."
 }
 ```
 
@@ -99,12 +99,12 @@ Die Antwort soll kompatibel zum bestehenden Checkout-Manifest sein, aber ohne Ch
 Nach Umsetzung soll das Addon beide Pfade auf eine gemeinsame Download-Logik umstellen:
 
 ```text
-Read-only oeffnen
+Read-only öffnen
 -> GET /api/revisions/<id>/manifest/
 -> manifest.files herunterladen
--> SHA-256 pruefen
+-> SHA-256 prüfen
 -> manifest.json schreiben
--> Root-Datei aus is_root oeffnen
+-> Root-Datei aus is_root öffnen
 ```
 
 ```text
@@ -112,21 +112,21 @@ Checkout
 -> POST /api/revisions/<id>/checkout/
 -> Checkout-Manifest laden
 -> manifest.files herunterladen
--> SHA-256 pruefen
+-> SHA-256 prüfen
 -> manifest.json schreiben
--> Root-Datei aus is_root oeffnen
+-> Root-Datei aus is_root öffnen
 ```
 
 ## Akzeptanzkriterien
 
 - Read-only Manifest-Endpunkt funktioniert mit `read`-Token.
 - Endpunkt erzeugt keinen `Checkout`.
-- Antwort enthaelt genau eine Root-Datei mit `is_root: true`.
-- Jede Datei enthaelt `path`, `revision_id`, `sha256`, `download_url`, `is_root`.
+- Antwort enthält genau eine Root-Datei mit `is_root: true`.
+- Jede Datei enthält `path`, `revision_id`, `sha256`, `download_url`, `is_root`.
 - Unsichere Pfade wie absolute Pfade oder `..` werden nicht ausgeliefert.
 - Baugruppen mit Snapshot liefern alle referenzierten FCStd-Dateien in korrekter relativer Struktur.
 - Baugruppen ohne passenden Snapshot liefern einen klaren `409 Conflict`.
-- Bestehender Checkout-Manifest-Code wird moeglichst wiederverwendet, damit read-only und checkout dieselbe Abhaengigkeitslogik nutzen.
+- Bestehender Checkout-Manifest-Code wird möglichst wiederverwendet, damit read-only und checkout dieselbe Abhängigkeitslogik nutzen.
 
 ---
 
@@ -134,13 +134,13 @@ Checkout
 
 ## Ziel
 
-Wenn FreeCAD geschlossen und spaeter erneut gestartet wird, darf ein bereits
+Wenn FreeCAD geschlossen und später erneut gestartet wird, darf ein bereits
 serverseitig aktiver Checkout nicht im Addon verloren gehen.
 
-Der Server bleibt die Wahrheit fuer Checkout-Locks. Das Addon kann lokale
+Der Server bleibt die Wahrheit für Checkout-Locks. Das Addon kann lokale
 Workspace-Dateien und Marker verlieren oder veraltet haben. Deshalb braucht das
 Addon nach dem Verbinden eine API, um aktive Checkouts des aktuellen API-Users
-abzufragen und wieder aufnehmen zu koennen.
+abzufragen und wieder aufnehmen zu können.
 
 ## Neuer Endpunkt
 
@@ -169,12 +169,12 @@ read, checkout
 - Liefert alle aktiven, nicht eingecheckten und nicht abgebrochenen Checkouts
   des aktuellen API-Users.
 - Liefert keine Checkouts anderer User.
-- Erzeugt keine neuen Checkouts und veraendert keine Locks.
+- Erzeugt keine neuen Checkouts und verändert keine Locks.
 - Die Antwort muss ausreichen, damit das Addon den lokalen Workspace-Pfad
   `.../<server>/<project_code>/checkout-<checkout_id>/` rekonstruieren kann.
-- Die Antwort soll fuer jeden Checkout entweder direkt das Manifest enthalten
+- Die Antwort soll für jeden Checkout entweder direkt das Manifest enthalten
   oder einen stabilen Manifest-Endpunkt nennen.
-- Wenn fuer einen aktiven Checkout lokale Dateien fehlen, kann das Addon ueber
+- Wenn für einen aktiven Checkout lokale Dateien fehlen, kann das Addon über
   das Manifest die Dateien erneut herunterladen.
 
 ## Antwortformat
@@ -225,28 +225,28 @@ PLM-Verbindung aktivieren
 -> GET /api/projects/
 -> GET /api/checkouts/active/
 -> aktive Checkouts im Panel anzeigen
--> fuer jeden Checkout lokalen Pfad rekonstruieren
--> wenn manifest.json und Root-Datei vorhanden sind: "Checkout wieder oeffnen"
+-> für jeden Checkout lokalen Pfad rekonstruieren
+-> wenn manifest.json und Root-Datei vorhanden sind: "Checkout wieder öffnen"
 -> wenn Dateien fehlen: Manifest laden und Dateien erneut herunterladen
 ```
 
 ```text
-Checkout wieder oeffnen
+Checkout wieder öffnen
 -> vorhandenes oder neu geladenes Manifest nutzen
--> Root-Datei aus is_root oeffnen
--> Check-in und Checkout abbrechen fuer diesen Checkout aktivieren
+-> Root-Datei aus is_root öffnen
+-> Check-in und Checkout abbrechen für diesen Checkout aktivieren
 ```
 
 ## Akzeptanzkriterien
 
-- Der Endpunkt funktioniert fuer Token mit `checkout`-Scope.
-- Die Antwort enthaelt nur aktive Checkouts des authentifizierten Users.
-- Jeder Checkout enthaelt mindestens `id`, `status`, `project.code`,
+- Der Endpunkt funktioniert für Token mit `checkout`-Scope.
+- Die Antwort enthält nur aktive Checkouts des authentifizierten Users.
+- Jeder Checkout enthält mindestens `id`, `status`, `project.code`,
   `revision.id` und entweder `manifest_url` oder `manifest`.
-- `GET /api/checkouts/<checkout_id>/manifest/` bleibt fuer aktive Checkouts des
+- `GET /api/checkouts/<checkout_id>/manifest/` bleibt für aktive Checkouts des
   aktuellen Users abrufbar.
 - Ein Addon-Neustart verliert serverseitige Locks nicht aus der UI: Nach
-  Verbinden kann der User aktive Checkouts sehen und wieder oeffnen.
+  Verbinden kann der User aktive Checkouts sehen und wieder öffnen.
 - Checkouts, die bereits eingecheckt oder abgebrochen wurden, werden nicht als
   aktiv ausgeliefert.
 
@@ -256,12 +256,12 @@ Checkout wieder oeffnen
 
 ## Ziel
 
-Wenn eine ausgecheckte Baugruppe referenzierte FCStd-Dateien enthaelt, kann der
-User nicht nur die Root-Datei, sondern auch abhaengige Teile aendern. Beim
-Check-in muss das Addon alle geaenderten Dateien aus dem Checkout-Manifest
-uebertragen koennen.
+Wenn eine ausgecheckte Baugruppe referenzierte FCStd-Dateien enthält, kann der
+User nicht nur die Root-Datei, sondern auch abhängige Teile ändern. Beim
+Check-in muss das Addon alle geänderten Dateien aus dem Checkout-Manifest
+übertragen können.
 
-Der bisherige Single-File-Check-in bleibt fuer reine Root-Aenderungen
+Der bisherige Single-File-Check-in bleibt für reine Root-Änderungen
 kompatibel:
 
 ```http
@@ -320,14 +320,14 @@ Einchecken
 -> alle Checkout-Dokumente speichern
 -> manifest.json lesen
 -> SHA-256 jeder lokalen Datei unter files/ mit manifest.files[].sha256 vergleichen
--> unveraenderte Dateien nicht hochladen
--> wenn nur Root geaendert ist: bestehenden Single-File-Check-in verwenden
--> wenn referenzierte Dateien geaendert sind: Multi-Datei-Check-in verwenden
+-> unveränderte Dateien nicht hochladen
+-> wenn nur Root geändert ist: bestehenden Single-File-Check-in verwenden
+-> wenn referenzierte Dateien geändert sind: Multi-Datei-Check-in verwenden
 ```
 
-Vorhandene lokale Checkout-Dateien duerfen beim Wiederaufnehmen eines Checkouts
-nicht mit Manifest-Downloads ueberschrieben werden, weil sie lokale Aenderungen
-enthalten koennen.
+Vorhandene lokale Checkout-Dateien dürfen beim Wiederaufnehmen eines Checkouts
+nicht mit Manifest-Downloads überschrieben werden, weil sie lokale Änderungen
+enthalten können.
 
 ## Server-Verhalten
 
@@ -336,14 +336,14 @@ enthalten koennen.
 - Der Server validiert, dass `files_metadata[].base_sha256` dem Manifeststand
   entspricht, auf dem der Checkout basiert.
 - Unsichere Pfade wie absolute Pfade oder `..` werden abgelehnt.
-- Jede hochgeladene Datei muss eine gueltige `.FCStd` sein.
-- Fuer jede geaenderte Datei soll der Server eine neue Revision des
-  zugehoerigen Teils erzeugen.
+- Jede hochgeladene Datei muss eine gültige `.FCStd` sein.
+- Für jede geänderte Datei soll der Server eine neue Revision des
+  zugehörigen Teils erzeugen.
 - Die Root-Datei ist der Eintrag mit `is_root: true`.
-- Wenn nur referenzierte Dateien geaendert sind und die Root-Datei unveraendert
-  ist, soll der Server trotzdem den Checkout abschliessen und die erzeugten
+- Wenn nur referenzierte Dateien geändert sind und die Root-Datei unverändert
+  ist, soll der Server trotzdem den Checkout abschließen und die erzeugten
   Revisionen in der Antwort ausweisen.
-- Bei Konflikten antwortet der Server mit `409 Conflict` und laesst den
+- Bei Konflikten antwortet der Server mit `409 Conflict` und lässt den
   Checkout aktiv.
 
 ## Antwortformat
@@ -379,18 +379,18 @@ Empfohlen:
 }
 ```
 
-`revision` bleibt fuer Rueckwaertskompatibilitaet die Root-Revision, sofern
+`revision` bleibt für Rückwärtskompatibilität die Root-Revision, sofern
 eine Root-Datei eingecheckt wurde.
 
 ## Akzeptanzkriterien
 
-- Single-File-Check-in mit `file` funktioniert unveraendert weiter.
-- Multi-Datei-Check-in mit `files_metadata` und `file_<n>` funktioniert fuer
+- Single-File-Check-in mit `file` funktioniert unverändert weiter.
+- Multi-Datei-Check-in mit `files_metadata` und `file_<n>` funktioniert für
   Root- und referenzierte Dateien.
-- Unveraenderte Dateien muessen nicht hochgeladen werden.
+- Unveränderte Dateien müssen nicht hochgeladen werden.
 - Der Server lehnt unbekannte oder unsichere Manifest-Pfade ab.
 - Bei erfolgreichem Multi-Datei-Check-in ist der Checkout `completed`.
-- Die Antwort enthaelt alle erzeugten Revisionen mit Manifest-Pfadbezug.
+- Die Antwort enthält alle erzeugten Revisionen mit Manifest-Pfadbezug.
 
 ---
 
@@ -398,9 +398,9 @@ eine Root-Datei eingecheckt wurde.
 
 ## Ziel
 
-Das Addon soll Revisionsnotizen direkt im FreeCAD-Workflow pflegen koennen und
-Anmerkungen vollstaendig verwalten: lesen, anlegen, bearbeiten, Status setzen
-und loeschen.
+Das Addon soll Revisionsnotizen direkt im FreeCAD-Workflow pflegen können und
+Anmerkungen vollständig verwalten: lesen, anlegen, bearbeiten, Status setzen
+und löschen.
 
 ## Revisionsnotizen
 
@@ -418,7 +418,7 @@ Request:
 
 ```json
 {
-  "notes": "Vor Serienfreigabe in Baugruppe pruefen."
+  "notes": "Vor Serienfreigabe in Baugruppe prüfen."
 }
 ```
 
@@ -429,7 +429,7 @@ Antwort:
   "revision": {
     "id": 10,
     "revision_code": "R0002",
-    "notes": "Vor Serienfreigabe in Baugruppe pruefen."
+    "notes": "Vor Serienfreigabe in Baugruppe prüfen."
   }
 }
 ```
@@ -439,11 +439,11 @@ Verhalten:
 - Aktualisiert nur das Feld `Revision.notes`.
 - Erzeugt keine neue Revision.
 - Erzeugt ein AuditEvent `revision_notes_updated`.
-- Leere Notizen sind erlaubt und loeschen den Notiztext.
+- Leere Notizen sind erlaubt und löschen den Notiztext.
 
-## Anmerkungen loeschen
+## Anmerkungen löschen
 
-Der bestehende Endpunkt soll zusaetzlich `DELETE` akzeptieren:
+Der bestehende Endpunkt soll zusätzlich `DELETE` akzeptieren:
 
 ```http
 DELETE /api/annotations/<annotation_id>/
@@ -463,23 +463,23 @@ Antwort:
 
 Verhalten:
 
-- Loescht die Anmerkung oder markiert sie serverseitig als geloescht.
+- Löscht die Anmerkung oder markiert sie serverseitig als gelöscht.
 - Erzeugt ein AuditEvent `annotation_deleted`.
 - Darf keine Revision erzeugen.
-- Darf keine Anmerkungen anderer Projekte ohne Berechtigung loeschen.
+- Darf keine Anmerkungen anderer Projekte ohne Berechtigung löschen.
 
 ## Addon-Nutzung
 
 ```text
-Revision auswaehlen
+Revision auswählen
 -> Notizen im Detail-Tab bearbeiten
 -> POST /api/revisions/<id>/notes/
 -> Revisionsliste und Detailkontext aktualisieren
 ```
 
 ```text
-Anmerkung auswaehlen
--> Bearbeiten, Erledigt/Wieder offen oder Loeschen
+Anmerkung auswählen
+-> Bearbeiten, Erledigt/Wieder offen oder Löschen
 -> POST oder DELETE /api/annotations/<id>/
 -> Anmerkungsliste mit aktuellem Filter neu laden
 ```
@@ -500,13 +500,13 @@ GET /api/projects/<project_id>/
 POST /api/projects/<project_id>/
 ```
 
-Scope fuer `GET`:
+Scope für `GET`:
 
 ```text
 read
 ```
 
-Scope fuer `POST`:
+Scope für `POST`:
 
 ```text
 admin
@@ -528,13 +528,13 @@ Der Server liefert und akzeptiert folgende Felder:
 
 `status` nutzt dieselben Werte wie das WebUI: `running`, `completed`, `idea`,
 `important`, `order`. `project_date` ist leer oder ein Datum im Format
-`YYYY-MM-DD`. Der Server normalisiert `code` auf Grossbuchstaben und schreibt
-bei Aenderungen ein AuditEvent `project_updated`.
+`YYYY-MM-DD`. Der Server normalisiert `code` auf Großbuchstaben und schreibt
+bei Änderungen ein AuditEvent `project_updated`.
 
 ## Addon-Nutzung
 
 ```text
-Projekt auswaehlen
+Projekt auswählen
 -> Projektdaten im Tab "Projekt" anzeigen
 -> Bearbeiten
 -> POST /api/projects/<id>/
@@ -547,8 +547,8 @@ Projekt auswaehlen
 
 ## Ziel
 
-Das Addon soll neue lokale FreeCAD-Teile und Baugruppen inklusive abhaengiger
-`.FCStd`-Dateien in das PLM aufnehmen koennen. Dafuer wird ein lokaler Ordner
+Das Addon soll neue lokale FreeCAD-Teile und Baugruppen inklusive abhängiger
+`.FCStd`-Dateien in das PLM aufnehmen können. Dafür wird ein lokaler Ordner
 als ZIP mit relativen Pfaden an den Server gesendet. Der Server legt daraus
 Teile/Baugruppen, Revisionen und einen Projektstand an.
 
@@ -587,24 +587,24 @@ Multipart:
 - `code`, `name`, `status`, `project_date`, `description`
 - `snapshot_name`
 
-Der Kombiflow muss atomar sein: Wenn der ZIP-Import fehlschlaegt, darf kein
-leeres Projekt uebrig bleiben.
+Der Kombiflow muss atomar sein: Wenn der ZIP-Import fehlschlägt, darf kein
+leeres Projekt übrig bleiben.
 
 ## Addon-Nutzung
 
 ```text
 Projekt importieren
--> neues Projekt oder ausgewaehltes Projekt waehlen
+-> neues Projekt oder ausgewähltes Projekt wählen
 -> Projektmetadaten und Projektstandsname erfassen
--> lokalen Ordner waehlen
+-> lokalen Ordner wählen
 -> alle .FCStd rekursiv mit relativen Pfaden ins ZIP packen
 -> passenden Import-Endpunkt aufrufen
--> optional importiertes Root-Teil auswaehlen
--> optional ueber bestehenden Checkout-Endpunkt auschecken
+-> optional importiertes Root-Teil auswählen
+-> optional über bestehenden Checkout-Endpunkt auschecken
 -> optional lokalen Importordner nach ~/FreeCAD-PLM/imported/... verschieben
 -> Projektliste und Teileliste aktualisieren
 ```
 
 Der Ordnerimport ist der V1-Hauptpfad, weil er FreeCAD-Baugruppen mit
-relativen Referenzen robuster abbildet als das reine Einsammeln geoeffneter
+relativen Referenzen robuster abbildet als das reine Einsammeln geöffneter
 Dokumente.

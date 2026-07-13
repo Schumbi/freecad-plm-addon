@@ -1,10 +1,10 @@
 # FreeCAD-PLM Addon
 
-FreeCAD Workbench fuer das Django-basierte FreeCAD-PLM.
+FreeCAD Workbench für das Django-basierte FreeCAD-PLM.
 
 ## Status
 
-Arbeitsfaehige FreeCAD-Workbench fuer den aktuellen PLM-Addon-Workflow. Die
+Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die
 HTTP- und Workspace-Schicht ist so angelegt, dass sie ohne FreeCAD getestet
 werden kann.
 
@@ -12,10 +12,10 @@ Aktuell umgesetzt:
 
 - Server verbinden und Projekte, Teile/Baugruppen, Revisionen und aktive
   Checkouts laden.
-- Revisionen read-only ueber ein Server-Manifest oeffnen.
-- Revisionen auschecken, Manifest-Dateien mit SHA-256 pruefen und Root-Datei in
-  FreeCAD oeffnen.
-- Check-in fuer Root- und referenzierte Dateien; unveraenderte Dateien und
+- Revisionen read-only über ein Server-Manifest öffnen.
+- Revisionen auschecken, Manifest-Dateien mit SHA-256 prüfen und Root-Datei in
+  FreeCAD öffnen.
+- Check-in für Root- und referenzierte Dateien; unveränderte Dateien und
   technische FreeCAD-Speicherartefakte werden nicht als neue Revision
   eingecheckt.
 - Checkout abbrechen.
@@ -23,8 +23,8 @@ Aktuell umgesetzt:
   Beschreibung.
 - Neue Teile/Baugruppen als PLM-Metadatensatz anlegen.
 - Revisionsnotizen bearbeiten.
-- Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder oeffnen und
-  loeschen.
+- Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder öffnen und
+  löschen.
 - Lokale FreeCAD-Ordner als Projektstand oder neues Projekt importieren.
 
 ## Konfiguration
@@ -41,24 +41,24 @@ Der Server erwartet Bearer Token:
 Authorization: Bearer plm_pat_...
 ```
 
-Fuer den vollstaendigen Addon-Workflow werden typischerweise diese Scopes
-benoetigt:
+Für den vollständigen Addon-Workflow werden typischerweise diese Scopes
+benötigt:
 
 ```text
 read write checkout admin
 ```
 
 Ohne `admin` funktionieren Lesen, Checkout/Check-in, Notizen, Anmerkungen und
-Import in ein vorhandenes Projekt. `admin` ist noetig fuer Projektanlage,
+Import in ein vorhandenes Projekt. `admin` ist nötig für Projektanlage,
 Projektmetadaten und den Kombiflow "neues Projekt plus Import".
 
-`Projekt importieren` packt alle `.FCStd`-Dateien unterhalb eines gewaehlten
+`Projekt importieren` packt alle `.FCStd`-Dateien unterhalb eines gewählten
 lokalen Ordners in ein ZIP mit relativen Pfaden. Das Addon kann damit entweder
 einen Projektstand in ein vorhandenes Projekt importieren oder ein neues
 Projekt mit Code, Name, Status, Datum und Beschreibung anlegen und direkt
-befuellen. Nach erfolgreichem Import kann ein importiertes Teil/Baugruppe als
-Root ausgewaehlt und sofort ueber den normalen Checkout-Workflow geoeffnet
-werden. Der urspruengliche Importordner wird auf Wunsch erst danach nach
+befüllen. Nach erfolgreichem Import kann ein importiertes Teil/Baugruppe als
+Root ausgewählt und sofort über den normalen Checkout-Workflow geöffnet
+werden. Der ursprüngliche Importordner wird auf Wunsch erst danach nach
 `~/FreeCAD-PLM/imported/...` verschoben.
 
 ## Tests
@@ -67,9 +67,9 @@ werden. Der urspruengliche Importordner wird auf Wunsch erst danach nach
 python3 -m unittest discover -s tests
 ```
 
-## Installation ueber den FreeCAD Addon Manager
+## Installation über den FreeCAD Addon Manager
 
-Das Repo enthaelt ein `package.xml` fuer den FreeCAD Addon Manager. In FreeCAD
+Das Repo enthält ein `package.xml` für den FreeCAD Addon Manager. In FreeCAD
 kann das Addon als benutzerdefiniertes Repository installiert werden.
 
 Repository-URL:
@@ -84,17 +84,17 @@ Branch:
 main
 ```
 
-Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Fuer die
-Nutzung muss anschliessend im Addon unter `Verbindungseinstellungen` die
+Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Für die
+Nutzung muss anschließend im Addon unter `Verbindungseinstellungen` die
 Server-URL, ein API-Token und der lokale Workspace gesetzt werden.
 
-Die serverseitige Forgejo- und Reverse-Proxy-Konfiguration fuer eine Installation
-mit einem unveraenderten FreeCAD ist in
+Die serverseitige Forgejo- und Reverse-Proxy-Konfiguration für eine Installation
+mit einem unveränderten FreeCAD ist in
 [`docs/ADDON_MANAGER_HOSTING.md`](docs/ADDON_MANAGER_HOSTING.md) dokumentiert.
 
-## FreeCAD Installation Fuer Entwicklung
+## FreeCAD-Installation für die Entwicklung
 
-FreeCAD laedt externe Workbenches aus seinem Benutzer-`Mod`-Verzeichnis.
+FreeCAD lädt externe Workbenches aus seinem Benutzer-`Mod`-Verzeichnis.
 Der robusteste Weg ist, den Pfad in der jeweiligen FreeCAD-Installation direkt
 abzufragen:
 
@@ -120,7 +120,7 @@ Der lokale FreeCAD-1.1-User-AppData-Pfad ist:
 ~/.var/app/org.freecad.FreeCAD/data/FreeCAD/v1-1/
 ```
 
-Fuer die Entwicklung kann das Repo dorthin verlinkt werden:
+Für die Entwicklung kann das Repo dorthin verlinkt werden:
 
 ```bash
 mkdir -p ~/.var/app/org.freecad.FreeCAD/data/FreeCAD/v1-1/Mod
