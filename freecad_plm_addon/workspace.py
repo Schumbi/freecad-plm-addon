@@ -319,6 +319,23 @@ def files_root(path):
     return Path(path) / "files"
 
 
+def removable_manifest_files(manifest):
+    return [item for item in manifest.get("files", []) if not item.get("is_root")]
+
+
+def delete_checkout_manifest_file(path, relative_path):
+    root = files_root(path)
+    target = safe_join(root, relative_path)
+    if target.exists():
+        target.chmod(0o644)
+        target.unlink()
+    parent = target.parent
+    while parent != root and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()
+        parent = parent.parent
+    return target
+
+
 def download_manifest_files(client, manifest, path):
     target_root = files_root(path)
     downloaded = []

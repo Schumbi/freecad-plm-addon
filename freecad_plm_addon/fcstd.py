@@ -134,6 +134,19 @@ def document_names_in_directory(root):
     ]
 
 
+def document_names_for_path(path):
+    try:
+        target = Path(path).resolve()
+    except Exception:
+        return []
+    return [
+        name
+        for name, document in documents_by_name().items()
+        if document_path(document) is not None
+        and document_path(document).resolve() == target
+    ]
+
+
 def active_document_name_in_directory(root):
     active_name = active_document_name()
     if not active_name:

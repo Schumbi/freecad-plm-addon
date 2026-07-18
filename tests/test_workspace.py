@@ -17,12 +17,14 @@ from freecad_plm_addon.workspace import (
     collect_project_fcstd_files,
     checkout_dir,
     download_manifest_files,
+    delete_checkout_manifest_file,
     ensure_checkout_metadata,
     ensure_checkout_manifest_files,
     fcstd_technical_hashes,
     prune_readonly_cache,
     read_manifest,
     readonly_revision_dir,
+    removable_manifest_files,
     root_file_path,
     safe_join,
     safe_download_filename,
@@ -39,6 +41,31 @@ from freecad_plm_addon.workspace import (
 
 
 class WorkspaceTests(unittest.TestCase):
+    def test_removable_manifest_files_excludes_root(self):
+        manifest = {
+            "files": [
+                {"path": "Assembly.FCStd", "is_root": True},
+                {"path": "Box.FCStd", "is_root": False},
+            ]
+        }
+
+        self.assertEqual(
+            removable_manifest_files(manifest),
+            [{"path": "Box.FCStd", "is_root": False}],
+        )
+
+    def test_delete_checkout_manifest_file_removes_file_and_empty_parent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "files" / "parts" / "Box.FCStd"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"content")
+
+            removed = delete_checkout_manifest_file(tmp, "parts/Box.FCStd")
+
+            self.assertEqual(removed, target)
+            self.assertFalse(target.exists())
+            self.assertFalse(target.parent.exists())
+
     def make_fcstd(self, path, revision_code="R0001"):
         document_xml = f"""<?xml version='1.0' encoding='utf-8'?>
 <Document>

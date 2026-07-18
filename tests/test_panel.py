@@ -10,10 +10,12 @@ from freecad_plm_addon.panel import (
     annotations_for_revision,
     checkin_conflict_text,
     checkin_created_revision_count,
+    checkin_completed,
     checkin_result_text,
     active_checkout_revision_id,
     checkout_label,
     checkout_guard_action,
+    checkout_file_label,
     checkout_display_name,
     checkout_project_code,
     compact_revision_summary,
@@ -38,6 +40,22 @@ from freecad_plm_addon.errors import ConflictError
 
 
 class PanelTests(unittest.TestCase):
+    def test_checkout_file_label_includes_part_and_revision(self):
+        self.assertEqual(
+            checkout_file_label(
+                {
+                    "path": "Box.FCStd",
+                    "part_number": "P-002",
+                    "revision_code": "R0003",
+                }
+            ),
+            "Box.FCStd (P-002 · R0003)",
+        )
+
+    def test_checkin_completed_uses_checkout_status(self):
+        self.assertTrue(checkin_completed({"checkout": {"status": "completed"}}))
+        self.assertFalse(checkin_completed({"checkout": {"status": "active"}}))
+
     def test_project_label_prefers_code_and_name(self):
         self.assertEqual(
             project_label({"code": "PRJ", "name": "Demo Project"}),

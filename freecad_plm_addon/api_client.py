@@ -100,6 +100,13 @@ class PLMClient:
     def get_checkout_manifest(self, checkout_id):
         return self._json("GET", f"/api/checkouts/{checkout_id}/manifest/")
 
+    def remove_checkout_file(self, checkout_id, path):
+        return self._json(
+            "POST",
+            f"/api/checkouts/{checkout_id}/files/remove/",
+            {"path": path},
+        )
+
     def checkin(self, checkout_id, fcstd_path, change_summary):
         return self._multipart(
             f"/api/checkouts/{checkout_id}/checkin/",

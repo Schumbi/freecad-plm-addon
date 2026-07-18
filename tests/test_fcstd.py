@@ -112,6 +112,19 @@ class FCStdTests(unittest.TestCase):
 
         self.assertEqual(fcstd.document_names_in_directory(checkout_root), ["A", "B"])
 
+    def test_document_names_for_path_matches_exact_file(self):
+        target = FakeDocument("A", file_name="/tmp/checkout/files/A.FCStd")
+        other = FakeDocument("B", file_name="/tmp/checkout/files/B.FCStd")
+        freecad = types.SimpleNamespace(
+            listDocuments=Mock(return_value={"A": target, "B": other}),
+        )
+        sys.modules["FreeCAD"] = freecad
+
+        self.assertEqual(
+            fcstd.document_names_for_path("/tmp/checkout/files/A.FCStd"),
+            ["A"],
+        )
+
     def test_active_document_name_in_directory_requires_checkout_path(self):
         document = FakeDocument("A", file_name="/tmp/checkout/files/A.FCStd")
         freecad = types.SimpleNamespace(
