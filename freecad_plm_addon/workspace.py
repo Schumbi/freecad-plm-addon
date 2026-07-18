@@ -472,6 +472,37 @@ def build_checkout_metadata(manifest, path):
     return {"version": CHECKOUT_METADATA_VERSION, "files": files}
 
 
+def merge_checkout_metadata(manifest, metadata, path):
+    if metadata.get("version") != CHECKOUT_METADATA_VERSION:
+        raise WorkspaceError(
+            "Checkout-Metadaten sind veraltet. Bitte Checkout abbrechen und neu auschecken."
+        )
+    existing_by_path = {
+        item.get("path"): item
+        for item in metadata.get("files", [])
+        if isinstance(item, dict) and item.get("path")
+    }
+    target_root = files_root(path)
+    files = []
+    for item in manifest["files"]:
+        existing = existing_by_path.get(item["path"])
+        if existing and existing.get("revision_id") == item.get("revision_id"):
+            files.append(existing)
+            continue
+        target = safe_join(target_root, item["path"])
+        if not target.exists():
+            raise WorkspaceError(f"Checkout-Datei fehlt: {target}")
+        files.append(
+            {
+                "path": item["path"],
+                "revision_id": item.get("revision_id"),
+                "revision_code": item.get("revision_code"),
+                **fcstd_technical_hashes(target),
+            }
+        )
+    return {"version": CHECKOUT_METADATA_VERSION, "files": files}
+
+
 def ensure_checkout_metadata(manifest, path):
     metadata_path = Path(path) / "checkout.json"
     if not metadata_path.exists():

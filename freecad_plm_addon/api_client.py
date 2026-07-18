@@ -100,6 +100,13 @@ class PLMClient:
     def get_checkout_manifest(self, checkout_id):
         return self._json("GET", f"/api/checkouts/{checkout_id}/manifest/")
 
+    def add_checkout_file(self, checkout_id, revision_id):
+        return self._json(
+            "POST",
+            f"/api/checkouts/{checkout_id}/files/add/",
+            {"revision_id": revision_id},
+        )
+
     def remove_checkout_file(self, checkout_id, path):
         return self._json(
             "POST",

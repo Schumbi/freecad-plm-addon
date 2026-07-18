@@ -251,6 +251,18 @@ class PLMClientTests(unittest.TestCase):
             )
             self.assertEqual(json.loads(req.data.decode("utf-8")), {"path": "Box.FCStd"})
 
+    def test_add_checkout_file_posts_revision_id(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"added_file": {"path": "bigBottle.FCStd"}, "manifest": {"files": []}}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(client.add_checkout_file(9, 114), payload)
+            req = urlopen.call_args.args[0]
+            self.assertEqual(
+                req.full_url,
+                "https://plm.example/api/checkouts/9/files/add/",
+            )
+            self.assertEqual(json.loads(req.data.decode("utf-8")), {"revision_id": 114})
+
     def test_cancel_checkout_posts_empty_payload(self):
         client = PLMClient("https://plm.example", "token")
         with patch("urllib.request.urlopen", return_value=FakeResponse({"checkout": {}})) as urlopen:

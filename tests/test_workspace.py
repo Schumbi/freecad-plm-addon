@@ -21,6 +21,7 @@ from freecad_plm_addon.workspace import (
     ensure_checkout_metadata,
     ensure_checkout_manifest_files,
     fcstd_technical_hashes,
+    merge_checkout_metadata,
     prune_readonly_cache,
     read_manifest,
     readonly_revision_dir,
@@ -586,6 +587,46 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(len(changed), 1)
             self.assertEqual(changed[0]["path"], "part.FCStd")
             self.assertEqual(changed[0]["revision_code"], "R0001")
+
+    def test_merge_checkout_metadata_preserves_existing_change_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            files = Path(tmp) / "files"
+            files.mkdir(parents=True)
+            root_path = files / "Assembly.FCStd"
+            added_path = files / "bigBottle.FCStd"
+            self.make_fcstd(root_path, "R0001")
+            initial_manifest = {
+                "files": [
+                    {
+                        "path": "Assembly.FCStd",
+                        "revision_id": 10,
+                        "revision_code": "R0001",
+                        "sha256": sha256_file(root_path),
+                        "is_root": True,
+                    }
+                ]
+            }
+            metadata = build_checkout_metadata(initial_manifest, tmp)
+            self.set_fcstd_string_property(root_path, "Label", "Locally changed")
+            self.make_fcstd(added_path, "R0001")
+            updated_manifest = {
+                "files": [
+                    *initial_manifest["files"],
+                    {
+                        "path": "bigBottle.FCStd",
+                        "revision_id": 11,
+                        "revision_code": "R0001",
+                        "sha256": sha256_file(added_path),
+                        "is_root": False,
+                    },
+                ]
+            }
+
+            merged = merge_checkout_metadata(updated_manifest, metadata, tmp)
+            changed = technically_changed_manifest_files(updated_manifest, merged, tmp)
+
+            self.assertEqual([item["path"] for item in merged["files"]], ["Assembly.FCStd", "bigBottle.FCStd"])
+            self.assertEqual([item["path"] for item in changed], ["Assembly.FCStd"])
 
     def test_ensure_checkout_metadata_rejects_missing_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -13,6 +13,7 @@ from .workspace import (
     download_manifest_files,
     ensure_checkout_metadata,
     ensure_checkout_manifest_files,
+    merge_checkout_metadata,
     prune_readonly_cache,
     read_manifest,
     removable_manifest_files,
@@ -786,12 +787,15 @@ class PLMPanel:
         checkout_action_row.addWidget(self.active_checkout_card, 1)
         self.reopen_checkout_button = self.QtWidgets.QPushButton("Öffnen")
         self.reopen_checkout_button.setEnabled(False)
+        self.add_checkout_file_button = self.QtWidgets.QPushButton("Teil hinzufügen")
+        self.add_checkout_file_button.setEnabled(False)
         self.remove_checkout_file_button = self.QtWidgets.QPushButton("Teil entfernen")
         self.remove_checkout_file_button.setEnabled(False)
         self.checkin_button = self.QtWidgets.QPushButton("Einchecken")
         self.cancel_checkout_button = self.QtWidgets.QPushButton("Abbrechen")
         for button in (
             self.reopen_checkout_button,
+            self.add_checkout_file_button,
             self.remove_checkout_file_button,
             self.checkin_button,
             self.cancel_checkout_button,
@@ -800,6 +804,7 @@ class PLMPanel:
         self.checkin_button.setEnabled(False)
         self.cancel_checkout_button.setEnabled(False)
         checkout_action_row.addWidget(self.reopen_checkout_button)
+        checkout_action_row.addWidget(self.add_checkout_file_button)
         checkout_action_row.addWidget(self.remove_checkout_file_button)
         checkout_action_row.addWidget(self.checkin_button)
         checkout_action_row.addWidget(self.cancel_checkout_button)
@@ -846,6 +851,7 @@ class PLMPanel:
         self.open_readonly_button.clicked.connect(self.open_selected_revision_readonly)
         self.checkout_button.clicked.connect(self.checkout_selected_revision)
         self.checkin_button.clicked.connect(self.checkin_active_checkout)
+        self.add_checkout_file_button.clicked.connect(self.add_selected_file_to_active_checkout)
         self.remove_checkout_file_button.clicked.connect(self.remove_file_from_active_checkout)
         self.cancel_checkout_button.clicked.connect(self.cancel_active_checkout)
         self.active_checkouts.itemSelectionChanged.connect(self.update_reopen_checkout_button)
@@ -998,6 +1004,7 @@ class PLMPanel:
         checkout_id = self.active_checkout_id()
         has_checkout = checkout_id is not None
         self.checkin_button.setEnabled(has_checkout)
+        self.add_checkout_file_button.setEnabled(has_checkout)
         self.remove_checkout_file_button.setEnabled(has_checkout)
         self.cancel_checkout_button.setEnabled(has_checkout)
         if not has_checkout:
@@ -2541,8 +2548,10 @@ class PLMPanel:
                 checkout_metadata,
                 self.active_checkout_dir,
             )
-            has_removed_files = bool(manifest.get("removed_paths"))
-            if not changed_files and not has_removed_files:
+            has_structural_changes = bool(
+                manifest.get("removed_paths") or manifest.get("added_paths")
+            )
+            if not changed_files and not has_structural_changes:
                 self.offer_cancel_unchanged_checkout(saved_count=len(saved))
                 return
 
@@ -2552,7 +2561,7 @@ class PLMPanel:
                 checkout_metadata,
                 self.active_checkout_dir,
             )
-            if not changed_files and not has_removed_files:
+            if not changed_files and not has_structural_changes:
                 self.offer_cancel_unchanged_checkout(saved_count=len(saved))
                 return
 
@@ -2617,6 +2626,78 @@ class PLMPanel:
             message = f"{message} Schließen fehlgeschlagen: {', '.join(close_failed)}."
         self.set_status(message)
 
+    def add_selected_file_to_active_checkout(self):
+        from . import fcstd
+
+        checkout_id = self.active_checkout_id()
+        revision = self.selected_revision()
+        revision_id = revision.get("id") if isinstance(revision, dict) else None
+        if checkout_id is None or self.active_checkout_dir is None:
+            self.set_status("Kein aktiver Checkout.")
+            return
+        if revision_id is None:
+            self.set_status("Bitte die hinzuzufügende Revision auswählen.")
+            return
+
+        answer = self.QtWidgets.QMessageBox.question(
+            self.widget,
+            "Teil zum Checkout hinzufügen",
+            (
+                f"{compact_revision_summary(revision)} zum aktiven Checkout hinzufügen?\n\n"
+                "Die Datei wird in den Checkout-Ordner geladen und in FreeCAD geöffnet."
+            ),
+            self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+            self.QtWidgets.QMessageBox.Yes,
+        )
+        if answer != self.QtWidgets.QMessageBox.Yes:
+            self.set_status("Hinzufügen abgebrochen.")
+            return
+
+        try:
+            current_manifest = read_manifest(self.active_checkout_dir)
+            checkout_metadata = ensure_checkout_metadata(
+                current_manifest,
+                self.active_checkout_dir,
+            )
+            response = self.client().add_checkout_file(checkout_id, revision_id)
+            updated_manifest = response.get("manifest") or {}
+            added_file = response.get("added_file") or {}
+            added_path = added_file.get("path") or ""
+            if not updated_manifest.get("files") or not added_path:
+                raise RuntimeError("Server-Antwort enthält keine hinzugefügte Datei.")
+            downloaded = ensure_checkout_manifest_files(
+                self.client(),
+                updated_manifest,
+                self.active_checkout_dir,
+            )
+            write_manifest(self.active_checkout_dir, updated_manifest)
+            write_checkout_metadata(
+                self.active_checkout_dir,
+                merge_checkout_metadata(
+                    updated_manifest,
+                    checkout_metadata,
+                    self.active_checkout_dir,
+                ),
+            )
+            local_path = safe_join(self.active_checkout_dir / "files", added_path)
+            before_documents = fcstd.document_names()
+            document = fcstd.open_document(local_path)
+            opened = fcstd.opened_document_names(before_documents, document)
+            self.checkout_document_names = sorted(
+                set(self.checkout_document_names).union(opened)
+            )
+        except PLMError as exc:
+            self.set_status(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.set_status(f"Teil konnte nicht hinzugefügt werden: {exc}")
+            return
+
+        self.set_status(
+            f"{added_path} wurde hinzugefügt, geladen und in FreeCAD geöffnet "
+            f"({len(downloaded)} neue Datei(en))."
+        )
+
     def remove_file_from_active_checkout(self):
         from . import fcstd
 
@@ -2627,6 +2708,7 @@ class PLMPanel:
 
         try:
             manifest = read_manifest(self.active_checkout_dir)
+            checkout_metadata = ensure_checkout_metadata(manifest, self.active_checkout_dir)
         except Exception as exc:
             self.set_status(f"Checkout-Manifest konnte nicht gelesen werden: {exc}")
             return
@@ -2686,7 +2768,11 @@ class PLMPanel:
             write_manifest(self.active_checkout_dir, updated_manifest)
             write_checkout_metadata(
                 self.active_checkout_dir,
-                build_checkout_metadata(updated_manifest, self.active_checkout_dir),
+                merge_checkout_metadata(
+                    updated_manifest,
+                    checkout_metadata,
+                    self.active_checkout_dir,
+                ),
             )
         except Exception as exc:
             if local_path.exists():
