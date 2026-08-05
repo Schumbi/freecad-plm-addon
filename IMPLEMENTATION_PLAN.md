@@ -1,8 +1,12 @@
 # FreeCAD-PLM Addon Implementierungsplan
 
+> Historischer Ausgangsplan. Für den aktuellen Funktionsumfang und die
+> Bedienung gelten `README.md`, `Resources/Documents/Overview.md` und der
+> serverseitige `planning/FREECAD_ADDON_PLAN.md`.
+
 ## Summary
 
-Das Addon ist ein eigenes Projekt unter `/home/ralf/devel/freecad-plm-addon`.
+Das Addon ist ein eigenes Projekt unter `/home/ralf/devel/freecad-plm/freecad-plm-addon`.
 Es wird als FreeCAD-Workbench entwickelt und spricht ausschließlich per
 Bearer Token mit der `/api/`-Schnittstelle des PLM.
 
@@ -152,7 +156,7 @@ Manueller FreeCAD-Smoke:
 
 ## Defaults
 
-- Addon-Verzeichnis: `/home/ralf/devel/freecad-plm-addon`
+- Addon-Verzeichnis: `/home/ralf/devel/freecad-plm/freecad-plm-addon`
 - Server: `https://plm.lan.schumbi.de`
 - Token-only API
 - HTTP-Bibliothek: Python-Standardbibliothek `urllib.request`

@@ -44,16 +44,16 @@ Der Server erwartet Bearer Token:
 Authorization: Bearer plm_pat_...
 ```
 
-Für den vollständigen Addon-Workflow werden typischerweise diese Scopes
-benötigt:
+Für normale CAD-Arbeit einschließlich Teilanlage werden diese Scopes benötigt:
 
 ```text
-read write checkout admin
+read write checkout
 ```
 
-Ohne `admin` funktionieren Lesen, Checkout/Check-in, Notizen, Anmerkungen und
-Import in ein vorhandenes Projekt. `admin` ist nötig für Projektanlage,
-Projektmetadaten und den Kombiflow "neues Projekt plus Import".
+`admin` ist zusätzlich nötig für Projektanlage, Projektmetadaten und den
+Kombiflow "neues Projekt plus Import". Ohne `admin` funktionieren Lesen,
+Checkout/Check-in, Teilanlage, Notizen, Anmerkungen und Import in ein
+vorhandenes Projekt.
 
 `Projekt importieren` packt alle `.FCStd`-, `.step`-, `.stp`- und `.stl`-Dateien unterhalb eines gewählten
 lokalen Ordners in ein ZIP mit relativen Pfaden. Das Addon kann damit entweder
@@ -70,7 +70,8 @@ Nur FCStd-Revisionen können als Checkout-Root bearbeitet und eingecheckt werden
 die leere FCStd-Datei intern und übergibt sie direkt an das PLM. Bei einem
 geöffneten Projekt-Checkout wird die neue Revision `R0001` dort als zusätzliche
 Datei aufgenommen; andernfalls öffnet das Addon einen eigenen Checkout für das
-neue Teil.
+neue Teil. Ein auf dem Server bereits aktiver Projekt-Checkout muss dafür zuerst
+im Addon lokal geöffnet werden. Die Aktion benötigt `write` und `checkout`.
 
 ## Tests
 
@@ -135,7 +136,7 @@ Für die Entwicklung kann das Repo dorthin verlinkt werden:
 
 ```bash
 mkdir -p ~/.var/app/org.freecad.FreeCAD/data/FreeCAD/v1-1/Mod
-ln -s /home/ralf/devel/freecad-plm-addon \
+ln -s /home/ralf/devel/freecad-plm/freecad-plm-addon \
   ~/.var/app/org.freecad.FreeCAD/data/FreeCAD/v1-1/Mod/freecad-plm-addon
 ```
 
@@ -151,7 +152,7 @@ Bei einer nicht-Flatpak-Installation ist der Pfad typischerweise:
 
 ```bash
 mkdir -p ~/.local/share/FreeCAD/Mod
-ln -s /home/ralf/devel/freecad-plm-addon \
+ln -s /home/ralf/devel/freecad-plm/freecad-plm-addon \
   ~/.local/share/FreeCAD/Mod/freecad-plm-addon
 ```
 

@@ -28,6 +28,11 @@ keine unnötigen Revisionen.
 4. Ein Projekt, ein Teil und eine Revision auswählen.
 5. Die Revision schreibgeschützt öffnen oder einen Checkout starten.
 
+Für ein neues FreeCAD-Modell genügt **Neues Teil**: Name, optionale
+Teilenummer und Typ eingeben und **Anlegen und öffnen** wählen. Das Addon
+erzeugt die FCStd-Datei intern. Bei geöffnetem Projekt-Checkout wird sie dort
+als `R0001` ergänzt, andernfalls in einem eigenen Checkout geöffnet.
+
 Der lokale Workspace enthält Checkouts und zwischengespeicherte Revisionen. Der
 Server bleibt die verbindliche Quelle für Revisionen und Checkout-Sperren.
 
@@ -38,12 +43,13 @@ STEP- und STL-Revisionen können schreibgeschützt geöffnet werden. Bearbeitbar
 | Scope | Ermöglicht |
 | --- | --- |
 | `read` | Projekte, Teile, Revisionen, Notizen und Anmerkungen lesen |
-| `write` | Notizen und Anmerkungen bearbeiten |
-| `checkout` | Modelle auschecken, einchecken und Checkouts abbrechen |
+| `write` | Teile anlegen/bearbeiten, importieren sowie Notizen und Anmerkungen bearbeiten |
+| `checkout` | Modelle auschecken, einchecken, abbrechen und neue FCStd-Teile direkt öffnen |
 | `admin` | Projekte und Projektmetadaten anlegen oder bearbeiten |
 
-Für Lesen, Checkout, Check-in, Notizen und Anmerkungen ist kein `admin`-Scope
-nötig. Er wird nur für administrative Projektabläufe benötigt.
+Für normale CAD-Arbeit einschließlich Teilanlage sind `read`, `write` und
+`checkout` ausreichend. `admin` wird nur für Projektanlage und administrative
+Projektabläufe benötigt.
 
 ## Dokumentation
 

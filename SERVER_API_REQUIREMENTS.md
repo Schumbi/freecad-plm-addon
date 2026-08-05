@@ -1,5 +1,9 @@
 # Server API Requirement: Read-only Revision Manifest
 
+> Historische API-Anforderungsentwicklung. Der aktuelle Gesamtvertrag steht im
+> Server-Repository unter `planning/FREECAD_ADDON_PLAN.md`; die aktuelle
+> Bedienung beschreibt `README.md`.
+
 ## Ziel
 
 Das FreeCAD-PLM Addon soll read-only Revisionen und später echte Checkouts über dieselbe Manifest-Struktur laden können.
