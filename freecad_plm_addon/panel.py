@@ -69,9 +69,12 @@ def import_checkout_candidates(result):
     candidates = []
     for entry in snapshot.get("entries") or []:
         revision_id = entry.get("revision_id")
-        if revision_id is None:
-            continue
+        file_format = str(entry.get("file_format") or "").lower()
         path = entry.get("path") or entry.get("filename") or ""
+        if not file_format:
+            file_format = "fcstd" if path.lower().endswith(".fcstd") else ""
+        if revision_id is None or file_format != "fcstd":
+            continue
         part_number = entry.get("part_number") or ""
         part_name = entry.get("part_name") or ""
         category = entry.get("part_category") or ""
@@ -160,6 +163,16 @@ def revision_label(revision):
     if details:
         return " · ".join([label, *details])
     return label
+
+
+def revision_is_checkout_editable(revision):
+    if not isinstance(revision, dict):
+        return False
+    file_format = str(revision.get("file_format") or "").strip().lower()
+    if file_format:
+        return file_format == "fcstd"
+    filename = revision.get("original_filename") or revision.get("filename") or ""
+    return str(filename).lower().endswith(".fcstd")
 
 
 def active_checkout_revision_id(checkout):
@@ -254,6 +267,7 @@ def revision_overview_text(revision):
         ("Revision", revision.get("revision_code") or revision.get("revision") or revision.get("version")),
         ("Status", revision.get("status") or revision.get("release_status")),
         ("Datei", revision.get("original_filename") or revision.get("filename") or revision.get("file_name")),
+        ("Format", revision.get("file_format")),
         ("Groesse", format_bytes(revision.get("size_bytes"))),
         ("SHA-256", revision.get("sha256")),
         ("Erstellt", revision.get("created_at") or revision.get("created") or revision.get("uploaded_at")),
@@ -903,7 +917,7 @@ class PLMPanel:
         form.addRow("Server", server_url)
         form.addRow("API-Token", api_token)
         form.addRow("Workspace", workspace_root)
-        form.addRow("Max. FCStd-Dateien", cache_max_fcstd_files)
+        form.addRow("Max. CAD-Dateien", cache_max_fcstd_files)
         form.addRow("Max. Projekte", cache_max_projects)
         form.addRow("Max. Revisionen je Projekt", cache_max_revisions_per_project)
         layout.addLayout(form)
@@ -1168,7 +1182,7 @@ class PLMPanel:
         self.revision_summary.setText(compact_revision_summary(revision))
         self.new_annotation_button.setEnabled(True)
         self.open_readonly_button.setEnabled(True)
-        self.checkout_button.setEnabled(True)
+        self.checkout_button.setEnabled(revision_is_checkout_editable(revision))
         self.revision_details_button.setEnabled(True)
         self.revision_notes_button.setEnabled(True)
         self.revision_annotations_button.setEnabled(True)
@@ -2334,6 +2348,11 @@ class PLMPanel:
             return
         if revision is None:
             self.set_status("Keine Revision ausgewählt.")
+            return
+        if not revision_is_checkout_editable(revision):
+            self.set_status(
+                "Nur FreeCAD-Revisionen können ausgecheckt und bearbeitet werden."
+            )
             return
 
         revision_id = revision.get("id")

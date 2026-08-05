@@ -29,6 +29,7 @@ from freecad_plm_addon.panel import (
     project_import_result_text,
     project_label,
     revision_label,
+    revision_is_checkout_editable,
     revision_notes_payload,
     revision_notes_text,
     revision_overview_text,
@@ -134,6 +135,27 @@ class PanelTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_import_checkout_candidates_excludes_external_cad_roots(self):
+        result = {
+            "snapshot": {
+                "id": 9,
+                "entries": [
+                    {
+                        "path": "Vendor.step",
+                        "file_format": "step",
+                        "revision_id": 18,
+                    },
+                    {
+                        "path": "Mesh.stl",
+                        "file_format": "stl",
+                        "revision_id": 19,
+                    },
+                ],
+            }
+        }
+
+        self.assertEqual(import_checkout_candidates(result), [])
 
     def test_connection_label(self):
         self.assertEqual(connection_label("https://plm.lan.schumbi.de"), "Verbunden mit plm.lan.schumbi.de")
@@ -398,6 +420,12 @@ class PanelTests(unittest.TestCase):
 
     def test_revision_label_falls_back_to_id(self):
         self.assertEqual(revision_label({"id": 11}), "Revision 11")
+
+    def test_only_fcstd_revision_is_checkout_editable(self):
+        self.assertTrue(revision_is_checkout_editable({"file_format": "fcstd"}))
+        self.assertTrue(revision_is_checkout_editable({"filename": "Part.FCStd"}))
+        self.assertFalse(revision_is_checkout_editable({"file_format": "step"}))
+        self.assertFalse(revision_is_checkout_editable({"file_format": "stl"}))
 
     def test_revisions_from_part_detail_accepts_wrapped_part(self):
         revisions = [{"id": 1}, {"id": 2}]

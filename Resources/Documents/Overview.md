@@ -12,7 +12,7 @@ direkt in die CAD-Oberfläche.
 - Root-Dateien und referenzierte Modelle gemeinsam einchecken.
 - Aktive Checkouts wieder öffnen oder kontrolliert abbrechen.
 - Revisionsnotizen und Anmerkungen lesen und bearbeiten.
-- Lokale Modellordner als Projektstand oder neues Projekt importieren.
+- Lokale Modellordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
 
 Dateien werden anhand des Server-Manifests und ihrer SHA-256-Prüfsummen
 übertragen. Unveränderte Modelle und rein technische Speicherartefakte erzeugen
@@ -29,6 +29,8 @@ keine unnötigen Revisionen.
 
 Der lokale Workspace enthält Checkouts und zwischengespeicherte Revisionen. Der
 Server bleibt die verbindliche Quelle für Revisionen und Checkout-Sperren.
+
+STEP- und STL-Revisionen können schreibgeschützt geöffnet werden. Bearbeitbare Checkouts und Check-ins bleiben FCStd-Modellen vorbehalten.
 
 ## Berechtigungen
 

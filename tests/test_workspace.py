@@ -149,22 +149,24 @@ class WorkspaceTests(unittest.TestCase):
                 "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
             )
 
-    def test_collect_project_fcstd_files_returns_relative_paths(self):
+    def test_collect_project_fcstd_files_returns_supported_cad_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.make_fcstd(root / "Root.FCStd")
             (root / "parts").mkdir()
             self.make_fcstd(root / "parts" / "Box.FCStd")
+            (root / "parts" / "Bracket.step").write_text("step", encoding="utf-8")
+            (root / "Mesh.stl").write_text("stl", encoding="utf-8")
             (root / "notes.txt").write_text("ignore", encoding="utf-8")
 
             files = collect_project_fcstd_files(root)
 
             self.assertEqual(
                 [relative_path for relative_path, _local_path in files],
-                ["Root.FCStd", "parts/Box.FCStd"],
+                ["Mesh.stl", "Root.FCStd", "parts/Box.FCStd", "parts/Bracket.step"],
             )
 
-    def test_collect_project_fcstd_files_requires_fcstd(self):
+    def test_collect_project_fcstd_files_requires_supported_cad_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(WorkspaceError):
                 collect_project_fcstd_files(tmp)
@@ -176,13 +178,17 @@ class WorkspaceTests(unittest.TestCase):
             self.make_fcstd(root / "Assembly.FCStd")
             (root / "parts").mkdir()
             self.make_fcstd(root / "parts" / "Box.FCStd")
+            (root / "parts" / "Vendor.step").write_text("step", encoding="utf-8")
             target = Path(tmp) / "project.zip"
 
             paths = build_project_import_zip(root, target)
 
-            self.assertEqual(paths, ["Assembly.FCStd", "parts/Box.FCStd"])
+            self.assertEqual(paths, ["Assembly.FCStd", "parts/Box.FCStd", "parts/Vendor.step"])
             with ZipFile(target) as archive:
-                self.assertEqual(archive.namelist(), ["Assembly.FCStd", "parts/Box.FCStd"])
+                self.assertEqual(
+                    archive.namelist(),
+                    ["Assembly.FCStd", "parts/Box.FCStd", "parts/Vendor.step"],
+                )
 
     def test_archived_import_dir_adds_timestamp_server_and_project(self):
         path = archived_import_dir(
@@ -587,6 +593,32 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(len(changed), 1)
             self.assertEqual(changed[0]["path"], "part.FCStd")
             self.assertEqual(changed[0]["revision_code"], "R0001")
+
+    def test_external_cad_checkout_file_is_hash_checked_without_fcstd_parsing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "vendor.step"
+            path.parent.mkdir(parents=True)
+            path.write_text("ISO-10303-21;", encoding="utf-8")
+            manifest = {
+                "files": [
+                    {
+                        "path": "vendor.step",
+                        "revision_id": 10,
+                        "revision_code": "R0001",
+                        "file_format": "step",
+                        "sha256": sha256_file(path),
+                        "is_root": False,
+                    }
+                ]
+            }
+            metadata = build_checkout_metadata(manifest, tmp)
+
+            self.assertEqual(metadata["files"][0]["file_format"], "step")
+            self.assertEqual(technically_changed_manifest_files(manifest, metadata, tmp), [])
+
+            path.write_text("locally changed", encoding="utf-8")
+            with self.assertRaisesRegex(WorkspaceError, "schreibgeschützt"):
+                technically_changed_manifest_files(manifest, metadata, tmp)
 
     def test_merge_checkout_metadata_preserves_existing_change_baseline(self):
         with tempfile.TemporaryDirectory() as tmp:

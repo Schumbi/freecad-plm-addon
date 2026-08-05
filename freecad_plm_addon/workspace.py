@@ -11,7 +11,8 @@ from zipfile import BadZipFile, ZipFile
 
 from .errors import HashMismatchError, WorkspaceError
 
-CHECKOUT_METADATA_VERSION = 4
+CHECKOUT_METADATA_VERSION = 5
+PROJECT_FILE_SUFFIXES = {".fcstd", ".step", ".stp", ".stl"}
 IGNORED_DOCUMENT_PROPERTIES = {
     "LastModifiedBy",
     "LastModifiedDate",
@@ -52,13 +53,13 @@ def collect_project_fcstd_files(source_dir):
 
     files = []
     for path in sorted(source_dir.rglob("*")):
-        if not path.is_file() or path.suffix.lower() != ".fcstd":
+        if not path.is_file() or path.suffix.lower() not in PROJECT_FILE_SUFFIXES:
             continue
         relative_path = safe_zip_path(path.relative_to(source_dir).as_posix())
         files.append((relative_path, path))
 
     if not files:
-        raise WorkspaceError("Projektordner enthält keine FCStd-Dateien.")
+        raise WorkspaceError("Projektordner enthält keine unterstützten CAD-Dateien.")
     return files
 
 
@@ -212,7 +213,7 @@ def _fcstd_count(project_dirs):
         count += sum(
             1
             for path in readonly.rglob("*")
-            if path.is_file() and path.suffix.lower() == ".fcstd"
+            if path.is_file() and path.suffix.lower() in PROJECT_FILE_SUFFIXES
         )
     return count
 
@@ -453,6 +454,33 @@ def fcstd_technical_hashes(path):
     }
 
 
+def manifest_file_format(item):
+    file_format = str(item.get("file_format") or "").strip().lower()
+    if file_format:
+        return file_format
+    suffix = PurePosixPath(item.get("path") or "").suffix.lower()
+    return {
+        ".fcstd": "fcstd",
+        ".step": "step",
+        ".stp": "step",
+        ".stl": "stl",
+    }.get(suffix, "")
+
+
+def checkout_file_metadata(item, target):
+    metadata = {
+        "path": item["path"],
+        "revision_id": item.get("revision_id"),
+        "revision_code": item.get("revision_code"),
+        "file_format": manifest_file_format(item),
+    }
+    if metadata["file_format"] == "fcstd":
+        metadata.update(fcstd_technical_hashes(target))
+    else:
+        metadata["sha256"] = sha256_file(target)
+    return metadata
+
+
 def build_checkout_metadata(manifest, path):
     target_root = files_root(path)
     files = []
@@ -460,15 +488,7 @@ def build_checkout_metadata(manifest, path):
         target = safe_join(target_root, item["path"])
         if not target.exists():
             raise WorkspaceError(f"Checkout-Datei fehlt: {target}")
-        technical_hashes = fcstd_technical_hashes(target)
-        files.append(
-            {
-                "path": item["path"],
-                "revision_id": item.get("revision_id"),
-                "revision_code": item.get("revision_code"),
-                **technical_hashes,
-            }
-        )
+        files.append(checkout_file_metadata(item, target))
     return {"version": CHECKOUT_METADATA_VERSION, "files": files}
 
 
@@ -492,14 +512,7 @@ def merge_checkout_metadata(manifest, metadata, path):
         target = safe_join(target_root, item["path"])
         if not target.exists():
             raise WorkspaceError(f"Checkout-Datei fehlt: {target}")
-        files.append(
-            {
-                "path": item["path"],
-                "revision_id": item.get("revision_id"),
-                "revision_code": item.get("revision_code"),
-                **fcstd_technical_hashes(target),
-            }
-        )
+        files.append(checkout_file_metadata(item, target))
     return {"version": CHECKOUT_METADATA_VERSION, "files": files}
 
 
@@ -561,6 +574,13 @@ def technically_changed_manifest_files(manifest, metadata, path):
         target = safe_join(target_root, manifest_path)
         if not target.exists():
             raise WorkspaceError(f"Checkout-Datei fehlt: {target}")
+        if manifest_file_format(item) != "fcstd":
+            if sha256_file(target) != base.get("sha256"):
+                raise WorkspaceError(
+                    f"Externe CAD-Datei wurde lokal verändert: {manifest_path}. "
+                    "STEP- und STL-Dateien sind im Checkout schreibgeschützt."
+                )
+            continue
         technical_hashes = fcstd_technical_hashes(target)
         if (
             technical_hashes["document_sha256"] == base.get("document_sha256")

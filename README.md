@@ -28,7 +28,7 @@ Aktuell umgesetzt:
 - Revisionsnotizen bearbeiten.
 - Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder öffnen und
   löschen.
-- Lokale FreeCAD-Ordner als Projektstand oder neues Projekt importieren.
+- Lokale CAD-Ordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
 
 ## Konfiguration
 
@@ -55,7 +55,7 @@ Ohne `admin` funktionieren Lesen, Checkout/Check-in, Notizen, Anmerkungen und
 Import in ein vorhandenes Projekt. `admin` ist nötig für Projektanlage,
 Projektmetadaten und den Kombiflow "neues Projekt plus Import".
 
-`Projekt importieren` packt alle `.FCStd`-Dateien unterhalb eines gewählten
+`Projekt importieren` packt alle `.FCStd`-, `.step`-, `.stp`- und `.stl`-Dateien unterhalb eines gewählten
 lokalen Ordners in ein ZIP mit relativen Pfaden. Das Addon kann damit entweder
 einen Projektstand in ein vorhandenes Projekt importieren oder ein neues
 Projekt mit Code, Name, Status, Datum und Beschreibung anlegen und direkt
@@ -63,6 +63,8 @@ befüllen. Nach erfolgreichem Import kann ein importiertes Teil/Baugruppe als
 Root ausgewählt und sofort über den normalen Checkout-Workflow geöffnet
 werden. Der ursprüngliche Importordner wird auf Wunsch erst danach nach
 `~/FreeCAD-PLM/imported/...` verschoben.
+
+Nur FCStd-Revisionen können als Checkout-Root bearbeitet und eingecheckt werden. STEP/STL lassen sich schreibgeschützt öffnen und können als unveränderte Begleitdateien in einem FCStd-Checkout liegen.
 
 ## Tests
 
