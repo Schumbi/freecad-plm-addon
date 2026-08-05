@@ -185,6 +185,26 @@ def open_document(path, recompute=True):
     return document
 
 
+def create_empty_document(path, label=""):
+    import FreeCAD
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = FreeCAD.newDocument()
+    document_name = getattr(document, "Name", "")
+    try:
+        document.saveAs(str(path))
+        if label:
+            document.Label = label
+            document.save()
+    finally:
+        if document_name:
+            FreeCAD.closeDocument(document_name)
+    if not path.is_file():
+        raise RuntimeError("FreeCAD hat keine FCStd-Datei erzeugt.")
+    return path
+
+
 def selected_object_name():
     import FreeCADGui
 

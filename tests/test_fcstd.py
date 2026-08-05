@@ -1,6 +1,8 @@
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import Mock
 
 from freecad_plm_addon import fcstd
@@ -43,6 +45,26 @@ class FCStdTests(unittest.TestCase):
         fcstd.open_document("/tmp/part.FCStd", recompute=False)
 
         document.recompute.assert_not_called()
+
+    def test_create_empty_document_saves_and_closes_temporary_document(self):
+        document = FakeDocument("Unnamed")
+        document.saveAs = Mock(side_effect=lambda path: Path(path).write_bytes(b"fcstd"))
+        freecad = types.SimpleNamespace(
+            newDocument=Mock(return_value=document),
+            closeDocument=Mock(),
+        )
+        sys.modules["FreeCAD"] = freecad
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "Klebeschale.FCStd"
+            result = fcstd.create_empty_document(target, "Klebeschale")
+
+            self.assertEqual(result, target)
+            self.assertEqual(target.read_bytes(), b"fcstd")
+        self.assertEqual(document.Label, "Klebeschale")
+        document.saveAs.assert_called_once()
+        document.save.assert_called_once_with()
+        freecad.closeDocument.assert_called_once_with("Unnamed")
 
     def test_document_names_uses_freecad_list_documents(self):
         freecad = types.SimpleNamespace(listDocuments=Mock(return_value={"A": object(), "B": object()}))

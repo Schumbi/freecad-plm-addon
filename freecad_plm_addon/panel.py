@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -99,6 +100,23 @@ def import_checkout_candidates(result):
     return candidates
 
 
+def import_checkout_followup_text(result):
+    snapshot = result.get("snapshot") or {}
+    external_count = 0
+    for entry in snapshot.get("entries") or []:
+        path = str(entry.get("path") or entry.get("filename") or "").lower()
+        file_format = str(entry.get("file_format") or "").lower()
+        if file_format in ("step", "stl") or path.endswith((".step", ".stp", ".stl")):
+            external_count += 1
+    if external_count:
+        revision_word = "Revision" if external_count == 1 else "Revisionen"
+        return (
+            f"{external_count} STEP-/STL-{revision_word} importiert. "
+            "Diese Austauschmodelle können in der Revisionsliste schreibgeschützt geöffnet werden."
+        )
+    return "Keine bearbeitbare FCStd-Revision für einen Checkout gefunden."
+
+
 def connection_label(server_url):
     text = server_url.replace("https://", "").replace("http://", "").strip("/")
     return f"Verbunden mit {text}" if text else "Nicht verbunden."
@@ -128,6 +146,14 @@ def part_edit_payload(values, include_number=False):
     return payload
 
 
+def new_part_filename(name):
+    stem = re.sub(r"[^\w.-]+", "_", str(name or "").strip(), flags=re.UNICODE)
+    stem = stem.strip("._-") or "Neues_Teil"
+    if stem.lower().endswith(".fcstd"):
+        stem = stem[:-6].rstrip("._-") or "Neues_Teil"
+    return f"{stem}.FCStd"
+
+
 def revisions_from_part_detail(part_detail):
     if not isinstance(part_detail, dict):
         return []
@@ -152,27 +178,76 @@ def revision_label(revision):
         or revision.get("label")
         or ""
     )
-    status = revision.get("status") or revision.get("release_status") or ""
+    status = revision_status_label(
+        revision.get("status") or revision.get("release_status") or ""
+    )
+    file_format = revision_format_label(revision)
     filename = revision.get("original_filename") or revision.get("filename") or revision.get("file_name") or ""
     created = revision.get("created_at") or revision.get("created") or revision.get("uploaded_at") or ""
     if number:
         label = f"R{number}" if str(number).isdigit() else str(number)
     else:
         label = f"Revision {revision.get('id', '')}".strip()
-    details = [value for value in (status, filename, created[:10]) if value]
+    details = [value for value in (status, file_format, filename, created[:10]) if value]
     if details:
         return " · ".join([label, *details])
     return label
 
 
-def revision_is_checkout_editable(revision):
+def revision_status_label(status):
+    labels = {
+        "draft": "Entwurf",
+        "released": "Freigegeben",
+        "obsolete": "Obsolet",
+    }
+    value = str(status or "").strip()
+    return labels.get(value.lower(), value)
+
+
+def revision_file_format(revision):
     if not isinstance(revision, dict):
-        return False
+        return ""
     file_format = str(revision.get("file_format") or "").strip().lower()
     if file_format:
-        return file_format == "fcstd"
-    filename = revision.get("original_filename") or revision.get("filename") or ""
-    return str(filename).lower().endswith(".fcstd")
+        return file_format
+    filename = str(
+        revision.get("original_filename")
+        or revision.get("filename")
+        or revision.get("file_name")
+        or ""
+    ).lower()
+    if filename.endswith(".fcstd"):
+        return "fcstd"
+    if filename.endswith((".step", ".stp")):
+        return "step"
+    if filename.endswith(".stl"):
+        return "stl"
+    return ""
+
+
+def revision_format_label(revision):
+    labels = {"fcstd": "FCStd", "step": "STEP", "stl": "STL"}
+    file_format = revision_file_format(revision)
+    return labels.get(file_format, file_format.upper())
+
+
+def revision_is_checkout_editable(revision):
+    return revision_file_format(revision) == "fcstd"
+
+
+def revision_primary_action(revision):
+    if not isinstance(revision, dict) or revision.get("id") is None:
+        return "missing_revision"
+    if revision_is_checkout_editable(revision):
+        return "checkout"
+    return "open_readonly"
+
+
+def revision_workflow_hint(revision):
+    file_format = revision_format_label(revision) or "CAD"
+    if revision_is_checkout_editable(revision):
+        return f"{file_format}: bearbeitbar · Doppelklick startet den Checkout"
+    return f"{file_format}: Austauschmodell · Doppelklick öffnet schreibgeschützt"
 
 
 def active_checkout_revision_id(checkout):
@@ -235,11 +310,18 @@ def compact_revision_summary(revision):
         or revision.get("label")
         or revision.get("id")
     )
-    status = revision.get("status") or revision.get("release_status")
+    status = revision_status_label(
+        revision.get("status") or revision.get("release_status")
+    )
+    file_format = revision_format_label(revision)
     filename = revision.get("original_filename") or revision.get("filename") or revision.get("file_name")
     created = revision.get("created_at") or revision.get("created") or revision.get("uploaded_at")
     details = [f"R{number}" if str(number).isdigit() else str(number)]
-    details.extend(str(value) for value in (status, filename, (created or "")[:10]) if value)
+    details.extend(
+        str(value)
+        for value in (status, file_format, filename, (created or "")[:10])
+        if value
+    )
     return " · ".join(details)
 
 
@@ -841,7 +923,7 @@ class PLMPanel:
         self.new_part_button.clicked.connect(self.create_part_dialog)
         self.save_part_button.clicked.connect(self.save_selected_part)
         self.revisions.itemSelectionChanged.connect(self.show_revision_details)
-        self.revisions.itemDoubleClicked.connect(self.checkout_selected_revision)
+        self.revisions.itemDoubleClicked.connect(self.open_selected_revision)
         self.edit_project_button.clicked.connect(self.show_project_dialog)
         self.edit_part_button.clicked.connect(self.show_part_dialog)
         self.revision_details_button.clicked.connect(self.show_revision_details_dialog)
@@ -967,6 +1049,15 @@ class PLMPanel:
         part = items[0].data(self.QtCore.Qt.UserRole)
         return part if isinstance(part, dict) else None
 
+    def select_part_by_id(self, part_id):
+        for index in range(self.parts.count()):
+            item = self.parts.item(index)
+            part = item.data(self.QtCore.Qt.UserRole)
+            if isinstance(part, dict) and part.get("id") == part_id:
+                self.parts.setCurrentItem(item)
+                return True
+        return False
+
     def selected_revision(self):
         items = self.revisions.selectedItems()
         if not items:
@@ -1091,7 +1182,11 @@ class PLMPanel:
         self.new_annotation_button.setEnabled(False)
         self.update_annotation_controls()
         self.open_readonly_button.setEnabled(False)
+        self.open_readonly_button.setText("Schreibgeschützt öffnen")
+        self.open_readonly_button.setToolTip("")
         self.checkout_button.setEnabled(False)
+        self.checkout_button.setText("Auschecken")
+        self.checkout_button.setToolTip("")
         self.revision_details_button.setEnabled(False)
         self.revision_notes_button.setEnabled(False)
         self.revision_annotations_button.setEnabled(False)
@@ -1181,8 +1276,20 @@ class PLMPanel:
         self.technical_details.setPlainText(revision_technical_text(revision))
         self.revision_summary.setText(compact_revision_summary(revision))
         self.new_annotation_button.setEnabled(True)
+        file_format = revision_format_label(revision) or "CAD"
+        editable = revision_is_checkout_editable(revision)
+        self.open_readonly_button.setText(f"{file_format} nur öffnen")
+        self.open_readonly_button.setToolTip(
+            "Revision herunterladen und ohne PLM-Checkout öffnen."
+        )
         self.open_readonly_button.setEnabled(True)
-        self.checkout_button.setEnabled(revision_is_checkout_editable(revision))
+        self.checkout_button.setText("Auschecken" if editable else "Nicht bearbeitbar")
+        self.checkout_button.setToolTip(
+            "In den Arbeitsbereich auschecken und in FreeCAD bearbeiten."
+            if editable
+            else f"{file_format}-Revisionen sind Austauschmodelle. Verwende schreibgeschützt öffnen."
+        )
+        self.checkout_button.setEnabled(editable)
         self.revision_details_button.setEnabled(True)
         self.revision_notes_button.setEnabled(True)
         self.revision_annotations_button.setEnabled(True)
@@ -1498,12 +1605,13 @@ class PLMPanel:
     def checkout_imported_project_dialog(self, import_result, source_dir):
         candidates = import_checkout_candidates(import_result)
         if not candidates:
-            return "Kein importiertes Teil für Checkout gefunden."
+            return import_checkout_followup_text(import_result)
 
         answer = self.QtWidgets.QMessageBox.question(
             self.widget,
             "Import abgeschlossen",
-            "Soll ein importiertes Teil jetzt ausgecheckt werden?",
+            "Soll eine importierte FCStd-Revision jetzt ausgecheckt werden?\n\n"
+            "STEP- und STL-Revisionen werden nach der Auswahl schreibgeschützt geöffnet.",
             self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
             self.QtWidgets.QMessageBox.Yes,
         )
@@ -1601,6 +1709,7 @@ class PLMPanel:
         for revision in revisions:
             item = self.QtWidgets.QListWidgetItem(revision_label(revision))
             item.setData(self.QtCore.Qt.UserRole, revision)
+            item.setToolTip(revision_workflow_hint(revision))
             self.revisions.addItem(item)
 
         count = len(revisions)
@@ -1608,46 +1717,107 @@ class PLMPanel:
         self.set_status(f"{count} Revision{suffix} geladen.")
 
     def create_part_dialog(self):
+        from . import fcstd
+
         project = self.selected_project()
         project_id = project.get("id") if isinstance(project, dict) else None
         if project_id is None:
             self.set_status("Kein Projekt ausgewählt.")
             return
 
-        name, accepted = self.QtWidgets.QInputDialog.getText(
-            self.widget,
-            "Neues Teil",
-            "Name",
-            self.QtWidgets.QLineEdit.Normal,
-            "",
+        active_checkout_id = self.active_checkout_id()
+        active_project = (
+            self.active_checkout.get("project")
+            if isinstance(self.active_checkout, dict)
+            and isinstance(self.active_checkout.get("project"), dict)
+            else {}
         )
-        if not accepted:
+        active_project_id = active_project.get("id")
+        if active_project_id is not None and active_project_id != project_id:
+            self.select_project_by_id(active_project_id)
+            project = self.selected_project() or active_project
+            project_id = project.get("id")
+        if active_checkout_id is not None and self.active_checkout_dir is None:
+            self.set_status(
+                "Bitte den aktiven Checkout zuerst öffnen, bevor ein neues Teil hinzugefügt wird."
+            )
+            return
+
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Neues FreeCAD-Teil")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        intro = self.QtWidgets.QLabel(
+            (
+                "Das PLM legt Teil und Revision R0001 an und fügt die neue FCStd-Datei "
+                "direkt zum aktiven Checkout hinzu."
+                if active_checkout_id is not None
+                else (
+                    "Das PLM legt Teil und Revision R0001 an und öffnet die "
+                    "neue FCStd-Datei direkt als Checkout."
+                )
+            )
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        form = self.QtWidgets.QFormLayout()
+        name_input = self.QtWidgets.QLineEdit()
+        name_input.setPlaceholderText("z. B. Klebeschale")
+        number_input = self.QtWidgets.QLineEdit()
+        number_input.setPlaceholderText("automatisch")
+        category_input = self.QtWidgets.QComboBox()
+        category_input.addItem("Teil", "part")
+        category_input.addItem("Baugruppe", "assembly")
+        filename_label = self.QtWidgets.QLabel(new_part_filename(""))
+        form.addRow("Name", name_input)
+        form.addRow("Teilenummer", number_input)
+        form.addRow("Typ", category_input)
+        form.addRow("Neue Datei", filename_label)
+        layout.addLayout(form)
+
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        ok_button = buttons.button(self.QtWidgets.QDialogButtonBox.Ok)
+        ok_button.setText("Anlegen und öffnen")
+        ok_button.setEnabled(False)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        def update_name(value):
+            filename_label.setText(new_part_filename(value))
+            ok_button.setEnabled(bool(value.strip()))
+
+        name_input.textChanged.connect(update_name)
+        name_input.setFocus()
+
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
             self.set_status("Teilanlage abgebrochen.")
             return
 
-        name = name.strip()
+        name = name_input.text().strip()
         if not name:
             self.set_status("Name ist erforderlich.")
             return
 
-        category, accepted = self.QtWidgets.QInputDialog.getItem(
-            self.widget,
-            "Kategorie",
-            "Kategorie",
-            ["Teil", "Baugruppe"],
-            0,
-            False,
-        )
-        if not accepted:
-            self.set_status("Teilanlage abgebrochen.")
-            return
-
+        category = category_input.itemData(category_input.currentIndex()) or "part"
+        filename = new_part_filename(name)
         payload = {
+            "number": number_input.text().strip(),
             "name": name,
-            "category": "assembly" if category == "Baugruppe" else "part",
+            "category": category,
         }
         try:
-            part = self.client().create_part(project_id, payload)
+            with tempfile.TemporaryDirectory() as tmp:
+                fcstd_path = fcstd.create_empty_document(Path(tmp) / filename, name)
+                response = self.client().create_fcstd_part(
+                    project_id,
+                    payload,
+                    fcstd_path,
+                    checkout_id=active_checkout_id,
+                    workspace_hint=self.workspace_root.text().strip(),
+                )
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return
@@ -1655,11 +1825,32 @@ class PLMPanel:
             self.set_status(f"Teil konnte nicht angelegt werden: {exc}")
             return
 
-        item = self.QtWidgets.QListWidgetItem(part_label(part))
-        item.setData(self.QtCore.Qt.UserRole, part)
-        self.parts.addItem(item)
-        self.parts.setCurrentItem(item)
-        self.set_status(f"Teil angelegt: {part_label(part)}")
+        part = response.get("part") or {}
+        revision = response.get("revision") or {}
+        try:
+            if active_checkout_id is not None:
+                open_result = self.add_checkout_response_to_workspace(response)
+                result_text = f"zum Checkout hinzugefügt: {open_result['added_path']}"
+            else:
+                open_result = self.open_checkout_response_to_workspace(project, response)
+                result_text = f"als Checkout geöffnet: {open_result['root_path'].name}"
+        except Exception as exc:
+            self.refresh_parts()
+            self.refresh_active_checkouts()
+            self.set_status(
+                f"{part_label(part)} und R0001 wurden angelegt, konnten lokal "
+                f"aber nicht geöffnet werden: {exc}"
+            )
+            return
+
+        self.refresh_parts()
+        if part.get("id") is not None:
+            self.select_part_by_id(part["id"])
+        if revision.get("id") is not None:
+            self.select_revision_by_id(revision["id"])
+        self.set_status(
+            f"{part_label(part)} mit R0001 angelegt und {result_text}."
+        )
 
     def save_selected_part(self):
         part = self.selected_part()
@@ -2202,6 +2393,16 @@ class PLMPanel:
             self.refresh_annotations(revision)
         self.set_status("Anmerkung gelöscht.")
 
+    def open_selected_revision(self):
+        revision = self.selected_revision()
+        action = revision_primary_action(revision)
+        if action == "checkout":
+            self.checkout_selected_revision()
+        elif action == "open_readonly":
+            self.open_selected_revision_readonly()
+        else:
+            self.set_status("Keine Revision ausgewählt.")
+
     def open_selected_revision_readonly(self):
         from . import fcstd
 
@@ -2279,6 +2480,14 @@ class PLMPanel:
         self.set_status(message)
 
     def checkout_revision_to_workspace(self, project, revision_id, snapshot_id=None):
+        response = self.client().checkout_revision(
+            revision_id,
+            snapshot_id=snapshot_id,
+            workspace_hint=self.workspace_root.text().strip(),
+        )
+        return self.open_checkout_response_to_workspace(project, response)
+
+    def open_checkout_response_to_workspace(self, project, response):
         from . import fcstd
 
         project_code = (
@@ -2298,11 +2507,6 @@ class PLMPanel:
             )
 
         client = self.client()
-        response = client.checkout_revision(
-            revision_id,
-            snapshot_id=snapshot_id,
-            workspace_hint=workspace_root,
-        )
         checkout = response.get("checkout") or {}
         checkout_id = (
             checkout.get("id")
@@ -2328,6 +2532,14 @@ class PLMPanel:
         self.checkout_document_names = fcstd.opened_document_names(before_documents, document)
         self.active_checkout = dict(checkout)
         self.active_checkout.setdefault("id", checkout_id)
+        self.active_checkout.setdefault(
+            "project",
+            {
+                "id": project.get("id"),
+                "code": project.get("code") or project.get("project_code"),
+                "name": project.get("name"),
+            },
+        )
         self.active_checkout_dir = target_dir
         self.active_checkout_root_path = root_path
         touch_directory(target_dir)
@@ -2338,6 +2550,48 @@ class PLMPanel:
             "downloaded": downloaded,
             "closed_readonly": closed,
             "checkout": self.active_checkout,
+        }
+
+    def add_checkout_response_to_workspace(self, response):
+        from . import fcstd
+
+        if self.active_checkout_dir is None:
+            raise RuntimeError("Aktiver Checkout ist lokal noch nicht geöffnet.")
+        current_manifest = read_manifest(self.active_checkout_dir)
+        checkout_metadata = ensure_checkout_metadata(
+            current_manifest,
+            self.active_checkout_dir,
+        )
+        updated_manifest = response.get("manifest") or {}
+        added_file = response.get("added_file") or {}
+        added_path = added_file.get("path") or ""
+        if not updated_manifest.get("files") or not added_path:
+            raise RuntimeError("Server-Antwort enthält keine hinzugefügte Datei.")
+        downloaded = ensure_checkout_manifest_files(
+            self.client(),
+            updated_manifest,
+            self.active_checkout_dir,
+        )
+        write_manifest(self.active_checkout_dir, updated_manifest)
+        write_checkout_metadata(
+            self.active_checkout_dir,
+            merge_checkout_metadata(
+                updated_manifest,
+                checkout_metadata,
+                self.active_checkout_dir,
+            ),
+        )
+        local_path = safe_join(self.active_checkout_dir / "files", added_path)
+        before_documents = fcstd.document_names()
+        document = fcstd.open_document(local_path)
+        opened = fcstd.opened_document_names(before_documents, document)
+        self.checkout_document_names = sorted(
+            set(self.checkout_document_names).union(opened)
+        )
+        return {
+            "added_path": added_path,
+            "downloaded": downloaded,
+            "local_path": local_path,
         }
 
     def checkout_selected_revision(self):
@@ -2646,8 +2900,6 @@ class PLMPanel:
         self.set_status(message)
 
     def add_selected_file_to_active_checkout(self):
-        from . import fcstd
-
         checkout_id = self.active_checkout_id()
         revision = self.selected_revision()
         revision_id = revision.get("id") if isinstance(revision, dict) else None
@@ -2673,38 +2925,8 @@ class PLMPanel:
             return
 
         try:
-            current_manifest = read_manifest(self.active_checkout_dir)
-            checkout_metadata = ensure_checkout_metadata(
-                current_manifest,
-                self.active_checkout_dir,
-            )
             response = self.client().add_checkout_file(checkout_id, revision_id)
-            updated_manifest = response.get("manifest") or {}
-            added_file = response.get("added_file") or {}
-            added_path = added_file.get("path") or ""
-            if not updated_manifest.get("files") or not added_path:
-                raise RuntimeError("Server-Antwort enthält keine hinzugefügte Datei.")
-            downloaded = ensure_checkout_manifest_files(
-                self.client(),
-                updated_manifest,
-                self.active_checkout_dir,
-            )
-            write_manifest(self.active_checkout_dir, updated_manifest)
-            write_checkout_metadata(
-                self.active_checkout_dir,
-                merge_checkout_metadata(
-                    updated_manifest,
-                    checkout_metadata,
-                    self.active_checkout_dir,
-                ),
-            )
-            local_path = safe_join(self.active_checkout_dir / "files", added_path)
-            before_documents = fcstd.document_names()
-            document = fcstd.open_document(local_path)
-            opened = fcstd.opened_document_names(before_documents, document)
-            self.checkout_document_names = sorted(
-                set(self.checkout_document_names).union(opened)
-            )
+            result = self.add_checkout_response_to_workspace(response)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return
@@ -2713,8 +2935,8 @@ class PLMPanel:
             return
 
         self.set_status(
-            f"{added_path} wurde hinzugefügt, geladen und in FreeCAD geöffnet "
-            f"({len(downloaded)} neue Datei(en))."
+            f"{result['added_path']} wurde hinzugefügt, geladen und in FreeCAD geöffnet "
+            f"({len(result['downloaded'])} neue Datei(en))."
         )
 
     def remove_file_from_active_checkout(self):

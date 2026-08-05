@@ -54,6 +54,27 @@ class PLMClient:
     def create_part(self, project_id, data):
         return self._json("POST", f"/api/projects/{project_id}/parts/", data)["part"]
 
+    def create_fcstd_part(
+        self,
+        project_id,
+        data,
+        fcstd_path,
+        *,
+        checkout_id=None,
+        workspace_hint="",
+    ):
+        fields = dict(data)
+        fields["workspace_hint"] = workspace_hint
+        if checkout_id is not None:
+            fields["checkout_id"] = checkout_id
+        return self._multipart(
+            f"/api/projects/{project_id}/parts/create-fcstd/",
+            fields,
+            "file",
+            Path(fcstd_path),
+            "application/octet-stream",
+        )
+
     def get_part(self, part_id):
         return self._json("GET", f"/api/parts/{part_id}/")
 

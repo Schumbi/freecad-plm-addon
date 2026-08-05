@@ -22,6 +22,8 @@ from freecad_plm_addon.panel import (
     connection_label,
     format_bytes,
     import_checkout_candidates,
+    import_checkout_followup_text,
+    new_part_filename,
     part_label,
     part_edit_payload,
     print_freecad_console,
@@ -29,7 +31,9 @@ from freecad_plm_addon.panel import (
     project_import_result_text,
     project_label,
     revision_label,
+    revision_primary_action,
     revision_is_checkout_editable,
+    revision_workflow_hint,
     revision_notes_payload,
     revision_notes_text,
     revision_overview_text,
@@ -41,6 +45,12 @@ from freecad_plm_addon.errors import ConflictError
 
 
 class PanelTests(unittest.TestCase):
+    def test_new_part_filename_is_safe_and_keeps_fcstd_suffix(self):
+        self.assertEqual(new_part_filename("Klebeschale"), "Klebeschale.FCStd")
+        self.assertEqual(new_part_filename("Große Schale / links"), "Große_Schale_links.FCStd")
+        self.assertEqual(new_part_filename("Deckel.FCStd"), "Deckel.FCStd")
+        self.assertEqual(new_part_filename(""), "Neues_Teil.FCStd")
+
     def test_checkout_file_label_includes_part_and_revision(self):
         self.assertEqual(
             checkout_file_label(
@@ -157,6 +167,22 @@ class PanelTests(unittest.TestCase):
 
         self.assertEqual(import_checkout_candidates(result), [])
 
+    def test_import_followup_explains_external_cad_revisions(self):
+        result = {
+            "snapshot": {
+                "entries": [
+                    {"path": "Vendor.step", "file_format": "step"},
+                    {"path": "Mesh.stl", "file_format": "stl"},
+                ]
+            }
+        }
+
+        self.assertEqual(
+            import_checkout_followup_text(result),
+            "2 STEP-/STL-Revisionen importiert. Diese Austauschmodelle können "
+            "in der Revisionsliste schreibgeschützt geöffnet werden.",
+        )
+
     def test_connection_label(self):
         self.assertEqual(connection_label("https://plm.lan.schumbi.de"), "Verbunden mit plm.lan.schumbi.de")
         self.assertEqual(connection_label(""), "Nicht verbunden.")
@@ -251,7 +277,7 @@ class PanelTests(unittest.TestCase):
                     "id": 7,
                 }
             ),
-            "R0001 · Entwurf · Box.FCStd · 2026-07-10",
+            "R0001 · Entwurf · FCStd · Box.FCStd · 2026-07-10",
         )
 
     def test_checkin_result_text_reports_root_and_revision_count(self):
@@ -415,7 +441,7 @@ class PanelTests(unittest.TestCase):
                     "created_at": "2026-07-06T09:30:00Z",
                 }
             ),
-            "A · released · part.FCStd · 2026-07-06",
+            "A · Freigegeben · FCStd · part.FCStd · 2026-07-06",
         )
 
     def test_revision_label_falls_back_to_id(self):
@@ -426,6 +452,27 @@ class PanelTests(unittest.TestCase):
         self.assertTrue(revision_is_checkout_editable({"filename": "Part.FCStd"}))
         self.assertFalse(revision_is_checkout_editable({"file_format": "step"}))
         self.assertFalse(revision_is_checkout_editable({"file_format": "stl"}))
+
+    def test_revision_primary_action_matches_file_format(self):
+        self.assertEqual(
+            revision_primary_action({"id": 1, "file_format": "fcstd"}),
+            "checkout",
+        )
+        self.assertEqual(
+            revision_primary_action({"id": 2, "file_format": "step"}),
+            "open_readonly",
+        )
+        self.assertEqual(revision_primary_action({"file_format": "stl"}), "missing_revision")
+
+    def test_revision_workflow_hint_explains_double_click(self):
+        self.assertEqual(
+            revision_workflow_hint({"id": 1, "file_format": "fcstd"}),
+            "FCStd: bearbeitbar · Doppelklick startet den Checkout",
+        )
+        self.assertEqual(
+            revision_workflow_hint({"id": 2, "file_format": "stl"}),
+            "STL: Austauschmodell · Doppelklick öffnet schreibgeschützt",
+        )
 
     def test_revisions_from_part_detail_accepts_wrapped_part(self):
         revisions = [{"id": 1}, {"id": 2}]

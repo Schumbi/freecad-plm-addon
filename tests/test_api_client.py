@@ -148,6 +148,39 @@ class PLMClientTests(unittest.TestCase):
                 {"name": "Halter", "category": "part"},
             )
 
+    def test_create_fcstd_part_posts_generated_file_and_checkout_context(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {
+            "part": {"id": 5},
+            "revision": {"id": 7},
+            "checkout": {"id": 11},
+            "manifest": {"files": []},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            fcstd_path = Path(tmp) / "Halter.FCStd"
+            fcstd_path.write_bytes(b"generated-fcstd")
+            with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+                self.assertEqual(
+                    client.create_fcstd_part(
+                        3,
+                        {"name": "Halter", "category": "part"},
+                        fcstd_path,
+                        checkout_id=11,
+                        workspace_hint="/workspace",
+                    ),
+                    payload,
+                )
+
+        req = urlopen.call_args.args[0]
+        self.assertEqual(
+            req.full_url,
+            "https://plm.example/api/projects/3/parts/create-fcstd/",
+        )
+        self.assertIn(b'name="checkout_id"\r\n\r\n11', req.data)
+        self.assertIn(b'name="workspace_hint"\r\n\r\n/workspace', req.data)
+        self.assertIn(b'filename="Halter.FCStd"', req.data)
+        self.assertIn(b"generated-fcstd", req.data)
+
     def test_update_project_posts_metadata_payload(self):
         client = PLMClient("https://plm.example", "token")
         payload = {"project": {"id": 3, "code": "PRJ", "name": "Demo"}}

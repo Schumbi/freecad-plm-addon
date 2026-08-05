@@ -11,6 +11,7 @@ direkt in die CAD-Oberfläche.
 - Revisionen schreibgeschützt öffnen oder für Änderungen auschecken.
 - Root-Dateien und referenzierte Modelle gemeinsam einchecken.
 - Aktive Checkouts wieder öffnen oder kontrolliert abbrechen.
+- Neue FreeCAD-Teile mit `R0001` anlegen und direkt öffnen, ohne zuvor eine lokale Datei speichern zu müssen.
 - Revisionsnotizen und Anmerkungen lesen und bearbeiten.
 - Lokale Modellordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
 

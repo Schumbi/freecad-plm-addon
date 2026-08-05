@@ -24,7 +24,7 @@ Aktuell umgesetzt:
 - Checkout abbrechen.
 - Projektmetadaten im Addon bearbeiten: Code, Name, Status, Datum und
   Beschreibung.
-- Neue Teile/Baugruppen als PLM-Metadatensatz anlegen.
+- Neue Teile/Baugruppen samt leerer FCStd-Revision `R0001` anlegen und direkt öffnen, ohne vorheriges lokales Speichern.
 - Revisionsnotizen bearbeiten.
 - Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder öffnen und
   löschen.
@@ -65,6 +65,12 @@ werden. Der ursprüngliche Importordner wird auf Wunsch erst danach nach
 `~/FreeCAD-PLM/imported/...` verschoben.
 
 Nur FCStd-Revisionen können als Checkout-Root bearbeitet und eingecheckt werden. STEP/STL lassen sich schreibgeschützt öffnen und können als unveränderte Begleitdateien in einem FCStd-Checkout liegen.
+
+`Neues Teil` fragt nur Name, optionale Teilenummer und Typ ab. Das Addon erzeugt
+die leere FCStd-Datei intern und übergibt sie direkt an das PLM. Bei einem
+geöffneten Projekt-Checkout wird die neue Revision `R0001` dort als zusätzliche
+Datei aufgenommen; andernfalls öffnet das Addon einen eigenen Checkout für das
+neue Teil.
 
 ## Tests
 
