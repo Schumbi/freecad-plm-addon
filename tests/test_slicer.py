@@ -7,6 +7,7 @@ from zipfile import ZipFile
 from freecad_plm_addon.errors import WorkspaceError
 from freecad_plm_addon.slicer import (
     detect_slicer,
+    flatpak_cli_command,
     launch_slicer,
     parse_extra_args,
     reconcile_slicer_project,
@@ -56,6 +57,33 @@ class SlicerTests(unittest.TestCase):
             path_exists=lambda path: str(path).endswith("Bambu Studio/bambu-studio.exe"),
         )
         self.assertIn("bambu-studio.exe", windows["command"][0])
+
+    def test_uses_flatpak_spawn_from_inside_freecad_flatpak(self):
+        def which(name):
+            return "/usr/bin/flatpak-spawn" if name == "flatpak-spawn" else None
+
+        with patch("shutil.which", side_effect=which):
+            self.assertEqual(
+                flatpak_cli_command(),
+                ["/usr/bin/flatpak-spawn", "--host", "flatpak"],
+            )
+
+        detected = detect_slicer(
+            "bambu",
+            which=lambda _name: None,
+            flatpak_apps={"com.bambulab.BambuStudio"},
+            flatpak_command=["/usr/bin/flatpak-spawn", "--host", "flatpak"],
+        )
+        self.assertEqual(
+            detected["command"],
+            [
+                "/usr/bin/flatpak-spawn",
+                "--host",
+                "flatpak",
+                "run",
+                "com.bambulab.BambuStudio",
+            ],
+        )
 
     def test_parses_json_or_display_friendly_args(self):
         self.assertEqual(parse_extra_args('["--foo", "two words"]'), ["--foo", "two words"])

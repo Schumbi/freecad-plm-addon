@@ -77,6 +77,7 @@ def detect_slicer(
     platform_name=None,
     path_exists=None,
     environ=None,
+    flatpak_command=None,
 ):
     kinds = ("bambu", "orca") if kind == "auto" else (kind,)
     flatpak_apps = set(flatpak_apps or ())
@@ -101,20 +102,31 @@ def detect_slicer(
                     "command": [str(path)],
                 }
         if definition["flatpak"] in flatpak_apps:
+            flatpak_command = list(flatpak_command or ["flatpak"])
             return {
                 "kind": candidate_kind,
                 "label": definition["label"],
-                "command": ["flatpak", "run", definition["flatpak"]],
+                "command": [*flatpak_command, "run", definition["flatpak"]],
             }
     return None
 
 
-def installed_flatpak_apps():
+def flatpak_cli_command():
     flatpak = shutil.which("flatpak")
-    if not flatpak:
+    if flatpak:
+        return [flatpak]
+    flatpak_spawn = shutil.which("flatpak-spawn")
+    if flatpak_spawn:
+        return [flatpak_spawn, "--host", "flatpak"]
+    return []
+
+
+def installed_flatpak_apps(flatpak_command=None):
+    flatpak_command = list(flatpak_command or flatpak_cli_command())
+    if not flatpak_command:
         return set()
     result = subprocess.run(
-        [flatpak, "list", "--app", "--columns=application"],
+        [*flatpak_command, "list", "--app", "--columns=application"],
         capture_output=True,
         text=True,
         check=False,
@@ -126,7 +138,12 @@ def resolve_slicer_command(kind="auto", executable="", extra_args=""):
     args = parse_extra_args(extra_args)
     if executable.strip():
         return [str(Path(executable).expanduser()), *args]
-    detected = detect_slicer(kind, flatpak_apps=installed_flatpak_apps())
+    flatpak_command = flatpak_cli_command()
+    detected = detect_slicer(
+        kind,
+        flatpak_apps=installed_flatpak_apps(flatpak_command),
+        flatpak_command=flatpak_command,
+    )
     if detected is None:
         raise WorkspaceError(
             "Kein Slicer gefunden. Bitte Bambu Studio oder OrcaSlicer konfigurieren."
