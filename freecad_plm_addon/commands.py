@@ -16,6 +16,7 @@ COMMAND_NAMES = [
     "FreeCADPLM_Checkin",
     "FreeCADPLM_CancelCheckout",
     "FreeCADPLM_CreateAnnotation",
+    "FreeCADPLM_OpenInSlicer",
 ]
 
 
@@ -108,6 +109,17 @@ class CreateAnnotationCommand(BaseCommand):
         create_annotation_for_selection()
 
 
+class OpenInSlicerCommand(BaseCommand):
+    menu_text = "Im Slicer öffnen"
+    tooltip = "Ausgewählte Revision als synchronisiertes 3MF-Slicer-Projekt öffnen"
+    pixmap = "document-export"
+
+    def Activated(self):
+        from .panel import open_selected_revision_in_slicer
+
+        open_selected_revision_in_slicer()
+
+
 def register_commands():
     import FreeCADGui
 
@@ -119,6 +131,7 @@ def register_commands():
         "FreeCADPLM_Checkin": CheckinCommand(),
         "FreeCADPLM_CancelCheckout": CancelCheckoutCommand(),
         "FreeCADPLM_CreateAnnotation": CreateAnnotationCommand(),
+        "FreeCADPLM_OpenInSlicer": OpenInSlicerCommand(),
     }
     for name, command in commands.items():
         FreeCADGui.addCommand(name, command)

@@ -612,3 +612,23 @@ Projekt importieren
 Der Ordnerimport ist der V1-Hauptpfad, weil er FreeCAD-Baugruppen mit
 relativen Referenzen robuster abbildet als das reine Einsammeln geöffneter
 Dokumente.
+
+---
+
+# Server API Requirement: Slicer-Projekt synchronisieren
+
+```http
+GET /api/revisions/<revision_id>/slicer-project/
+POST /api/revisions/<revision_id>/slicer-project/
+GET /api/manufacturing-files/<manufacturing_file_id>/file/
+```
+
+`GET` benötigt `read`. Der Multipart-Upload benötigt `write` und enthält
+`file`, optional `label`, `slicer_name` sowie beim Aktualisieren zwingend den
+zuletzt gelesenen `base_sha256`. Pro Revision existiert genau ein
+`slicer_project_3mf`. Identischer Inhalt ist idempotent; ein abweichender
+veralteter Basis-Hash führt zu `409`.
+
+Die Ressource ist ein veränderlicher Arbeitsstand. Sie ist von normalen
+unveränderlichen Fertigungsdateien und einer später aus Bambuddy übernommenen
+gedruckten `gcode.3mf` getrennt.

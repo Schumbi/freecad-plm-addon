@@ -54,6 +54,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(self.params.ints["cache_max_projects"], 5)
         self.assertEqual(self.params.ints["cache_max_revisions_per_project"], 5)
 
+    def test_slicer_settings_round_trip(self):
+        config.set_slicer_kind("orca")
+        config.set_slicer_executable("/opt/OrcaSlicer/orca-slicer")
+        config.set_slicer_extra_args('["--single-instance"]')
+
+        self.assertEqual(config.get_slicer_kind(), "orca")
+        self.assertEqual(
+            config.get_slicer_executable(), "/opt/OrcaSlicer/orca-slicer"
+        )
+        self.assertEqual(config.get_slicer_extra_args(), '["--single-instance"]')
+
 
 if __name__ == "__main__":
     unittest.main()

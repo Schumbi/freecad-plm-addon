@@ -29,6 +29,9 @@ Aktuell umgesetzt:
 - Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder öffnen und
   löschen.
 - Lokale CAD-Ordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
+- FCStd-, STEP- und STL-Revisionen als 3MF in Bambu Studio oder OrcaSlicer
+  öffnen und beim Speichern automatisch mit der zugehörigen PLM-Revision
+  synchronisieren.
 
 ## Konfiguration
 
@@ -72,6 +75,32 @@ geöffneten Projekt-Checkout wird die neue Revision `R0001` dort als zusätzlich
 Datei aufgenommen; andernfalls öffnet das Addon einen eigenen Checkout für das
 neue Teil. Ein auf dem Server bereits aktiver Projekt-Checkout muss dafür zuerst
 im Addon lokal geöffnet werden. Die Aktion benötigt `write` und `checkout`.
+
+### Slicer-Projekte
+
+Unter `Verbindungseinstellungen` wird der Slicer auf `Automatisch erkennen`,
+`Bambu Studio`, `OrcaSlicer` oder `Benutzerdefiniert` gestellt. Der
+Programmpfad kann leer bleiben; unter Linux erkennt das Addon auch die
+Flatpaks `com.bambulab.BambuStudio` und `io.github.softfever.OrcaSlicer`.
+Zusätzliche Argumente werden als JSON-Liste, zum Beispiel
+`["--single-instance"]`, gespeichert und ohne Shell an den Prozess übergeben.
+
+Nach Auswahl einer FCStd-, STEP- oder STL-Revision startet `Im Slicer öffnen`
+den Ablauf. Existiert noch kein Slicer-Projekt, lädt das Addon die CAD-Datei,
+erzeugt mit FreeCAD eine generische 3MF und legt sie direkt im PLM ab. Ein
+vorhandener Arbeitsstand wird stattdessen vom Server geladen. Das lokale
+Projekt liegt unter:
+
+```text
+~/FreeCAD-PLM/<server>/<projekt>/slicer-projects/revision-<id>/
+```
+
+Eine Dateiüberwachung erkennt anschließend das Speichern im Slicer und lädt
+die geänderte 3MF automatisch hoch. `sync.json` enthält nur IDs und Hashes,
+keine Zugangsdaten. Änderungen auf zwei Rechnern werden über den letzten
+Server-Hash erkannt; bei einem Konflikt bleibt die lokale Datei unangetastet.
+Der Workflow benötigt die Token-Scopes `read` und `write`, aber keinen
+Checkout und keinen zusätzlichen Hintergrunddienst.
 
 ## Tests
 

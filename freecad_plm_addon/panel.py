@@ -570,6 +570,7 @@ class PLMPanel:
         self.active_checkout_dir = None
         self.active_checkout_root_path = None
         self.current_annotations = []
+        self.slicer_monitors = {}
 
         layout = self.QtWidgets.QVBoxLayout(self.widget)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -621,6 +622,9 @@ class PLMPanel:
         self.cache_max_revisions_per_project.setValue(
             config.get_cache_max_revisions_per_project()
         )
+        self.slicer_kind = config.get_slicer_kind()
+        self.slicer_executable = config.get_slicer_executable()
+        self.slicer_extra_args = config.get_slicer_extra_args()
 
         splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Vertical)
         layout.addWidget(splitter, 1)
@@ -836,6 +840,8 @@ class PLMPanel:
         self.open_readonly_button.setEnabled(False)
         self.checkout_button = self.QtWidgets.QPushButton("Auschecken")
         self.checkout_button.setEnabled(False)
+        self.open_slicer_button = self.QtWidgets.QPushButton("Im Slicer öffnen")
+        self.open_slicer_button.setEnabled(False)
         self.revision_details_button = self.QtWidgets.QPushButton("Details")
         self.revision_notes_button = self.QtWidgets.QPushButton("Notizen")
         self.revision_annotations_button = self.QtWidgets.QPushButton("Anmerkungen")
@@ -845,6 +851,7 @@ class PLMPanel:
         for button in (
             self.checkout_button,
             self.open_readonly_button,
+            self.open_slicer_button,
             self.revision_details_button,
             self.revision_notes_button,
             self.revision_annotations_button,
@@ -945,6 +952,7 @@ class PLMPanel:
         )
         self.delete_annotation_button.clicked.connect(self.delete_selected_annotation)
         self.open_readonly_button.clicked.connect(self.open_selected_revision_readonly)
+        self.open_slicer_button.clicked.connect(self.open_selected_revision_in_slicer)
         self.checkout_button.clicked.connect(self.checkout_selected_revision)
         self.checkin_button.clicked.connect(self.checkin_active_checkout)
         self.add_checkout_file_button.clicked.connect(self.add_selected_file_to_active_checkout)
@@ -995,6 +1003,17 @@ class PLMPanel:
         cache_max_revisions_per_project.setValue(
             self.cache_max_revisions_per_project.value()
         )
+        slicer_kind = self.QtWidgets.QComboBox()
+        slicer_kind.addItem("Automatisch erkennen", "auto")
+        slicer_kind.addItem("Bambu Studio", "bambu")
+        slicer_kind.addItem("OrcaSlicer", "orca")
+        slicer_kind.addItem("Benutzerdefiniert", "custom")
+        slicer_kind_index = slicer_kind.findData(self.slicer_kind)
+        slicer_kind.setCurrentIndex(slicer_kind_index if slicer_kind_index >= 0 else 0)
+        slicer_executable = self.QtWidgets.QLineEdit(self.slicer_executable)
+        slicer_executable.setPlaceholderText("Leer lassen für automatische Erkennung")
+        slicer_extra_args = self.QtWidgets.QLineEdit(self.slicer_extra_args)
+        slicer_extra_args.setPlaceholderText('["--option"]')
 
         form.addRow("Server", server_url)
         form.addRow("API-Token", api_token)
@@ -1002,6 +1021,9 @@ class PLMPanel:
         form.addRow("Max. CAD-Dateien", cache_max_fcstd_files)
         form.addRow("Max. Projekte", cache_max_projects)
         form.addRow("Max. Revisionen je Projekt", cache_max_revisions_per_project)
+        form.addRow("Slicer", slicer_kind)
+        form.addRow("Slicer-Programm", slicer_executable)
+        form.addRow("Zusätzliche Argumente", slicer_extra_args)
         layout.addLayout(form)
 
         buttons = self.QtWidgets.QDialogButtonBox(
@@ -1024,6 +1046,12 @@ class PLMPanel:
         self.cache_max_revisions_per_project.setValue(
             cache_max_revisions_per_project.value()
         )
+        self.slicer_kind = slicer_kind.itemData(slicer_kind.currentIndex()) or "auto"
+        self.slicer_executable = slicer_executable.text().strip()
+        self.slicer_extra_args = slicer_extra_args.text().strip() or "[]"
+        config.set_slicer_kind(self.slicer_kind)
+        config.set_slicer_executable(self.slicer_executable)
+        config.set_slicer_extra_args(self.slicer_extra_args)
         self.refresh_projects()
 
     def selected_project(self):
@@ -1187,6 +1215,8 @@ class PLMPanel:
         self.checkout_button.setEnabled(False)
         self.checkout_button.setText("Auschecken")
         self.checkout_button.setToolTip("")
+        self.open_slicer_button.setEnabled(False)
+        self.open_slicer_button.setToolTip("")
         self.revision_details_button.setEnabled(False)
         self.revision_notes_button.setEnabled(False)
         self.revision_annotations_button.setEnabled(False)
@@ -1290,6 +1320,12 @@ class PLMPanel:
             else f"{file_format}-Revisionen sind Austauschmodelle. Verwende schreibgeschützt öffnen."
         )
         self.checkout_button.setEnabled(editable)
+        self.open_slicer_button.setEnabled(
+            revision_file_format(revision) in ("fcstd", "step", "stl")
+        )
+        self.open_slicer_button.setToolTip(
+            "CAD-Geometrie als 3MF öffnen und gespeicherte Slicer-Einstellungen automatisch synchronisieren."
+        )
         self.revision_details_button.setEnabled(True)
         self.revision_notes_button.setEnabled(True)
         self.revision_annotations_button.setEnabled(True)
@@ -2403,6 +2439,183 @@ class PLMPanel:
         else:
             self.set_status("Keine Revision ausgewählt.")
 
+    def _sync_slicer_project_path(self, project_path, revision, state=None):
+        from .slicer import read_sync_state, validate_3mf, write_sync_state
+        from .workspace import sha256_file
+
+        project_path = Path(project_path)
+        state = dict(state or read_sync_state(project_path))
+        validate_3mf(project_path)
+        local_sha256 = sha256_file(project_path)
+        if local_sha256 == state.get("server_sha256"):
+            return False
+        result = self.client().sync_slicer_project(
+            revision["id"],
+            project_path,
+            base_sha256=state.get("server_sha256", ""),
+            label="Slicer-Projekt",
+            slicer_name=state.get("slicer_name", ""),
+        )
+        server_project = result["slicer_project"]
+        state.update(
+            {
+                "revision_id": revision["id"],
+                "manufacturing_file_id": server_project["id"],
+                "server_sha256": server_project["sha256"],
+                "local_sha256": local_sha256,
+                "sync_status": "synchronized",
+            }
+        )
+        write_sync_state(project_path, state)
+        self.set_status(f"Slicer-Projekt synchronisiert: {project_path.name}")
+        return True
+
+    def _slicer_file_changed(self, project_path, revision):
+        from .slicer import read_sync_state, write_sync_state
+
+        try:
+            self._sync_slicer_project_path(project_path, revision)
+        except ConflictError as exc:
+            state = read_sync_state(project_path)
+            state["sync_status"] = "conflict"
+            write_sync_state(project_path, state)
+            self.set_status(f"Slicer-Synchronisationskonflikt: {exc}")
+        except Exception as exc:
+            self.set_status(f"Slicer-Projekt noch nicht synchronisiert: {exc}")
+
+    def open_selected_revision_in_slicer(self):
+        from .slicer import (
+            SLICERS,
+            SlicerProjectMonitor,
+            export_revision_to_3mf,
+            launch_slicer,
+            read_sync_state,
+            reconcile_slicer_project,
+            resolve_slicer_command,
+            slicer_project_dir,
+            slicer_project_filename,
+            validate_3mf,
+            write_sync_state,
+        )
+        from .workspace import sha256_file
+
+        project = self.selected_project()
+        part = self.selected_part()
+        revision = self.selected_revision()
+        if not project or not part or not revision or revision.get("id") is None:
+            self.set_status("Projekt, Teil und Revision auswählen.")
+            return
+        if revision_file_format(revision) not in ("fcstd", "step", "stl"):
+            self.set_status("Diese Revision kann nicht als Slicer-Projekt geöffnet werden.")
+            return
+
+        revision_id = revision["id"]
+        project_code = project.get("code") or f"project-{project.get('id')}"
+        target_dir = slicer_project_dir(
+            self.workspace_root.text().strip(),
+            self.server_url.text().strip(),
+            project_code,
+            revision_id,
+        )
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / slicer_project_filename(
+            part.get("number", ""),
+            revision.get("revision_code", ""),
+            revision.get("original_filename", ""),
+        )
+
+        try:
+            command = resolve_slicer_command(
+                self.slicer_kind,
+                self.slicer_executable,
+                self.slicer_extra_args,
+            )
+            client = self.client()
+            server_project = client.get_slicer_project(revision_id)
+            state = read_sync_state(target_path)
+            local_sha = sha256_file(target_path) if target_path.is_file() else ""
+            previous_server_sha = state.get("server_sha256", "")
+            current_server_sha = server_project.get("sha256", "") if server_project else ""
+            reconcile_action = reconcile_slicer_project(
+                local_sha, previous_server_sha, current_server_sha
+            )
+
+            if reconcile_action == "conflict":
+                raise ConflictError(
+                    409,
+                    "Lokale und serverseitige Slicer-Projekte wurden geändert. "
+                    "Die lokale Datei bleibt unangetastet.",
+                )
+            if reconcile_action == "upload":
+                self._sync_slicer_project_path(target_path, revision, state)
+                server_project = client.get_slicer_project(revision_id)
+            elif reconcile_action in ("download", "current") and server_project:
+                if reconcile_action == "download":
+                    client.download_manufacturing_file(
+                        server_project["download_url"],
+                        target_path,
+                        server_project["sha256"],
+                    )
+                state.update(
+                    {
+                        "revision_id": revision_id,
+                        "manufacturing_file_id": server_project["id"],
+                        "server_sha256": server_project["sha256"],
+                        "local_sha256": server_project["sha256"],
+                        "sync_status": "synchronized",
+                    }
+                )
+
+            if not target_path.is_file():
+                revision_detail = client.get_revision(revision_id)
+                source_name = revision_detail.get("original_filename") or "revision.FCStd"
+                source_path = target_dir / "source" / Path(source_name).name
+                client.download_revision_file(
+                    revision_detail["download_url"],
+                    source_path,
+                    revision_detail["sha256"],
+                )
+                self.set_status("Erzeuge generische 3MF aus der CAD-Revision...")
+                export_revision_to_3mf(source_path, target_path)
+
+            validate_3mf(target_path)
+            slicer_label = SLICERS.get(self.slicer_kind, {}).get("label", "")
+            if not slicer_label:
+                joined = " ".join(command).lower()
+                slicer_label = "OrcaSlicer" if "orca" in joined else "Bambu Studio"
+            state.update(
+                {
+                    "revision_id": revision_id,
+                    "project_code": project_code,
+                    "part_id": part.get("id"),
+                    "slicer_name": slicer_label,
+                }
+            )
+            write_sync_state(target_path, state)
+            self._sync_slicer_project_path(target_path, revision, state)
+            monitor = SlicerProjectMonitor(
+                self.QtCore,
+                target_path,
+                lambda changed_path, item=dict(revision): self._slicer_file_changed(
+                    changed_path, item
+                ),
+            )
+            self.slicer_monitors[str(target_path)] = monitor
+            launch_slicer(target_path, command)
+        except ConflictError as exc:
+            self.set_status(f"Slicer-Projekt-Konflikt: {exc}")
+            return
+        except PLMError as exc:
+            self.set_status(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.set_status(f"Slicer konnte nicht geöffnet werden: {exc}")
+            return
+
+        self.set_status(
+            f"Slicer-Projekt geöffnet; Speichern wird automatisch synchronisiert: {target_path}"
+        )
+
     def open_selected_revision_readonly(self):
         from . import fcstd
 
@@ -3148,3 +3361,9 @@ def create_annotation_for_selection():
         object_name=object_name,
         subelement=subelement,
     )
+
+
+def open_selected_revision_in_slicer():
+    show_panel()
+    if _active_panel is not None:
+        _active_panel.open_selected_revision_in_slicer()

@@ -3,6 +3,8 @@ DEFAULT_WORKSPACE_ROOT = "~/FreeCAD-PLM"
 DEFAULT_CACHE_MAX_FCSTD_FILES = 20
 DEFAULT_CACHE_MAX_PROJECTS = 5
 DEFAULT_CACHE_MAX_REVISIONS_PER_PROJECT = 5
+DEFAULT_SLICER_KIND = "auto"
+DEFAULT_SLICER_EXTRA_ARGS = "[]"
 PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/FreeCADPLM"
 
 
@@ -34,6 +36,30 @@ def get_workspace_root():
 
 def set_workspace_root(value):
     _params().SetString("workspace_root", value)
+
+
+def get_slicer_kind():
+    return _params().GetString("slicer_kind", DEFAULT_SLICER_KIND)
+
+
+def set_slicer_kind(value):
+    _params().SetString("slicer_kind", str(value or DEFAULT_SLICER_KIND))
+
+
+def get_slicer_executable():
+    return _params().GetString("slicer_executable", "")
+
+
+def set_slicer_executable(value):
+    _params().SetString("slicer_executable", str(value or ""))
+
+
+def get_slicer_extra_args():
+    return _params().GetString("slicer_extra_args", DEFAULT_SLICER_EXTRA_ARGS)
+
+
+def set_slicer_extra_args(value):
+    _params().SetString("slicer_extra_args", str(value or DEFAULT_SLICER_EXTRA_ARGS))
 
 
 def _get_int(name, default, minimum):

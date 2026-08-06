@@ -133,6 +133,42 @@ class PLMClientTests(unittest.TestCase):
             self.assertEqual(req.full_url, "https://plm.example/api/revisions/17/notes/")
             self.assertEqual(json.loads(req.data.decode("utf-8")), {"notes": "Prüfen"})
 
+    def test_get_and_sync_slicer_project(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {
+            "slicer_project": {"id": 4, "sha256": "a" * 64},
+            "created": True,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "part.3mf"
+            project_path.write_bytes(b"3mf")
+            with patch(
+                "urllib.request.urlopen", return_value=FakeResponse(payload)
+            ) as urlopen:
+                self.assertEqual(
+                    client.sync_slicer_project(
+                        17,
+                        project_path,
+                        base_sha256="b" * 64,
+                        slicer_name="OrcaSlicer",
+                    ),
+                    payload,
+                )
+                req = urlopen.call_args.args[0]
+                self.assertEqual(
+                    req.full_url,
+                    "https://plm.example/api/revisions/17/slicer-project/",
+                )
+                self.assertIn(b'name="base_sha256"', req.data)
+                self.assertIn(("b" * 64).encode(), req.data)
+                self.assertIn(b'filename="part.3mf"', req.data)
+
+        with patch(
+            "urllib.request.urlopen",
+            return_value=FakeResponse({"slicer_project": payload["slicer_project"]}),
+        ):
+            self.assertEqual(client.get_slicer_project(17), payload["slicer_project"])
+
     def test_create_part_posts_json_payload(self):
         client = PLMClient("https://plm.example", "token")
         payload = {"part": {"id": 5, "name": "Halter"}}

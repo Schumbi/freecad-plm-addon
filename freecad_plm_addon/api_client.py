@@ -97,6 +97,35 @@ class PLMClient:
             path = f"{path}?{parse.urlencode({'snapshot_id': snapshot_id})}"
         return self._json("GET", path)["manifest"]
 
+    def get_slicer_project(self, revision_id):
+        return self._json(
+            "GET", f"/api/revisions/{revision_id}/slicer-project/"
+        )["slicer_project"]
+
+    def sync_slicer_project(
+        self,
+        revision_id,
+        project_path,
+        *,
+        base_sha256="",
+        label="",
+        slicer_name="",
+    ):
+        return self._multipart(
+            f"/api/revisions/{revision_id}/slicer-project/",
+            {
+                "base_sha256": base_sha256,
+                "label": label,
+                "slicer_name": slicer_name,
+            },
+            "file",
+            Path(project_path),
+            "model/3mf",
+        )
+
+    def download_manufacturing_file(self, download_url, target_path, expected_sha256):
+        return self.download_revision_file(download_url, target_path, expected_sha256)
+
     def download_revision_file(self, download_url, target_path, expected_sha256):
         target_path = Path(target_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
