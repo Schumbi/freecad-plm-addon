@@ -1,6 +1,7 @@
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 from freecad_plm_addon.panel import (
     annotation_create_payload,
@@ -39,12 +40,25 @@ from freecad_plm_addon.panel import (
     revision_overview_text,
     revision_technical_text,
     revisions_from_part_detail,
+    save_slicer_settings,
     unchanged_checkout_text,
 )
 from freecad_plm_addon.errors import ConflictError
 
 
 class PanelTests(unittest.TestCase):
+    def test_save_slicer_settings_imports_and_updates_config(self):
+        with (
+            patch("freecad_plm_addon.config.set_slicer_kind") as set_kind,
+            patch("freecad_plm_addon.config.set_slicer_executable") as set_executable,
+            patch("freecad_plm_addon.config.set_slicer_extra_args") as set_extra_args,
+        ):
+            save_slicer_settings("bambu", "", "[]")
+
+        set_kind.assert_called_once_with("bambu")
+        set_executable.assert_called_once_with("")
+        set_extra_args.assert_called_once_with("[]")
+
     def test_new_part_filename_is_safe_and_keeps_fcstd_suffix(self):
         self.assertEqual(new_part_filename("Klebeschale"), "Klebeschale.FCStd")
         self.assertEqual(new_part_filename("Große Schale / links"), "Große_Schale_links.FCStd")

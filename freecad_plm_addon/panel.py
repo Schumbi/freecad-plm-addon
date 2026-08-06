@@ -122,6 +122,14 @@ def connection_label(server_url):
     return f"Verbunden mit {text}" if text else "Nicht verbunden."
 
 
+def save_slicer_settings(kind, executable, extra_args):
+    from . import config
+
+    config.set_slicer_kind(kind)
+    config.set_slicer_executable(executable)
+    config.set_slicer_extra_args(extra_args)
+
+
 def part_label(part):
     number = part.get("number") or part.get("part_number") or part.get("code") or ""
     name = part.get("name") or part.get("title") or ""
@@ -1049,9 +1057,11 @@ class PLMPanel:
         self.slicer_kind = slicer_kind.itemData(slicer_kind.currentIndex()) or "auto"
         self.slicer_executable = slicer_executable.text().strip()
         self.slicer_extra_args = slicer_extra_args.text().strip() or "[]"
-        config.set_slicer_kind(self.slicer_kind)
-        config.set_slicer_executable(self.slicer_executable)
-        config.set_slicer_extra_args(self.slicer_extra_args)
+        save_slicer_settings(
+            self.slicer_kind,
+            self.slicer_executable,
+            self.slicer_extra_args,
+        )
         self.refresh_projects()
 
     def selected_project(self):
