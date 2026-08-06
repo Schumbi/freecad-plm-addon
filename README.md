@@ -67,7 +67,11 @@ Root ausgewählt und sofort über den normalen Checkout-Workflow geöffnet
 werden. Der ursprüngliche Importordner wird auf Wunsch erst danach nach
 `~/FreeCAD-PLM/imported/...` verschoben.
 
-Nur FCStd-Revisionen können als Checkout-Root bearbeitet und eingecheckt werden. STEP/STL lassen sich schreibgeschützt öffnen und können als unveränderte Begleitdateien in einem FCStd-Checkout liegen.
+Nur FCStd-Revisionen können als Checkout-Root bearbeitet und eingecheckt
+werden. STEP/STP werden beim schreibgeschützten Öffnen über FreeCADs
+`Import`-Modul und STL über das `Mesh`-Modul in ein neues, nicht gespeichertes
+Arbeitsdokument geladen. Sie können außerdem als unveränderte Begleitdateien in
+einem FCStd-Checkout liegen.
 
 `Neues Teil` fragt nur Name, optionale Teilenummer und Typ ab. Das Addon erzeugt
 die leere FCStd-Datei intern und übergibt sie direkt an das PLM. Bei einem
@@ -95,12 +99,22 @@ Projekt liegt unter:
 ~/FreeCAD-PLM/<server>/<projekt>/slicer-projects/revision-<id>/
 ```
 
+Beim FCStd-Export wählt das Addon sichtbare Geometrie auf der höchsten
+sinnvollen Ebene aus. Enthält ein sichtbarer `PartDesign::Body` ein ebenfalls
+sichtbares Tip-Feature, wird nur der Body exportiert; dadurch erscheint das
+Modell im Slicer nicht doppelt. Unabhängige Körper und Meshes bleiben erhalten.
+
 Eine Dateiüberwachung erkennt anschließend das Speichern im Slicer und lädt
 die geänderte 3MF automatisch hoch. `sync.json` enthält nur IDs und Hashes,
 keine Zugangsdaten. Änderungen auf zwei Rechnern werden über den letzten
 Server-Hash erkannt; bei einem Konflikt bleibt die lokale Datei unangetastet.
 Der Workflow benötigt die Token-Scopes `read` und `write`, aber keinen
 Checkout und keinen zusätzlichen Hintergrunddienst.
+
+Der Einzelrechner-Workflow wurde mit FreeCAD Flatpak und Bambu Studio Flatpak
+manuell abgenommen. Noch offen ist der manuelle Test mit zwei Rechnern:
+Serverstand auf Rechner B laden und eine parallele Änderung als Konflikt
+erkennen. Der Server überschreibt bei einem veralteten Basis-Hash nicht still.
 
 ## Tests
 
