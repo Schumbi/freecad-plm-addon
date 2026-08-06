@@ -234,6 +234,32 @@ def launch_slicer(project_path, command):
     return argv
 
 
+def select_export_objects(objects):
+    """Return visible top-level geometry without exporting child shapes twice."""
+    candidates = []
+    for obj in objects:
+        view_object = getattr(obj, "ViewObject", None)
+        visible = getattr(view_object, "Visibility", True)
+        if visible and (hasattr(obj, "Shape") or hasattr(obj, "Mesh")):
+            candidates.append(obj)
+
+    candidate_ids = {id(obj) for obj in candidates}
+    selected = []
+    for obj in candidates:
+        parent_getter = getattr(obj, "getParentGeoFeatureGroup", None)
+        parent = parent_getter() if callable(parent_getter) else None
+        seen = set()
+        while parent is not None and id(parent) not in seen:
+            if id(parent) in candidate_ids:
+                break
+            seen.add(id(parent))
+            parent_getter = getattr(parent, "getParentGeoFeatureGroup", None)
+            parent = parent_getter() if callable(parent_getter) else None
+        else:
+            selected.append(obj)
+    return selected
+
+
 def export_revision_to_3mf(source_path, target_path):
     """Export an FCStd/STEP/STL revision through FreeCAD's Mesh workbench."""
     import FreeCAD
@@ -258,12 +284,7 @@ def export_revision_to_3mf(source_path, target_path):
         else:
             raise WorkspaceError(f"Nicht unterstütztes CAD-Format: {source_path.suffix}")
         document.recompute()
-        objects = []
-        for obj in document.Objects:
-            view_object = getattr(obj, "ViewObject", None)
-            visible = getattr(view_object, "Visibility", True)
-            if visible and (hasattr(obj, "Shape") or hasattr(obj, "Mesh")):
-                objects.append(obj)
+        objects = select_export_objects(document.Objects)
         if not objects:
             raise WorkspaceError("Die Revision enthält keine exportierbare Geometrie.")
         Mesh.export(objects, str(target_path))

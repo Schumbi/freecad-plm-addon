@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from zipfile import ZipFile
 
@@ -13,6 +14,7 @@ from freecad_plm_addon.slicer import (
     reconcile_slicer_project,
     read_sync_state,
     resolve_slicer_command,
+    select_export_objects,
     slicer_project_dir,
     slicer_project_filename,
     validate_3mf,
@@ -21,6 +23,18 @@ from freecad_plm_addon.slicer import (
 
 
 class SlicerTests(unittest.TestCase):
+    class ExportObject:
+        def __init__(self, *, visible=True, parent=None, shape=False, mesh=False):
+            self.ViewObject = SimpleNamespace(Visibility=visible)
+            self._parent = parent
+            if shape:
+                self.Shape = object()
+            if mesh:
+                self.Mesh = object()
+
+        def getParentGeoFeatureGroup(self):
+            return self._parent
+
     def test_detects_binary_and_flatpak_without_shell(self):
         detected = detect_slicer(
             "auto", which=lambda name: "/usr/bin/orca-slicer" if name == "orca-slicer" else None
@@ -133,6 +147,23 @@ class SlicerTests(unittest.TestCase):
         self.assertEqual(reconcile_slicer_project("old", "old", "new"), "download")
         self.assertEqual(reconcile_slicer_project("local", "old", "old"), "upload")
         self.assertEqual(reconcile_slicer_project("local", "old", "new"), "conflict")
+
+    def test_export_selects_body_without_visible_tip_duplicate(self):
+        body = self.ExportObject(shape=True)
+        tip = self.ExportObject(parent=body, shape=True)
+
+        self.assertEqual(select_export_objects([body, tip]), [body])
+
+    def test_export_keeps_independent_geometry_and_visible_child(self):
+        hidden_body = self.ExportObject(visible=False, shape=True)
+        visible_tip = self.ExportObject(parent=hidden_body, shape=True)
+        step_part = self.ExportObject(shape=True)
+        stl_mesh = self.ExportObject(mesh=True)
+
+        self.assertEqual(
+            select_export_objects([hidden_body, visible_tip, step_part, stl_mesh]),
+            [visible_tip, step_part, stl_mesh],
+        )
 
 
 if __name__ == "__main__":
