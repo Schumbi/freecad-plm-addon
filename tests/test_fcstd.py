@@ -22,6 +22,8 @@ class FCStdTests(unittest.TestCase):
     def tearDown(self):
         sys.modules.pop("FreeCAD", None)
         sys.modules.pop("FreeCADGui", None)
+        sys.modules.pop("Import", None)
+        sys.modules.pop("Mesh", None)
 
     def test_open_document_recomputes_and_updates_gui(self):
         document = FakeDocument("Assembly")
@@ -45,6 +47,59 @@ class FCStdTests(unittest.TestCase):
         fcstd.open_document("/tmp/part.FCStd", recompute=False)
 
         document.recompute.assert_not_called()
+
+    def test_open_document_imports_stl_into_new_document(self):
+        document = FakeDocument("MeshDocument")
+        freecad = types.SimpleNamespace(
+            newDocument=Mock(return_value=document),
+            closeDocument=Mock(),
+        )
+        mesh = types.SimpleNamespace(insert=Mock())
+        sys.modules["FreeCAD"] = freecad
+        sys.modules["Mesh"] = mesh
+
+        result = fcstd.open_document("/tmp/Deep_TB_Fin_Adapter_.stl")
+
+        self.assertIs(result, document)
+        freecad.newDocument.assert_called_once_with()
+        mesh.insert.assert_called_once_with(
+            "/tmp/Deep_TB_Fin_Adapter_.stl", "MeshDocument"
+        )
+        self.assertEqual(document.Label, "Deep_TB_Fin_Adapter_")
+        document.recompute.assert_called_once_with()
+
+    def test_open_document_imports_step_into_new_document(self):
+        document = FakeDocument("StepDocument")
+        freecad = types.SimpleNamespace(
+            newDocument=Mock(return_value=document),
+            closeDocument=Mock(),
+        )
+        import_module = types.SimpleNamespace(insert=Mock())
+        sys.modules["FreeCAD"] = freecad
+        sys.modules["Import"] = import_module
+
+        result = fcstd.open_document("/tmp/vendor-part.STP")
+
+        self.assertIs(result, document)
+        import_module.insert.assert_called_once_with(
+            "/tmp/vendor-part.STP", "StepDocument"
+        )
+        self.assertEqual(document.Label, "vendor-part")
+
+    def test_open_document_closes_import_document_after_failure(self):
+        document = FakeDocument("BrokenImport")
+        freecad = types.SimpleNamespace(
+            newDocument=Mock(return_value=document),
+            closeDocument=Mock(),
+        )
+        mesh = types.SimpleNamespace(insert=Mock(side_effect=OSError("invalid mesh")))
+        sys.modules["FreeCAD"] = freecad
+        sys.modules["Mesh"] = mesh
+
+        with self.assertRaises(OSError):
+            fcstd.open_document("/tmp/broken.stl")
+
+        freecad.closeDocument.assert_called_once_with("BrokenImport")
 
     def test_create_empty_document_saves_and_closes_temporary_document(self):
         document = FakeDocument("Unnamed")

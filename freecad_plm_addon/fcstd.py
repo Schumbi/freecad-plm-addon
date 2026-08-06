@@ -173,7 +173,25 @@ def modified_document_names(names):
 def open_document(path, recompute=True):
     import FreeCAD
 
-    document = FreeCAD.openDocument(str(path))
+    path = Path(path)
+    suffix = path.suffix.lower()
+    if suffix in (".step", ".stp", ".stl"):
+        document = FreeCAD.newDocument()
+        try:
+            if suffix == ".stl":
+                import Mesh
+
+                Mesh.insert(str(path), document.Name)
+            else:
+                import Import
+
+                Import.insert(str(path), document.Name)
+            document.Label = path.stem
+        except Exception:
+            FreeCAD.closeDocument(document.Name)
+            raise
+    else:
+        document = FreeCAD.openDocument(str(path))
     if recompute and document is not None:
         document.recompute()
         try:
