@@ -515,6 +515,119 @@ class WorkspaceTests(unittest.TestCase):
 
             self.assertEqual(fcstd_technical_hashes(path), before)
 
+    def test_fcstd_technical_hashes_ignore_freecad_build_migration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+            legacy_xml = b"""
+                <Document ProgramVersion="1.1R44874 (Git)">
+                    <ObjectData>
+                        <Object name="Sketch001">
+                            <Properties Count="2">
+                                <Property name="AttacherEngine" type="App::PropertyEnumeration">
+                                    <Integer value="0" CustomEnum="true" />
+                                    <CustomEnumList count="4">
+                                        <Enum value="Engine 3D" />
+                                        <Enum value="Engine Plane" />
+                                        <Enum value="Engine Line" />
+                                        <Enum value="Engine Point" />
+                                    </CustomEnumList>
+                                </Property>
+                                <Property name="AttacherType" type="App::PropertyString">
+                                    <String value="Attacher::AttachEnginePlane" />
+                                </Property>
+                            </Properties>
+                        </Object>
+                    </ObjectData>
+                </Document>
+            """
+            self.replace_fcstd_member(path, "Document.xml", legacy_xml)
+            before = fcstd_technical_hashes(path)
+
+            def migrate(root):
+                root.attrib["ProgramVersion"] = "1.1R44987 (Git)"
+                properties = root.find("./ObjectData/Object/Properties")
+                properties.find("./Property[@name='AttacherEngine']/Integer").attrib[
+                    "value"
+                ] = "1"
+                fuzzy = ElementTree.SubElement(
+                    properties,
+                    "Property",
+                    {"name": "FuzzyTolerance", "type": "App::PropertyLength"},
+                )
+                ElementTree.SubElement(fuzzy, "Float", {"value": "-1.0000000000000000"})
+                properties.attrib["Count"] = "3"
+
+            self.mutate_fcstd_document_xml(path, migrate)
+
+            self.assertEqual(fcstd_technical_hashes(path), before)
+
+    def test_fcstd_technical_hashes_detect_non_default_fuzzy_tolerance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+            before = fcstd_technical_hashes(path)
+
+            def add_fuzzy_tolerance(root):
+                object_data = ElementTree.SubElement(root, "ObjectData")
+                obj = ElementTree.SubElement(object_data, "Object", {"name": "Pad"})
+                properties = ElementTree.SubElement(obj, "Properties", {"Count": "1"})
+                fuzzy = ElementTree.SubElement(
+                    properties,
+                    "Property",
+                    {"name": "FuzzyTolerance", "type": "App::PropertyLength"},
+                )
+                ElementTree.SubElement(fuzzy, "Float", {"value": "0.0100000000000000"})
+
+            self.mutate_fcstd_document_xml(path, add_fuzzy_tolerance)
+
+            self.assertNotEqual(
+                fcstd_technical_hashes(path)["document_sha256"],
+                before["document_sha256"],
+            )
+
+    def test_fcstd_technical_hashes_detect_attacher_type_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+
+            def add_attachment(root):
+                object_data = ElementTree.SubElement(root, "ObjectData")
+                obj = ElementTree.SubElement(object_data, "Object", {"name": "Sketch"})
+                properties = ElementTree.SubElement(obj, "Properties", {"Count": "2"})
+                engine = ElementTree.SubElement(
+                    properties,
+                    "Property",
+                    {"name": "AttacherEngine", "type": "App::PropertyEnumeration"},
+                )
+                ElementTree.SubElement(engine, "Integer", {"value": "1"})
+                attacher_type = ElementTree.SubElement(
+                    properties,
+                    "Property",
+                    {"name": "AttacherType", "type": "App::PropertyString"},
+                )
+                ElementTree.SubElement(
+                    attacher_type,
+                    "String",
+                    {"value": "Attacher::AttachEnginePlane"},
+                )
+
+            self.mutate_fcstd_document_xml(path, add_attachment)
+            before = fcstd_technical_hashes(path)
+
+            def change_attacher_type(root):
+                value = root.find(
+                    "./ObjectData/Object/Properties/Property[@name='AttacherType']/String"
+                )
+                value.attrib["value"] = "Attacher::AttachEngine3D"
+
+            self.mutate_fcstd_document_xml(path, change_attacher_type)
+
+            self.assertNotEqual(
+                fcstd_technical_hashes(path)["document_sha256"],
+                before["document_sha256"],
+            )
+
     def test_fcstd_technical_hashes_detect_brep_change(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "part.FCStd"

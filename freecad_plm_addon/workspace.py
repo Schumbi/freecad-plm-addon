@@ -11,7 +11,7 @@ from zipfile import BadZipFile, ZipFile
 
 from .errors import HashMismatchError, WorkspaceError
 
-CHECKOUT_METADATA_VERSION = 5
+CHECKOUT_METADATA_VERSION = 6
 PROJECT_FILE_SUFFIXES = {".fcstd", ".step", ".stp", ".stl"}
 IGNORED_DOCUMENT_PROPERTIES = {
     "LastModifiedBy",
@@ -22,6 +22,9 @@ IGNORED_DOCUMENT_ATTRIBUTES = {
     "Touched",
     "stamp",
     "status",
+}
+IGNORED_DOCUMENT_ROOT_ATTRIBUTES = {
+    "ProgramVersion",
 }
 CHECKOUT_FILE_REFERENCE_RE = re.compile(
     r"(?P<prefix>'?)(?:[A-Za-z]:)?[/\\][^'\"<>]*[/\\]checkout-\d+[/\\]files[/\\]"
@@ -412,11 +415,59 @@ def _normalize_document_attribute_value(value):
     return format(number, ".12g")
 
 
+def _is_default_fuzzy_tolerance(property_node):
+    if property_node.attrib.get("name") != "FuzzyTolerance":
+        return False
+    value_node = property_node.find("./Float")
+    if value_node is None:
+        return False
+    try:
+        return float(value_node.attrib.get("value", "")) == -1.0
+    except ValueError:
+        return False
+
+
+def _remove_redundant_object_properties(root):
+    for properties_node in root.findall("./ObjectData/Object/Properties"):
+        properties = list(properties_node.findall("./Property"))
+        properties_by_name = {
+            property_node.attrib.get("name"): property_node
+            for property_node in properties
+        }
+
+        # FreeCAD 1.1.3 adds the disabled default to older PartDesign features.
+        # A non-default value remains model-relevant and is kept.
+        for property_node in properties:
+            if _is_default_fuzzy_tolerance(property_node):
+                properties_node.remove(property_node)
+
+        # AttacherType stores the semantic engine class. AttacherEngine is a
+        # redundant enum whose numeric index was rewritten between 1.1 builds.
+        attacher_type = properties_by_name.get("AttacherType")
+        attacher_engine = properties_by_name.get("AttacherEngine")
+        type_value = (
+            attacher_type.find("./String") if attacher_type is not None else None
+        )
+        if (
+            attacher_engine is not None
+            and type_value is not None
+            and str(type_value.attrib.get("value") or "").strip()
+        ):
+            properties_node.remove(attacher_engine)
+
+        properties_node.attrib["Count"] = str(
+            len(properties_node.findall("./Property"))
+        )
+
+
 def normalized_document_xml(document_xml):
     try:
         root = ElementTree.fromstring(document_xml)
     except ElementTree.ParseError as exc:
         raise WorkspaceError("Document.xml konnte nicht gelesen werden.") from exc
+
+    for name in IGNORED_DOCUMENT_ROOT_ATTRIBUTES:
+        root.attrib.pop(name, None)
 
     properties_node = root.find("./Properties")
     if properties_node is not None:
@@ -424,6 +475,8 @@ def normalized_document_xml(document_xml):
             if property_node.attrib.get("name") in IGNORED_DOCUMENT_PROPERTIES:
                 properties_node.remove(property_node)
         properties_node.attrib["Count"] = str(len(properties_node.findall("./Property")))
+
+    _remove_redundant_object_properties(root)
 
     for node in root.iter():
         for name in IGNORED_DOCUMENT_ATTRIBUTES:
