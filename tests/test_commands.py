@@ -7,6 +7,8 @@ from freecad_plm_addon.commands import (
     CheckinCommand,
     ConnectCommand,
     CreateAnnotationCommand,
+    OpenDeepLinkCommand,
+    OpenInSlicerCommand,
     RefreshCommand,
 )
 
@@ -23,6 +25,8 @@ class CommandResourceTests(unittest.TestCase):
             CheckinCommand(),
             CancelCheckoutCommand(),
             CreateAnnotationCommand(),
+            OpenInSlicerCommand(),
+            OpenDeepLinkCommand(),
         ]
 
         for command in commands:
@@ -33,10 +37,12 @@ class CommandResourceTests(unittest.TestCase):
                 self.assertIn("Pixmap", resources)
                 self.assertTrue(resources["Pixmap"])
 
-    def test_connection_commands_use_local_icons(self):
+    def test_commands_with_packaged_icons_reference_existing_files(self):
         commands = [
             ActivateConnectionCommand(),
             ConnectCommand(),
+            OpenInSlicerCommand(),
+            OpenDeepLinkCommand(),
         ]
 
         for command in commands:

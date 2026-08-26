@@ -15,6 +15,11 @@ Aktuell umgesetzt:
 
 - Server verbinden und Projekte, Teile/Baugruppen, Revisionen und aktive
   Checkouts laden.
+- Projekte, Teile/Baugruppen und Revisionen platzsparend in einem lazy
+  geladenen Baum mit Kontextmenüs durchsuchen. Aktive Checkouts werden direkt
+  an ihrer Revision markiert und automatisch aufgeklappt.
+- Eine einzige kontextabhängige Arbeitsleiste zeigt zur aktuellen Auswahl die
+  wichtigste Aktion; seltenere Aktionen liegen unter `Mehr`.
 - Revisionen read-only über ein Server-Manifest öffnen.
 - Revisionen auschecken, Manifest-Dateien mit SHA-256 prüfen und Root-Datei in
   FreeCAD öffnen.
@@ -28,6 +33,8 @@ Aktuell umgesetzt:
 - Revisionsnotizen bearbeiten.
 - Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder öffnen und
   löschen.
+- Streng validierte `freecad-plm://revision/...`-Links aus dem Web öffnen;
+  Checkout-Links werden vor Ausführung nochmals bestätigt.
 - Lokale CAD-Ordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
 - FCStd-, STEP- und STL-Revisionen als 3MF in Bambu Studio oder OrcaSlicer
   öffnen und beim Speichern automatisch mit der zugehörigen PLM-Revision
@@ -72,6 +79,12 @@ werden. STEP/STP werden beim schreibgeschützten Öffnen über FreeCADs
 `Import`-Modul und STL über das `Mesh`-Modul in ein neues, nicht gespeichertes
 Arbeitsdokument geladen. Sie können außerdem als unveränderte Begleitdateien in
 einem FCStd-Checkout liegen.
+
+Der Befehl `PLM-Link öffnen` akzeptiert Revisionslinks aus dem Web-UI. Wenn das
+Betriebssystem das Schema `freecad-plm://` an FreeCAD übergibt, verarbeitet die
+Workbench denselben Link beim Aktivieren automatisch. Links dürfen nur
+`project_id`, `part_id` und eine der Aktionen `checkout`, `readonly` oder
+`slicer` enthalten; Zugangsdaten werden nie in den Link geschrieben.
 
 `Neues Teil` fragt nur Name, optionale Teilenummer und Typ ab. Das Addon erzeugt
 die leere FCStd-Datei intern und übergibt sie direkt an das PLM. Bei einem

@@ -17,6 +17,7 @@ COMMAND_NAMES = [
     "FreeCADPLM_CancelCheckout",
     "FreeCADPLM_CreateAnnotation",
     "FreeCADPLM_OpenInSlicer",
+    "FreeCADPLM_OpenDeepLink",
 ]
 
 
@@ -112,12 +113,23 @@ class CreateAnnotationCommand(BaseCommand):
 class OpenInSlicerCommand(BaseCommand):
     menu_text = "Im Slicer öffnen"
     tooltip = "Ausgewählte Revision als synchronisiertes 3MF-Slicer-Projekt öffnen"
-    pixmap = "document-export"
+    pixmap = icon_path("open-slicer.svg")
 
     def Activated(self):
         from .panel import open_selected_revision_in_slicer
 
         open_selected_revision_in_slicer()
+
+
+class OpenDeepLinkCommand(BaseCommand):
+    menu_text = "PLM-Link öffnen"
+    tooltip = "Einen freecad-plm://-Link sicher öffnen"
+    pixmap = icon_path("open-deep-link.svg")
+
+    def Activated(self):
+        from .panel import prompt_for_revision_deep_link
+
+        prompt_for_revision_deep_link()
 
 
 def register_commands():
@@ -132,6 +144,7 @@ def register_commands():
         "FreeCADPLM_CancelCheckout": CancelCheckoutCommand(),
         "FreeCADPLM_CreateAnnotation": CreateAnnotationCommand(),
         "FreeCADPLM_OpenInSlicer": OpenInSlicerCommand(),
+        "FreeCADPLM_OpenDeepLink": OpenDeepLinkCommand(),
     }
     for name, command in commands.items():
         FreeCADGui.addCommand(name, command)

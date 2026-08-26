@@ -281,6 +281,35 @@ def checkout_guard_action(active_checkout, target_revision):
     return "blocked_by_other_checkout"
 
 
+def checkout_visual_state(checkout, local_checkout_id=None, error=False):
+    if not isinstance(checkout, dict) or checkout.get("id") is None:
+        return "none"
+    if error:
+        return "error"
+    if checkout.get("id") == local_checkout_id:
+        return "local"
+    return "server"
+
+
+def context_primary_action(kind, revision=None, checkout=None, local_checkout_id=None):
+    if kind in ("", None):
+        return "import_project"
+    if kind == "project":
+        return "new_part"
+    if kind == "part":
+        return "edit_part"
+    if kind == "checkout_error":
+        return "refresh"
+    if kind != "revision":
+        return "none"
+    state = checkout_visual_state(checkout, local_checkout_id)
+    if state == "local":
+        return "checkin"
+    if state == "server":
+        return "reopen_checkout"
+    return revision_primary_action(revision)
+
+
 def checkout_display_name(path):
     if not path:
         return ""
@@ -551,25 +580,25 @@ def _load_qt():
     try:
         from PySide import QtCore, QtGui
 
-        return QtCore, QtGui
+        return QtCore, QtGui, QtGui
     except ImportError:
         pass
 
     try:
-        from PySide6 import QtCore, QtWidgets
+        from PySide6 import QtCore, QtGui, QtWidgets
 
-        return QtCore, QtWidgets
+        return QtCore, QtGui, QtWidgets
     except ImportError:
-        from PySide2 import QtCore, QtWidgets
+        from PySide2 import QtCore, QtGui, QtWidgets
 
-        return QtCore, QtWidgets
+        return QtCore, QtGui, QtWidgets
 
 
 class PLMPanel:
     def __init__(self):
         from . import config
 
-        self.QtCore, self.QtWidgets = _load_qt()
+        self.QtCore, self.QtGui, self.QtWidgets = _load_qt()
         self.widget = self.QtWidgets.QWidget()
         self.widget.setObjectName("FreeCADPLMPanelWidget")
         self.readonly_document_names = []
@@ -577,6 +606,12 @@ class PLMPanel:
         self.active_checkout = None
         self.active_checkout_dir = None
         self.active_checkout_root_path = None
+        self.server_checkouts = []
+        self.checkout_tree_items = {}
+        self.checkout_errors = {}
+        self.context_primary_callback = None
+        self.context_primary_label = ""
+        self.context_more_actions = []
         self.current_annotations = []
         self.slicer_monitors = {}
 
@@ -642,70 +677,17 @@ class PLMPanel:
         browser_layout.setContentsMargins(2, 2, 2, 2)
         browser_layout.setSpacing(4)
 
-        browser_splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Vertical)
-        browser_layout.addWidget(browser_splitter, 1)
+        tree_header = self.QtWidgets.QHBoxLayout()
+        tree_header.addWidget(self.QtWidgets.QLabel("Projekte · Teile · Revisionen"))
+        tree_header.addStretch(1)
+        browser_layout.addLayout(tree_header)
 
-        projects_widget = self.QtWidgets.QWidget()
-        projects_layout = self.QtWidgets.QVBoxLayout(projects_widget)
-        projects_layout.setContentsMargins(0, 0, 0, 0)
-        projects_layout.setSpacing(3)
-        projects_layout.addWidget(self.QtWidgets.QLabel("Projekte"))
-        self.projects = self.QtWidgets.QListWidget()
-        projects_layout.addWidget(self.projects)
-        project_action_row = self.QtWidgets.QHBoxLayout()
-        project_action_row.setContentsMargins(0, 0, 0, 0)
-        project_action_row.setSpacing(4)
-        self.import_project_button = self.QtWidgets.QPushButton("Projekt importieren")
-        self.import_project_button.setEnabled(False)
-        self.edit_project_button = self.QtWidgets.QPushButton("Projekt bearbeiten")
-        self.edit_project_button.setEnabled(False)
-        project_action_row.addWidget(self.import_project_button)
-        project_action_row.addWidget(self.edit_project_button)
-        projects_layout.addLayout(project_action_row)
-        browser_splitter.addWidget(projects_widget)
-
-        parts_widget = self.QtWidgets.QWidget()
-        parts_layout = self.QtWidgets.QVBoxLayout(parts_widget)
-        parts_layout.setContentsMargins(0, 0, 0, 0)
-        parts_layout.setSpacing(3)
-        parts_layout.addWidget(self.QtWidgets.QLabel("Teile"))
-        self.parts = self.QtWidgets.QListWidget()
-        parts_layout.addWidget(self.parts)
-
-        part_action_row = self.QtWidgets.QHBoxLayout()
-        part_action_row.setContentsMargins(0, 0, 0, 0)
-        part_action_row.setSpacing(4)
-        self.new_part_button = self.QtWidgets.QPushButton("Neues Teil")
-        self.new_part_button.setEnabled(False)
-        self.edit_part_button = self.QtWidgets.QPushButton("Teil bearbeiten")
-        self.edit_part_button.setEnabled(False)
-        part_action_row.addWidget(self.new_part_button)
-        part_action_row.addWidget(self.edit_part_button)
-        parts_layout.addLayout(part_action_row)
-        browser_splitter.addWidget(parts_widget)
-
-        revisions_widget = self.QtWidgets.QWidget()
-        revisions_layout = self.QtWidgets.QVBoxLayout(revisions_widget)
-        revisions_layout.setContentsMargins(0, 0, 0, 0)
-        revisions_layout.setSpacing(3)
-        revisions_layout.addWidget(self.QtWidgets.QLabel("Revisionen"))
-        self.revisions = self.QtWidgets.QListWidget()
-        revisions_layout.addWidget(self.revisions)
-        browser_splitter.addWidget(revisions_widget)
-
-        active_checkouts_widget = self.QtWidgets.QWidget()
-        active_checkouts_layout = self.QtWidgets.QVBoxLayout(active_checkouts_widget)
-        active_checkouts_layout.setContentsMargins(0, 0, 0, 0)
-        active_checkouts_layout.setSpacing(3)
-        self.active_checkouts_title = self.QtWidgets.QLabel("Aktive Checkouts")
-        active_checkouts_layout.addWidget(self.active_checkouts_title)
-        self.active_checkouts = self.QtWidgets.QListWidget()
-        active_checkouts_layout.addWidget(self.active_checkouts)
-        browser_splitter.addWidget(active_checkouts_widget)
-        browser_splitter.setStretchFactor(0, 1)
-        browser_splitter.setStretchFactor(1, 2)
-        browser_splitter.setStretchFactor(2, 3)
-        browser_splitter.setStretchFactor(3, 2)
+        self.browser_tree = self.QtWidgets.QTreeWidget()
+        self.browser_tree.setHeaderHidden(True)
+        self.browser_tree.setUniformRowHeights(True)
+        self.browser_tree.setAnimated(False)
+        self.browser_tree.setContextMenuPolicy(self.QtCore.Qt.CustomContextMenu)
+        browser_layout.addWidget(self.browser_tree, 1)
 
         details_widget = self.QtWidgets.QWidget()
         details_widget.setObjectName("PLMActionBar")
@@ -715,7 +697,7 @@ class PLMPanel:
             "background: #f6f6f6;"
             "}"
         )
-        details_widget.setMaximumHeight(112)
+        details_widget.setMaximumHeight(48)
         details_layout = self.QtWidgets.QVBoxLayout(details_widget)
         details_layout.setContentsMargins(4, 3, 4, 3)
         details_layout.setSpacing(3)
@@ -833,93 +815,28 @@ class PLMPanel:
 
         self.detail_tabs.setVisible(False)
 
-        revision_row = self.QtWidgets.QHBoxLayout()
-        revision_row.setContentsMargins(0, 0, 0, 0)
-        revision_row.setSpacing(4)
-        self.revision_summary = self.QtWidgets.QLabel("Keine Revision ausgewählt.")
-        self.revision_summary.setWordWrap(False)
-        self.revision_summary.setMinimumWidth(80)
-        self.revision_summary.setSizePolicy(
+        context_row = self.QtWidgets.QHBoxLayout()
+        context_row.setContentsMargins(0, 0, 0, 0)
+        context_row.setSpacing(4)
+        self.context_summary = self.QtWidgets.QLabel("Projekt auswählen.")
+        self.context_summary.setWordWrap(False)
+        self.context_summary.setMinimumWidth(80)
+        self.context_summary.setSizePolicy(
             self.QtWidgets.QSizePolicy.Ignored,
             self.QtWidgets.QSizePolicy.Preferred,
         )
-        revision_row.addWidget(self.revision_summary, 1)
-        self.open_readonly_button = self.QtWidgets.QPushButton("Read-only öffnen")
-        self.open_readonly_button.setEnabled(False)
-        self.checkout_button = self.QtWidgets.QPushButton("Auschecken")
-        self.checkout_button.setEnabled(False)
-        self.open_slicer_button = self.QtWidgets.QPushButton("Im Slicer öffnen")
-        self.open_slicer_button.setEnabled(False)
-        self.revision_details_button = self.QtWidgets.QPushButton("Details")
-        self.revision_notes_button = self.QtWidgets.QPushButton("Notizen")
-        self.revision_annotations_button = self.QtWidgets.QPushButton("Anmerkungen")
-        self.revision_details_button.setEnabled(False)
-        self.revision_notes_button.setEnabled(False)
-        self.revision_annotations_button.setEnabled(False)
-        for button in (
-            self.checkout_button,
-            self.open_readonly_button,
-            self.open_slicer_button,
-            self.revision_details_button,
-            self.revision_notes_button,
-            self.revision_annotations_button,
-        ):
-            button.setFixedHeight(self.connection_summary_height())
-            revision_row.addWidget(button)
-        details_layout.addLayout(revision_row)
-
-        self.active_checkout_card = self.QtWidgets.QWidget()
-        self.active_checkout_card.setObjectName("ActiveCheckoutCard")
-        self.active_checkout_card.setStyleSheet(
-            "#ActiveCheckoutCard {"
-            "border: 1px solid #8aa3c7;"
-            "background: #eef5ff;"
-            "border-radius: 4px;"
-            "}"
-        )
-        self.active_checkout_card.setMaximumHeight(self.connection_summary_height())
-        active_checkout_layout = self.QtWidgets.QHBoxLayout(self.active_checkout_card)
-        active_checkout_layout.setContentsMargins(6, 0, 6, 0)
-        active_checkout_layout.setSpacing(4)
-        self.active_checkout_title = self.QtWidgets.QLabel("Aktiver Checkout")
-        self.active_checkout_title.setStyleSheet("font-weight: 600;")
-        active_checkout_layout.addWidget(self.active_checkout_title)
-        self.active_checkout_label = self.QtWidgets.QLabel("Kein aktiver Checkout.")
-        self.active_checkout_label.setWordWrap(False)
-        self.active_checkout_label.setSizePolicy(
-            self.QtWidgets.QSizePolicy.Ignored,
-            self.QtWidgets.QSizePolicy.Preferred,
-        )
-        active_checkout_layout.addWidget(self.active_checkout_label, 1)
-
-        checkout_action_row = self.QtWidgets.QHBoxLayout()
-        checkout_action_row.setContentsMargins(0, 0, 0, 0)
-        checkout_action_row.setSpacing(4)
-        checkout_action_row.addWidget(self.active_checkout_card, 1)
-        self.reopen_checkout_button = self.QtWidgets.QPushButton("Öffnen")
-        self.reopen_checkout_button.setEnabled(False)
-        self.add_checkout_file_button = self.QtWidgets.QPushButton("Teil hinzufügen")
-        self.add_checkout_file_button.setEnabled(False)
-        self.remove_checkout_file_button = self.QtWidgets.QPushButton("Teil entfernen")
-        self.remove_checkout_file_button.setEnabled(False)
-        self.checkin_button = self.QtWidgets.QPushButton("Einchecken")
-        self.cancel_checkout_button = self.QtWidgets.QPushButton("Abbrechen")
-        for button in (
-            self.reopen_checkout_button,
-            self.add_checkout_file_button,
-            self.remove_checkout_file_button,
-            self.checkin_button,
-            self.cancel_checkout_button,
-        ):
-            button.setFixedHeight(self.connection_summary_height())
-        self.checkin_button.setEnabled(False)
-        self.cancel_checkout_button.setEnabled(False)
-        checkout_action_row.addWidget(self.reopen_checkout_button)
-        checkout_action_row.addWidget(self.add_checkout_file_button)
-        checkout_action_row.addWidget(self.remove_checkout_file_button)
-        checkout_action_row.addWidget(self.checkin_button)
-        checkout_action_row.addWidget(self.cancel_checkout_button)
-        details_layout.addLayout(checkout_action_row)
+        context_row.addWidget(self.context_summary, 1)
+        self.context_primary_button = self.QtWidgets.QPushButton("Projekt importieren")
+        self.context_primary_button.setEnabled(False)
+        self.context_primary_button.setFixedHeight(self.connection_summary_height())
+        context_row.addWidget(self.context_primary_button)
+        self.context_more_button = self.QtWidgets.QToolButton()
+        self.context_more_button.setText("Mehr")
+        self.context_more_button.setPopupMode(self.QtWidgets.QToolButton.InstantPopup)
+        self.context_more_button.setFixedHeight(self.connection_summary_height())
+        self.context_more_button.setEnabled(False)
+        context_row.addWidget(self.context_more_button)
+        details_layout.addLayout(context_row)
 
         self.status = self.QtWidgets.QLabel("")
         self.status.setVisible(False)
@@ -931,19 +848,11 @@ class PLMPanel:
 
         self.refresh_button.clicked.connect(self.refresh_projects)
         self.settings_button.clicked.connect(self.show_connection_settings_dialog)
-        self.projects.itemSelectionChanged.connect(self.refresh_parts)
-        self.parts.itemSelectionChanged.connect(self.refresh_revisions)
-        self.save_project_button.clicked.connect(self.save_selected_project)
-        self.import_project_button.clicked.connect(self.import_project_dialog)
-        self.new_part_button.clicked.connect(self.create_part_dialog)
-        self.save_part_button.clicked.connect(self.save_selected_part)
-        self.revisions.itemSelectionChanged.connect(self.show_revision_details)
-        self.revisions.itemDoubleClicked.connect(self.open_selected_revision)
-        self.edit_project_button.clicked.connect(self.show_project_dialog)
-        self.edit_part_button.clicked.connect(self.show_part_dialog)
-        self.revision_details_button.clicked.connect(self.show_revision_details_dialog)
-        self.revision_notes_button.clicked.connect(self.show_revision_notes_dialog)
-        self.revision_annotations_button.clicked.connect(self.show_annotations_dialog)
+        self.browser_tree.itemSelectionChanged.connect(self.browser_selection_changed)
+        self.browser_tree.itemExpanded.connect(self.browser_item_expanded)
+        self.browser_tree.itemDoubleClicked.connect(self.browser_item_double_clicked)
+        self.browser_tree.customContextMenuRequested.connect(self.show_browser_context_menu)
+        self.context_primary_button.clicked.connect(self.run_context_primary_action)
         self.save_revision_notes_button.clicked.connect(self.save_revision_notes)
         self.revert_revision_notes_button.clicked.connect(self.revert_revision_notes)
         self.annotation_filter.currentIndexChanged.connect(self.apply_current_annotation_filter)
@@ -959,15 +868,7 @@ class PLMPanel:
             lambda: self.update_selected_annotation_status("open")
         )
         self.delete_annotation_button.clicked.connect(self.delete_selected_annotation)
-        self.open_readonly_button.clicked.connect(self.open_selected_revision_readonly)
-        self.open_slicer_button.clicked.connect(self.open_selected_revision_in_slicer)
-        self.checkout_button.clicked.connect(self.checkout_selected_revision)
-        self.checkin_button.clicked.connect(self.checkin_active_checkout)
-        self.add_checkout_file_button.clicked.connect(self.add_selected_file_to_active_checkout)
-        self.remove_checkout_file_button.clicked.connect(self.remove_file_from_active_checkout)
-        self.cancel_checkout_button.clicked.connect(self.cancel_active_checkout)
-        self.active_checkouts.itemSelectionChanged.connect(self.update_reopen_checkout_button)
-        self.reopen_checkout_button.clicked.connect(self.reopen_selected_checkout)
+        self.update_context_actions()
 
     def connection_summary_height(self):
         return self.widget.fontMetrics().lineSpacing() + 8
@@ -978,7 +879,124 @@ class PLMPanel:
     def set_connected(self, server_url):
         self.connection_summary.setText(connection_label(server_url))
         self.refresh_button.setVisible(True)
-        self.import_project_button.setEnabled(True)
+        self.update_context_actions()
+
+    def run_context_primary_action(self):
+        callback = self.context_primary_callback
+        if callable(callback):
+            callback()
+
+    def set_context_actions(self, summary, primary_label, primary_callback, more_actions):
+        self.context_summary.setText(summary)
+        self.context_primary_button.setText(primary_label or "Keine Aktion")
+        self.context_primary_callback = primary_callback
+        self.context_primary_label = primary_label or ""
+        self.context_more_actions = list(more_actions)
+        self.context_primary_button.setEnabled(callable(primary_callback))
+        menu = self.QtWidgets.QMenu(self.context_more_button)
+        for label, callback in more_actions:
+            if label is None:
+                menu.addSeparator()
+                continue
+            action = menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked=False, selected_callback=callback: selected_callback()
+            )
+        self.context_more_button.setMenu(menu)
+        self.context_more_button.setEnabled(bool(more_actions))
+
+    def update_context_actions(self):
+        item = self.browser_tree.currentItem()
+        kind = self.tree_item_kind(item)
+        project = self.selected_project()
+        part = self.selected_part()
+        revision = self.selected_revision()
+        checkout = self.selected_tree_checkout()
+        primary = context_primary_action(
+            kind,
+            revision,
+            checkout,
+            self.active_checkout_id(),
+        )
+        summary = "Projekt auswählen."
+        label = "Projekt importieren"
+        callback = (
+            self.import_project_dialog
+            if self.server_url.text().strip() and self.api_token.text().strip()
+            else None
+        )
+        more = []
+
+        if kind == "project":
+            summary = project_label(project or {})
+            label = "Neues Teil"
+            callback = self.create_part_dialog
+            more = [
+                ("Projekt importieren", self.import_project_dialog),
+                ("Projekt bearbeiten", self.show_project_dialog),
+            ]
+        elif kind == "part":
+            summary = part_label(part or {})
+            label = "Teil bearbeiten"
+            callback = self.show_part_dialog
+            more = [("Revisionen aktualisieren", self.refresh_revisions)]
+        elif kind == "checkout_error":
+            summary = item.text(0) if item is not None else "Checkout-Fehler"
+            label = "Aktualisieren"
+            callback = self.refresh_projects
+        elif kind == "revision":
+            summary = compact_revision_summary(revision)
+            state = checkout_visual_state(
+                checkout,
+                self.active_checkout_id(),
+                bool(self.tree_item_checkout_error(item)),
+            )
+            if state == "local":
+                summary = f"Checkout lokal · {summary}"
+            elif state == "server":
+                summary = f"Checkout auf Server · {summary}"
+            elif state == "error":
+                summary = f"Checkout fehlerhaft · {summary}"
+
+            action_map = {
+                "checkout": ("Auschecken", self.checkout_selected_revision),
+                "open_readonly": (
+                    "Schreibgeschützt öffnen",
+                    self.open_selected_revision_readonly,
+                ),
+                "reopen_checkout": ("Checkout öffnen", self.reopen_selected_checkout),
+                "checkin": ("Einchecken", self.checkin_active_checkout),
+                "refresh": ("Aktualisieren", self.refresh_projects),
+            }
+            label, callback = action_map.get(primary, ("Keine Aktion", None))
+            if state == "local":
+                more = [
+                    ("Checkout öffnen", self.open_active_checkout_root),
+                    ("Teil hinzufügen", self.choose_revision_for_active_checkout),
+                    ("Teil entfernen", self.remove_file_from_active_checkout),
+                    (None, None),
+                    ("Checkout abbrechen", self.cancel_active_checkout),
+                ]
+            elif revision_is_checkout_editable(revision or {}):
+                more.append(("Schreibgeschützt öffnen", self.open_selected_revision_readonly))
+                if (
+                    self.active_checkout_id() is not None
+                    and revision.get("id") != active_checkout_revision_id(self.active_checkout)
+                ):
+                    more.append(
+                        ("Zum aktiven Checkout hinzufügen", self.add_selected_file_to_active_checkout)
+                    )
+            if revision_file_format(revision or {}) in ("fcstd", "step", "stl"):
+                more.append(("Im Slicer öffnen", self.open_selected_revision_in_slicer))
+            more.extend(
+                [
+                    (None, None),
+                    ("Details", self.show_revision_details_dialog),
+                    ("Notizen", self.show_revision_notes_dialog),
+                    ("Anmerkungen", self.show_annotations_dialog),
+                ]
+            )
+        self.set_context_actions(summary, label, callback, more)
 
     def client(self):
         return PLMClient(self.server_url.text().strip(), self.api_token.text().strip())
@@ -1065,43 +1083,36 @@ class PLMPanel:
         self.refresh_projects()
 
     def selected_project(self):
-        items = self.projects.selectedItems()
-        if not items:
-            return None
-        project = items[0].data(self.QtCore.Qt.UserRole)
-        return project if isinstance(project, dict) else None
+        item = self.tree_ancestor(self.browser_tree.currentItem(), "project")
+        return self.tree_item_payload(item)
 
     def select_project_by_id(self, project_id):
-        for index in range(self.projects.count()):
-            item = self.projects.item(index)
-            project = item.data(self.QtCore.Qt.UserRole)
-            if isinstance(project, dict) and project.get("id") == project_id:
-                self.projects.setCurrentItem(item)
+        for item in self.iter_tree_items():
+            project = self.tree_item_payload(item)
+            if self.tree_item_kind(item) == "project" and project and project.get("id") == project_id:
+                self.browser_tree.setCurrentItem(item)
+                item.setExpanded(True)
                 return True
         return False
 
     def selected_part(self):
-        items = self.parts.selectedItems()
-        if not items:
-            return None
-        part = items[0].data(self.QtCore.Qt.UserRole)
-        return part if isinstance(part, dict) else None
+        item = self.tree_ancestor(self.browser_tree.currentItem(), "part")
+        return self.tree_item_payload(item)
 
     def select_part_by_id(self, part_id):
-        for index in range(self.parts.count()):
-            item = self.parts.item(index)
-            part = item.data(self.QtCore.Qt.UserRole)
-            if isinstance(part, dict) and part.get("id") == part_id:
-                self.parts.setCurrentItem(item)
+        for item in self.iter_tree_items():
+            part = self.tree_item_payload(item)
+            if self.tree_item_kind(item) == "part" and part and part.get("id") == part_id:
+                self.browser_tree.setCurrentItem(item)
+                item.setExpanded(True)
                 return True
         return False
 
     def selected_revision(self):
-        items = self.revisions.selectedItems()
-        if not items:
+        item = self.browser_tree.currentItem()
+        if self.tree_item_kind(item) != "revision":
             return None
-        revision = items[0].data(self.QtCore.Qt.UserRole)
-        return revision if isinstance(revision, dict) else None
+        return self.tree_item_payload(item)
 
     def selected_annotation(self):
         items = self.annotations.selectedItems()
@@ -1111,25 +1122,395 @@ class PLMPanel:
         return annotation if isinstance(annotation, dict) else None
 
     def select_revision_by_id(self, revision_id):
-        for index in range(self.revisions.count()):
-            item = self.revisions.item(index)
-            revision = item.data(self.QtCore.Qt.UserRole)
-            if isinstance(revision, dict) and revision.get("id") == revision_id:
-                self.revisions.setCurrentItem(item)
+        for item in self.iter_tree_items():
+            revision = self.tree_item_payload(item)
+            if self.tree_item_kind(item) == "revision" and revision and revision.get("id") == revision_id:
+                self.browser_tree.setCurrentItem(item)
                 return True
         return False
 
     def selected_active_checkout(self):
-        items = self.active_checkouts.selectedItems()
-        if not items:
+        return self.selected_tree_checkout()
+
+    def tree_role(self, offset):
+        return int(self.QtCore.Qt.UserRole) + offset
+
+    def tree_item_kind(self, item):
+        return item.data(0, self.tree_role(1)) if item is not None else ""
+
+    def tree_item_payload(self, item):
+        if item is None:
             return None
-        checkout = items[0].data(self.QtCore.Qt.UserRole)
+        payload = item.data(0, int(self.QtCore.Qt.UserRole))
+        return payload if isinstance(payload, dict) else None
+
+    def tree_item_checkout(self, item):
+        if item is None:
+            return None
+        checkout = item.data(0, self.tree_role(3))
         return checkout if isinstance(checkout, dict) else None
 
-    def update_reopen_checkout_button(self):
-        self.reopen_checkout_button.setEnabled(
-            self.active_checkout_id() is not None or self.selected_active_checkout() is not None
+    def tree_item_checkout_error(self, item):
+        if item is None:
+            return ""
+        return str(item.data(0, self.tree_role(4)) or "")
+
+    def selected_tree_checkout(self):
+        return self.tree_item_checkout(self.browser_tree.currentItem())
+
+    def tree_ancestor(self, item, kind):
+        while item is not None:
+            if self.tree_item_kind(item) == kind:
+                return item
+            item = item.parent()
+        return None
+
+    def iter_tree_items(self):
+        pending = [
+            self.browser_tree.topLevelItem(index)
+            for index in range(self.browser_tree.topLevelItemCount())
+        ]
+        while pending:
+            item = pending.pop(0)
+            yield item
+            pending[0:0] = [item.child(index) for index in range(item.childCount())]
+
+    def find_tree_item(self, kind, entity_id, parent=None):
+        for item in self.iter_tree_items():
+            if self.tree_item_kind(item) != kind:
+                continue
+            payload = self.tree_item_payload(item) or {}
+            if payload.get("id") != entity_id:
+                continue
+            if parent is None or self.tree_ancestor(item, self.tree_item_kind(parent)) is parent:
+                return item
+        return None
+
+    def tree_selection_key(self):
+        item = self.browser_tree.currentItem()
+        payload = self.tree_item_payload(item) or {}
+        kind = self.tree_item_kind(item)
+        entity_id = payload.get("id")
+        if not kind or entity_id is None:
+            return None
+        project = self.tree_item_payload(self.tree_ancestor(item, "project")) or {}
+        part = self.tree_item_payload(self.tree_ancestor(item, "part")) or {}
+        return (kind, entity_id, project.get("id"), part.get("id"))
+
+    def restore_tree_selection(self, key):
+        if not key:
+            return False
+        kind, entity_id = key[:2]
+        project_id = key[2] if len(key) > 2 else None
+        part_id = key[3] if len(key) > 3 else None
+        project_item = self.find_tree_item("project", project_id) if project_id else None
+        if project_item is not None and kind in ("part", "revision"):
+            self.load_project_parts(project_item)
+        part_item = (
+            self.find_tree_item("part", part_id, project_item)
+            if part_id is not None
+            else None
         )
+        if part_item is not None and kind == "revision":
+            self.load_part_revisions(part_item)
+        parent = part_item if kind == "revision" else project_item if kind == "part" else None
+        item = self.find_tree_item(kind, entity_id, parent)
+        if item is None:
+            return False
+        if project_item is not None:
+            project_item.setExpanded(True)
+        if part_item is not None:
+            part_item.setExpanded(True)
+        self.browser_tree.setCurrentItem(item)
+        self.browser_tree.scrollToItem(item)
+        return True
+
+    def add_tree_item(self, parent, kind, payload, label, lazy=False):
+        item = self.QtWidgets.QTreeWidgetItem([label])
+        item.setData(0, int(self.QtCore.Qt.UserRole), payload)
+        item.setData(0, self.tree_role(1), kind)
+        item.setData(0, self.tree_role(2), not lazy)
+        item.setData(0, self.tree_role(5), label)
+        if parent is None:
+            self.browser_tree.addTopLevelItem(item)
+        else:
+            parent.addChild(item)
+        if lazy:
+            placeholder = self.QtWidgets.QTreeWidgetItem(["Wird beim Aufklappen geladen …"])
+            placeholder.setData(0, self.tree_role(1), "placeholder")
+            item.addChild(placeholder)
+        return item
+
+    def remove_checkout_error_items(self):
+        for top_index in range(self.browser_tree.topLevelItemCount() - 1, -1, -1):
+            top_item = self.browser_tree.topLevelItem(top_index)
+            if self.tree_item_kind(top_item) == "checkout_error":
+                self.browser_tree.takeTopLevelItem(top_index)
+                continue
+            for child_index in range(top_item.childCount() - 1, -1, -1):
+                if self.tree_item_kind(top_item.child(child_index)) == "checkout_error":
+                    top_item.takeChild(child_index)
+
+    def reset_checkout_tree_markers(self):
+        self.remove_checkout_error_items()
+        for item in self.iter_tree_items():
+            if self.tree_item_kind(item) != "revision":
+                continue
+            base_label = item.data(0, self.tree_role(5)) or revision_label(
+                self.tree_item_payload(item) or {}
+            )
+            item.setText(0, base_label)
+            item.setData(0, self.tree_role(3), None)
+            item.setData(0, self.tree_role(4), "")
+            font = item.font(0)
+            font.setBold(False)
+            font.setItalic(False)
+            item.setFont(0, font)
+            item.setForeground(0, self.QtGui.QBrush())
+            item.setIcon(0, self.QtGui.QIcon())
+            item.setToolTip(0, revision_workflow_hint(self.tree_item_payload(item) or {}))
+
+    def checkout_icon(self, state):
+        filename = {
+            "local": "checkout-local.svg",
+            "server": "checkout-server.svg",
+            "error": "checkout-error.svg",
+        }.get(state)
+        if not filename:
+            return self.QtGui.QIcon()
+        return self.QtGui.QIcon(str(Path(__file__).resolve().parent / "icons" / filename))
+
+    def mark_checkout_item(self, item, checkout, error=""):
+        state = checkout_visual_state(
+            checkout,
+            self.active_checkout_id(),
+            bool(error),
+        )
+        labels = {
+            "local": "Checkout lokal",
+            "server": "Checkout auf Server",
+            "error": "Checkout fehlerhaft",
+        }
+        colors = {
+            "local": "#18794e",
+            "server": "#9a6700",
+            "error": "#c62828",
+        }
+        base_label = item.data(0, self.tree_role(5)) or item.text(0)
+        item.setText(0, f"{base_label} · {labels[state]}")
+        item.setData(0, self.tree_role(3), checkout)
+        item.setData(0, self.tree_role(4), error)
+        font = item.font(0)
+        font.setBold(state == "local")
+        font.setItalic(False)
+        item.setFont(0, font)
+        item.setForeground(0, self.QtGui.QBrush(self.QtGui.QColor(colors[state])))
+        item.setIcon(0, self.checkout_icon(state))
+        tooltip = labels[state]
+        if error:
+            tooltip = f"{tooltip}: {error}"
+        item.setToolTip(0, tooltip)
+
+    def add_checkout_error_item(self, parent, checkout, message):
+        checkout_id = checkout.get("id") if isinstance(checkout, dict) else "?"
+        item = self.add_tree_item(
+            parent,
+            "checkout_error",
+            checkout,
+            f"Checkout {checkout_id} konnte nicht zugeordnet werden",
+        )
+        item.setData(0, self.tree_role(3), checkout)
+        item.setData(0, self.tree_role(4), message)
+        font = item.font(0)
+        font.setBold(True)
+        item.setFont(0, font)
+        item.setForeground(0, self.QtGui.QBrush(self.QtGui.QColor("#c62828")))
+        item.setIcon(0, self.checkout_icon("error"))
+        item.setToolTip(0, message)
+        if parent is not None:
+            parent.setExpanded(True)
+        return item
+
+    def reveal_active_checkouts(self):
+        self.reset_checkout_tree_markers()
+        checkout_items = {}
+        for checkout in self.server_checkouts:
+            checkout_id = checkout.get("id")
+            project = checkout.get("project") or {}
+            part = checkout.get("part") or {}
+            revision_id = active_checkout_revision_id(checkout)
+            project_item = self.find_tree_item("project", project.get("id"))
+            if project_item is None:
+                checkout_items[checkout_id] = self.add_checkout_error_item(
+                    None,
+                    checkout,
+                    "Projekt des aktiven Checkouts wurde nicht gefunden.",
+                )
+                continue
+            self.load_project_parts(project_item)
+            part_item = self.find_tree_item("part", part.get("id"), project_item)
+            if part_item is None:
+                checkout_items[checkout_id] = self.add_checkout_error_item(
+                    project_item,
+                    checkout,
+                    "Teil des aktiven Checkouts wurde im Projekt nicht gefunden.",
+                )
+                continue
+            self.load_part_revisions(part_item)
+            revision_item = self.find_tree_item("revision", revision_id, part_item)
+            if revision_item is None:
+                checkout_items[checkout_id] = self.add_checkout_error_item(
+                    project_item,
+                    checkout,
+                    "Revision des aktiven Checkouts wurde im Teil nicht gefunden.",
+                )
+                continue
+            error = self.checkout_errors.get(checkout_id, "")
+            self.mark_checkout_item(revision_item, checkout, error)
+            project_item.setExpanded(True)
+            part_item.setExpanded(True)
+            checkout_items[checkout_id] = revision_item
+        self.checkout_tree_items = checkout_items
+        return checkout_items
+
+    def clear_tree_children(self, item):
+        while item is not None and item.childCount():
+            item.takeChild(0)
+
+    def browser_selection_changed(self):
+        item = self.browser_tree.currentItem()
+        kind = self.tree_item_kind(item)
+        project = self.selected_project()
+        part = self.selected_part()
+        revision = self.selected_revision()
+
+        self.clear_project_form()
+        self.clear_part_form()
+        self.clear_revision_context()
+        if project:
+            self.set_project_form(project)
+        if part:
+            self.set_part_form(part)
+        if revision:
+            self.set_revision_context(revision)
+        self.update_context_actions()
+        if kind == "project":
+            self.set_status("Projekt ausgewählt. Zum Laden der Teile aufklappen.")
+        elif kind == "part":
+            self.set_status("Teil ausgewählt. Zum Laden der Revisionen aufklappen.")
+
+    def browser_item_expanded(self, item):
+        if bool(item.data(0, self.tree_role(2))):
+            return
+        kind = self.tree_item_kind(item)
+        if kind == "project":
+            self.load_project_parts(item)
+        elif kind == "part":
+            self.load_part_revisions(item)
+
+    def browser_item_double_clicked(self, item, _column=0):
+        kind = self.tree_item_kind(item)
+        if kind == "checkout_error":
+            self.refresh_projects()
+            return
+        if kind != "revision":
+            return
+        checkout = self.tree_item_checkout(item)
+        state = checkout_visual_state(
+            checkout,
+            self.active_checkout_id(),
+            bool(self.tree_item_checkout_error(item)),
+        )
+        if state == "local":
+            self.open_active_checkout_root()
+        elif state in ("server", "error"):
+            self.reopen_selected_checkout()
+        else:
+            self.open_selected_revision()
+
+    def show_browser_context_menu(self, position):
+        item = self.browser_tree.itemAt(position)
+        if item is None or self.tree_item_kind(item) == "placeholder":
+            return
+        self.browser_tree.setCurrentItem(item)
+        self.update_context_actions()
+        menu = self.QtWidgets.QMenu(self.browser_tree)
+        if self.context_primary_label and callable(self.context_primary_callback):
+            menu.addAction(self.context_primary_label, self.context_primary_callback)
+        if self.context_more_actions:
+            menu.addSeparator()
+        for label, callback in self.context_more_actions:
+            if label is None:
+                menu.addSeparator()
+            else:
+                menu.addAction(label, callback)
+        menu.exec_(self.browser_tree.viewport().mapToGlobal(position))
+
+    def handle_revision_deep_link(self, deep_link):
+        self.refresh_projects()
+        project_item = next(
+            (
+                item
+                for item in self.iter_tree_items()
+                if self.tree_item_kind(item) == "project"
+                and (self.tree_item_payload(item) or {}).get("id")
+                == deep_link.project_id
+            ),
+            None,
+        )
+        if project_item is None:
+            self.set_status("Projekt aus dem PLM-Link wurde nicht gefunden.")
+            return False
+        self.load_project_parts(project_item)
+        part_item = next(
+            (
+                item
+                for item in self.iter_tree_items()
+                if self.tree_item_kind(item) == "part"
+                and (self.tree_item_payload(item) or {}).get("id") == deep_link.part_id
+                and self.tree_ancestor(item, "project") is project_item
+            ),
+            None,
+        )
+        if part_item is None:
+            self.set_status("Teil aus dem PLM-Link wurde im Projekt nicht gefunden.")
+            return False
+        self.load_part_revisions(part_item)
+        revision_item = next(
+            (
+                item
+                for item in self.iter_tree_items()
+                if self.tree_item_kind(item) == "revision"
+                and (self.tree_item_payload(item) or {}).get("id")
+                == deep_link.revision_id
+                and self.tree_ancestor(item, "part") is part_item
+            ),
+            None,
+        )
+        if revision_item is None:
+            self.set_status("Revision aus dem PLM-Link wurde im Teil nicht gefunden.")
+            return False
+        self.browser_tree.setCurrentItem(revision_item)
+        self.browser_tree.scrollToItem(revision_item)
+
+        if deep_link.action == "checkout":
+            revision = self.selected_revision() or {}
+            answer = self.QtWidgets.QMessageBox.question(
+                self.widget,
+                "Revision auschecken",
+                f"{revision_label(revision)} wirklich zum Bearbeiten auschecken?",
+                self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+                self.QtWidgets.QMessageBox.No,
+            )
+            if answer != self.QtWidgets.QMessageBox.Yes:
+                self.set_status("Checkout aus PLM-Link abgebrochen.")
+                return False
+            self.checkout_selected_revision()
+        elif deep_link.action == "slicer":
+            self.open_selected_revision_in_slicer()
+        else:
+            self.open_selected_revision_readonly()
+        return True
 
     def update_annotation_controls(self):
         annotation = self.selected_annotation()
@@ -1144,57 +1525,20 @@ class PLMPanel:
         )
 
     def update_checkout_controls(self):
-        checkout_id = self.active_checkout_id()
-        has_checkout = checkout_id is not None
-        self.checkin_button.setEnabled(has_checkout)
-        self.add_checkout_file_button.setEnabled(has_checkout)
-        self.remove_checkout_file_button.setEnabled(has_checkout)
-        self.cancel_checkout_button.setEnabled(has_checkout)
-        if not has_checkout:
-            self.active_checkout_label.setText("Kein aktiver Checkout.")
-            self.active_checkout_card.setStyleSheet(
-                "#ActiveCheckoutCard {"
-                "border: 1px solid #d0d0d0;"
-                "background: #f7f7f7;"
-                "border-radius: 4px;"
-                "}"
-            )
-            self.update_reopen_checkout_button()
-            return
+        if self.server_checkouts:
+            self.reveal_active_checkouts()
+        self.update_context_actions()
 
-        self.active_checkout_card.setStyleSheet(
-            "#ActiveCheckoutCard {"
-            "border: 1px solid #5f8fc9;"
-            "background: #eaf3ff;"
-            "border-radius: 4px;"
-            "}"
-        )
-        path = checkout_display_name(self.active_checkout_root_path)
-        checkout = self.active_checkout if isinstance(self.active_checkout, dict) else {}
-        project_code = checkout_project_code(checkout) if checkout else ""
-        part = checkout.get("part") if isinstance(checkout.get("part"), dict) else {}
-        revision = checkout.get("revision") if isinstance(checkout.get("revision"), dict) else {}
-        part_text = " ".join(
-            value
-            for value in (
-                part.get("number") or part.get("part_number") or "",
-                part.get("name") or "",
-            )
-            if value
-        )
-        revision_text = (
-            revision.get("revision_code")
-            or revision.get("revision")
-            or revision.get("version")
-            or active_checkout_revision_id(checkout)
-            or checkout_id
-        )
-        headline = " · ".join(str(value) for value in (project_code, part_text, revision_text) if value)
-        details = headline or f"Checkout {checkout_id}"
-        if path:
-            details = f"{details} · {path}"
-        self.active_checkout_label.setText(details)
-        self.update_reopen_checkout_button()
+    def mark_checkout_error(self, checkout_id, message):
+        if checkout_id is None:
+            return
+        self.checkout_errors[checkout_id] = str(message)
+        self.update_checkout_controls()
+
+    def clear_checkout_error(self, checkout_id):
+        if checkout_id is None:
+            return
+        self.checkout_errors.pop(checkout_id, None)
 
     def active_checkout_id(self):
         if not isinstance(self.active_checkout, dict):
@@ -1214,22 +1558,10 @@ class PLMPanel:
         self.save_revision_notes_button.setEnabled(False)
         self.revert_revision_notes_button.setEnabled(False)
         self.technical_details.setPlainText("Keine Revision ausgewählt.")
-        self.revision_summary.setText("Keine Revision ausgewählt.")
         self.current_annotations = []
         self.annotations.clear()
         self.new_annotation_button.setEnabled(False)
         self.update_annotation_controls()
-        self.open_readonly_button.setEnabled(False)
-        self.open_readonly_button.setText("Schreibgeschützt öffnen")
-        self.open_readonly_button.setToolTip("")
-        self.checkout_button.setEnabled(False)
-        self.checkout_button.setText("Auschecken")
-        self.checkout_button.setToolTip("")
-        self.open_slicer_button.setEnabled(False)
-        self.open_slicer_button.setToolTip("")
-        self.revision_details_button.setEnabled(False)
-        self.revision_notes_button.setEnabled(False)
-        self.revision_annotations_button.setEnabled(False)
 
     def clear_project_form(self):
         self.project_code.setText("")
@@ -1238,7 +1570,6 @@ class PLMPanel:
         self.project_date.setText("")
         self.project_description.setPlainText("")
         self.save_project_button.setEnabled(False)
-        self.edit_project_button.setEnabled(False)
 
     def set_project_form(self, project):
         self.project_code.setText(project.get("code", "") or "")
@@ -1249,7 +1580,6 @@ class PLMPanel:
         self.project_date.setText(project.get("project_date", "") or "")
         self.project_description.setPlainText(project.get("description", "") or "")
         self.save_project_button.setEnabled(project.get("id") is not None)
-        self.edit_project_button.setEnabled(project.get("id") is not None)
 
     def project_form_values(self):
         current_data = getattr(self.project_status, "currentData", None)
@@ -1274,7 +1604,6 @@ class PLMPanel:
         self.part_tags.setText("")
         self.part_archived.setChecked(False)
         self.save_part_button.setEnabled(False)
-        self.edit_part_button.setEnabled(False)
 
     def set_part_form(self, part):
         self.part_number.setText(part.get("number", "") or "")
@@ -1288,7 +1617,6 @@ class PLMPanel:
         self.part_tags.setText(part.get("tags", "") or "")
         self.part_archived.setChecked(bool(part.get("is_archived", False)))
         self.save_part_button.setEnabled(part.get("id") is not None)
-        self.edit_part_button.setEnabled(part.get("id") is not None)
 
     def part_form_values(self, include_number=False):
         current_data = getattr(self.part_category, "currentData", None)
@@ -1314,31 +1642,7 @@ class PLMPanel:
         self.save_revision_notes_button.setEnabled(revision.get("id") is not None)
         self.revert_revision_notes_button.setEnabled(revision.get("id") is not None)
         self.technical_details.setPlainText(revision_technical_text(revision))
-        self.revision_summary.setText(compact_revision_summary(revision))
         self.new_annotation_button.setEnabled(True)
-        file_format = revision_format_label(revision) or "CAD"
-        editable = revision_is_checkout_editable(revision)
-        self.open_readonly_button.setText(f"{file_format} nur öffnen")
-        self.open_readonly_button.setToolTip(
-            "Revision herunterladen und ohne PLM-Checkout öffnen."
-        )
-        self.open_readonly_button.setEnabled(True)
-        self.checkout_button.setText("Auschecken" if editable else "Nicht bearbeitbar")
-        self.checkout_button.setToolTip(
-            "In den Arbeitsbereich auschecken und in FreeCAD bearbeiten."
-            if editable
-            else f"{file_format}-Revisionen sind Austauschmodelle. Verwende schreibgeschützt öffnen."
-        )
-        self.checkout_button.setEnabled(editable)
-        self.open_slicer_button.setEnabled(
-            revision_file_format(revision) in ("fcstd", "step", "stl")
-        )
-        self.open_slicer_button.setToolTip(
-            "CAD-Geometrie als 3MF öffnen und gespeicherte Slicer-Einstellungen automatisch synchronisieren."
-        )
-        self.revision_details_button.setEnabled(True)
-        self.revision_notes_button.setEnabled(True)
-        self.revision_annotations_button.setEnabled(True)
         self.refresh_annotations(revision)
 
     def refresh_projects(self):
@@ -1357,19 +1661,14 @@ class PLMPanel:
         config.set_cache_max_fcstd_files(max_fcstd_files)
         config.set_cache_max_projects(max_projects)
         config.set_cache_max_revisions_per_project(max_revisions_per_project)
-        self.import_project_button.setEnabled(False)
-
         if not server_url or not api_token:
             self.set_status("Server und API-Token eintragen.")
             return
 
         self.set_status("Lade Projekte...")
-        self.projects.clear()
-        self.parts.clear()
-        self.revisions.clear()
-        self.active_checkouts.clear()
-        self.new_part_button.setEnabled(False)
-        self.update_reopen_checkout_button()
+        previous_selection = self.tree_selection_key()
+        self.browser_tree.clear()
+        self.server_checkouts = []
         self.clear_revision_context()
         self.clear_project_form()
         self.clear_part_form()
@@ -1385,12 +1684,27 @@ class PLMPanel:
             return
 
         for project in projects:
-            item = self.QtWidgets.QListWidgetItem(project_label(project))
-            item.setData(self.QtCore.Qt.UserRole, project)
-            self.projects.addItem(item)
+            item = self.add_tree_item(
+                None,
+                "project",
+                project,
+                project_label(project),
+                lazy=True,
+            )
+            item.setToolTip(0, "Aufklappen, um Teile und Baugruppen zu laden.")
 
         count = len(projects)
         checkout_count = self.refresh_active_checkouts(client)
+        restored = self.restore_tree_selection(previous_selection)
+        if not restored:
+            target_checkout_id = self.active_checkout_id()
+            if target_checkout_id not in self.checkout_tree_items and len(self.server_checkouts) == 1:
+                target_checkout_id = self.server_checkouts[0].get("id")
+            target_item = self.checkout_tree_items.get(target_checkout_id)
+            if target_item is not None:
+                self.browser_tree.setCurrentItem(target_item)
+                self.browser_tree.scrollToItem(target_item)
+        self.update_context_actions()
         suffix = "" if count == 1 else "e"
         message = f"{count} Projekt{suffix} geladen."
         if checkout_count is not None:
@@ -1399,68 +1713,59 @@ class PLMPanel:
         self.set_connected(server_url)
 
     def refresh_active_checkouts(self, client=None):
-        self.active_checkouts.clear()
-        self.update_reopen_checkout_button()
         try:
             checkouts = (client or self.client()).get_active_checkouts()
         except PLMError as exc:
-            self.active_checkouts.addItem(f"PLM-Fehler: {exc}")
+            self.server_checkouts = []
+            self.checkout_tree_items = {}
+            self.reset_checkout_tree_markers()
+            self.update_context_actions()
+            self.set_status(f"PLM-Fehler beim Laden aktiver Checkouts: {exc}")
             return None
         except Exception as exc:
-            self.active_checkouts.addItem(f"Aktive Checkouts konnten nicht geladen werden: {exc}")
+            self.server_checkouts = []
+            self.checkout_tree_items = {}
+            self.reset_checkout_tree_markers()
+            self.update_context_actions()
+            self.set_status(f"Aktive Checkouts konnten nicht geladen werden: {exc}")
             return None
 
-        for checkout in checkouts:
-            item = self.QtWidgets.QListWidgetItem(checkout_label(checkout))
-            item.setData(self.QtCore.Qt.UserRole, checkout)
-            self.active_checkouts.addItem(item)
-        if self.active_checkout_id() is None and len(checkouts) == 1:
-            self.active_checkouts.setCurrentRow(0)
-            checkout = checkouts[0]
-            path = checkout_display_name(
-                checkout.get("workspace_path") or checkout.get("local_path") or ""
-            )
-            details = checkout_label(checkout)
-            if path:
-                details = f"{details} · {path}"
-            self.active_checkout_label.setText(details)
-            self.active_checkout_card.setStyleSheet(
-                "#ActiveCheckoutCard {"
-                "border: 1px solid #5f8fc9;"
-                "background: #eaf3ff;"
-                "border-radius: 4px;"
-                "}"
-            )
-        elif self.active_checkout_id() is None and not checkouts:
-            self.active_checkout_label.setText("Kein aktiver Checkout.")
-            self.active_checkout_card.setStyleSheet(
-                "#ActiveCheckoutCard {"
-                "border: 1px solid #d0d0d0;"
-                "background: #f7f7f7;"
-                "border-radius: 4px;"
-                "}"
-            )
+        self.server_checkouts = list(checkouts or [])
+        active_ids = {
+            checkout.get("id")
+            for checkout in self.server_checkouts
+            if isinstance(checkout, dict) and checkout.get("id") is not None
+        }
+        self.checkout_errors = {
+            checkout_id: message
+            for checkout_id, message in self.checkout_errors.items()
+            if checkout_id in active_ids
+        }
+        self.checkout_tree_items = self.reveal_active_checkouts()
+        self.update_context_actions()
         return len(checkouts)
 
     def refresh_parts(self):
-        items = self.projects.selectedItems()
-        self.parts.clear()
-        self.revisions.clear()
-        self.clear_revision_context()
-        self.clear_part_form()
-        self.clear_project_form()
-        self.new_part_button.setEnabled(False)
-        if not items:
+        project_item = self.tree_ancestor(self.browser_tree.currentItem(), "project")
+        if project_item is None:
+            return
+        selection = self.tree_selection_key()
+        self.load_project_parts(project_item, force=True)
+        self.reveal_active_checkouts()
+        self.restore_tree_selection(selection)
+        self.update_context_actions()
+
+    def load_project_parts(self, project_item, force=False):
+        if project_item is None:
+            return
+        if bool(project_item.data(0, self.tree_role(2))) and not force:
             return
 
-        project = items[0].data(self.QtCore.Qt.UserRole)
+        project = self.tree_item_payload(project_item)
         project_id = project.get("id") if isinstance(project, dict) else None
         if project_id is None:
             self.set_status("Projekt hat keine ID.")
             return
-        self.set_project_form(project)
-        self.new_part_button.setEnabled(True)
-
         self.set_status("Lade Teile...")
 
         try:
@@ -1472,10 +1777,18 @@ class PLMPanel:
             self.set_status(f"Verbindung fehlgeschlagen: {exc}")
             return
 
+        self.clear_tree_children(project_item)
         for part in parts:
-            item = self.QtWidgets.QListWidgetItem(part_label(part))
-            item.setData(self.QtCore.Qt.UserRole, part)
-            self.parts.addItem(item)
+            item = self.add_tree_item(
+                project_item,
+                "part",
+                part,
+                part_label(part),
+                lazy=True,
+            )
+            item.setToolTip(0, "Aufklappen, um Revisionen zu laden.")
+        project_item.setData(0, self.tree_role(2), True)
+        project_item.setExpanded(True)
 
         count = len(parts)
         suffix = "" if count == 1 else "e"
@@ -1498,10 +1811,12 @@ class PLMPanel:
             self.set_status(f"Projekt konnte nicht gespeichert werden: {exc}")
             return
 
-        items = self.projects.selectedItems()
-        if items:
-            items[0].setData(self.QtCore.Qt.UserRole, updated_project)
-            items[0].setText(project_label(updated_project))
+        item = self.tree_ancestor(self.browser_tree.currentItem(), "project")
+        if item is not None:
+            item.setData(0, int(self.QtCore.Qt.UserRole), updated_project)
+            label = project_label(updated_project)
+            item.setText(0, label)
+            item.setData(0, self.tree_role(5), label)
         self.set_project_form(updated_project)
         self.set_status(f"Projekt gespeichert: {project_label(updated_project)}")
 
@@ -1721,14 +2036,22 @@ class PLMPanel:
         return message
 
     def refresh_revisions(self):
-        items = self.parts.selectedItems()
-        self.revisions.clear()
-        self.clear_revision_context()
-        if not items:
-            self.clear_part_form()
+        part_item = self.tree_ancestor(self.browser_tree.currentItem(), "part")
+        if part_item is None:
+            return
+        selection = self.tree_selection_key()
+        self.load_part_revisions(part_item, force=True)
+        self.reveal_active_checkouts()
+        self.restore_tree_selection(selection)
+        self.update_context_actions()
+
+    def load_part_revisions(self, part_item, force=False):
+        if part_item is None:
+            return
+        if bool(part_item.data(0, self.tree_role(2))) and not force:
             return
 
-        part = items[0].data(self.QtCore.Qt.UserRole)
+        part = self.tree_item_payload(part_item)
         part_id = part.get("id") if isinstance(part, dict) else None
         if part_id is None:
             self.set_status("Teil hat keine ID.")
@@ -1749,14 +2072,23 @@ class PLMPanel:
         revisions = revisions_from_part_detail(part_detail)
         detail_part = part_detail.get("part") if isinstance(part_detail, dict) else None
         if isinstance(detail_part, dict):
-            items[0].setData(self.QtCore.Qt.UserRole, detail_part)
-            items[0].setText(part_label(detail_part))
-            self.set_part_form(detail_part)
+            part_item.setData(0, int(self.QtCore.Qt.UserRole), detail_part)
+            label = part_label(detail_part)
+            part_item.setText(0, label)
+            part_item.setData(0, self.tree_role(5), label)
+            if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
+                self.set_part_form(detail_part)
+        self.clear_tree_children(part_item)
         for revision in revisions:
-            item = self.QtWidgets.QListWidgetItem(revision_label(revision))
-            item.setData(self.QtCore.Qt.UserRole, revision)
-            item.setToolTip(revision_workflow_hint(revision))
-            self.revisions.addItem(item)
+            item = self.add_tree_item(
+                part_item,
+                "revision",
+                revision,
+                revision_label(revision),
+            )
+            item.setToolTip(0, revision_workflow_hint(revision))
+        part_item.setData(0, self.tree_role(2), True)
+        part_item.setExpanded(True)
 
         count = len(revisions)
         suffix = "" if count == 1 else "en"
@@ -1915,10 +2247,12 @@ class PLMPanel:
             self.set_status(f"Teil konnte nicht gespeichert werden: {exc}")
             return
 
-        items = self.parts.selectedItems()
-        if items:
-            items[0].setData(self.QtCore.Qt.UserRole, updated_part)
-            items[0].setText(part_label(updated_part))
+        item = self.tree_ancestor(self.browser_tree.currentItem(), "part")
+        if item is not None:
+            item.setData(0, int(self.QtCore.Qt.UserRole), updated_part)
+            label = part_label(updated_part)
+            item.setText(0, label)
+            item.setData(0, self.tree_role(5), label)
         self.set_part_form(updated_part)
         self.set_status(f"Stammdaten gespeichert: {part_label(updated_part)}")
 
@@ -1985,10 +2319,12 @@ class PLMPanel:
         except Exception as exc:
             self.set_status(f"Projekt konnte nicht gespeichert werden: {exc}")
             return
-        items = self.projects.selectedItems()
-        if items:
-            items[0].setData(self.QtCore.Qt.UserRole, updated_project)
-            items[0].setText(project_label(updated_project))
+        item = self.tree_ancestor(self.browser_tree.currentItem(), "project")
+        if item is not None:
+            item.setData(0, int(self.QtCore.Qt.UserRole), updated_project)
+            label = project_label(updated_project)
+            item.setText(0, label)
+            item.setData(0, self.tree_role(5), label)
         self.set_project_form(updated_project)
         self.set_status(f"Projekt gespeichert: {project_label(updated_project)}")
 
@@ -2057,10 +2393,12 @@ class PLMPanel:
         except Exception as exc:
             self.set_status(f"Teil konnte nicht gespeichert werden: {exc}")
             return
-        items = self.parts.selectedItems()
-        if items:
-            items[0].setData(self.QtCore.Qt.UserRole, updated_part)
-            items[0].setText(part_label(updated_part))
+        item = self.tree_ancestor(self.browser_tree.currentItem(), "part")
+        if item is not None:
+            item.setData(0, int(self.QtCore.Qt.UserRole), updated_part)
+            label = part_label(updated_part)
+            item.setText(0, label)
+            item.setData(0, self.tree_role(5), label)
         self.set_part_form(updated_part)
         self.set_status(f"Stammdaten gespeichert: {part_label(updated_part)}")
 
@@ -2115,10 +2453,13 @@ class PLMPanel:
         except Exception as exc:
             self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
             return
-        items = self.revisions.selectedItems()
-        if items:
-            items[0].setData(self.QtCore.Qt.UserRole, updated_revision)
-            items[0].setText(revision_label(updated_revision))
+        item = self.browser_tree.currentItem()
+        if self.tree_item_kind(item) == "revision":
+            item.setData(0, int(self.QtCore.Qt.UserRole), updated_revision)
+            label = revision_label(updated_revision)
+            item.setText(0, label)
+            item.setData(0, self.tree_role(5), label)
+            self.update_checkout_controls()
         self.set_revision_context(updated_revision)
         self.set_status("Revisionsnotizen gespeichert.")
 
@@ -2218,12 +2559,7 @@ class PLMPanel:
         dialog.exec_()
 
     def show_revision_details(self):
-        items = self.revisions.selectedItems()
-        if not items:
-            self.clear_revision_context()
-            return
-
-        revision = items[0].data(self.QtCore.Qt.UserRole)
+        revision = self.selected_revision()
         if not isinstance(revision, dict):
             self.clear_revision_context()
             return
@@ -2247,10 +2583,13 @@ class PLMPanel:
             self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
             return
 
-        items = self.revisions.selectedItems()
-        if items:
-            items[0].setData(self.QtCore.Qt.UserRole, updated_revision)
-            items[0].setText(revision_label(updated_revision))
+        item = self.browser_tree.currentItem()
+        if self.tree_item_kind(item) == "revision":
+            item.setData(0, int(self.QtCore.Qt.UserRole), updated_revision)
+            label = revision_label(updated_revision)
+            item.setText(0, label)
+            item.setData(0, self.tree_role(5), label)
+            self.update_checkout_controls()
         self.set_revision_context(updated_revision)
         self.set_status("Revisionsnotizen gespeichert.")
 
@@ -2765,6 +3104,7 @@ class PLMPanel:
         )
         self.active_checkout_dir = target_dir
         self.active_checkout_root_path = root_path
+        self.clear_checkout_error(checkout_id)
         touch_directory(target_dir)
         self.update_checkout_controls()
         self.refresh_active_checkouts(client)
@@ -2911,7 +3251,9 @@ class PLMPanel:
         from . import fcstd
 
         if self.active_checkout_root_path is None:
-            self.set_status("Aktiver Checkout ist lokal noch nicht geöffnet.")
+            message = "Aktiver Checkout ist lokal noch nicht geöffnet."
+            self.mark_checkout_error(self.active_checkout_id(), message)
+            self.set_status(message)
             return
         try:
             before_documents = fcstd.document_names()
@@ -2920,8 +3262,12 @@ class PLMPanel:
             if opened:
                 self.checkout_document_names = opened
         except Exception as exc:
-            self.set_status(f"Aktiver Checkout konnte nicht geöffnet werden: {exc}")
+            message = f"Aktiver Checkout konnte nicht geöffnet werden: {exc}"
+            self.mark_checkout_error(self.active_checkout_id(), message)
+            self.set_status(message)
             return
+        self.clear_checkout_error(self.active_checkout_id())
+        self.update_checkout_controls()
         print_freecad_console(
             f"FreeCAD-PLM aktiver Checkout geöffnet: {self.active_checkout_root_path}"
         )
@@ -2958,18 +3304,24 @@ class PLMPanel:
             self.readonly_document_names = []
             if failed_readonly:
                 failed_names = ", ".join(failed_readonly)
-                self.set_status(
-                    f"Vorherige read-only Dokumente konnten nicht geschlossen werden: {failed_names}"
+                message = (
+                    "Vorherige read-only Dokumente konnten nicht geschlossen werden: "
+                    f"{failed_names}"
                 )
+                self.mark_checkout_error(checkout_id, message)
+                self.set_status(message)
                 return
 
             closed_checkout, failed_checkout = fcstd.close_documents(self.checkout_document_names)
             self.checkout_document_names = []
             if failed_checkout:
                 failed_names = ", ".join(failed_checkout)
-                self.set_status(
-                    f"Vorherige Checkout-Dokumente konnten nicht geschlossen werden: {failed_names}"
+                message = (
+                    "Vorherige Checkout-Dokumente konnten nicht geschlossen werden: "
+                    f"{failed_names}"
                 )
+                self.mark_checkout_error(checkout_id, message)
+                self.set_status(message)
                 return
 
             client = self.client()
@@ -2989,13 +3341,18 @@ class PLMPanel:
             self.active_checkout.setdefault("id", checkout_id)
             self.active_checkout_dir = target_dir
             self.active_checkout_root_path = root_path
+            self.clear_checkout_error(checkout_id)
             touch_directory(target_dir)
             self.update_checkout_controls()
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            message = f"PLM-Fehler: {exc}"
+            self.mark_checkout_error(checkout_id, message)
+            self.set_status(message)
             return
         except Exception as exc:
-            self.set_status(f"Checkout konnte nicht wieder geöffnet werden: {exc}")
+            message = f"Checkout konnte nicht wieder geöffnet werden: {exc}"
+            self.mark_checkout_error(checkout_id, message)
+            self.set_status(message)
             return
 
         print_freecad_console(
@@ -3162,6 +3519,78 @@ class PLMPanel:
             f"({len(result['downloaded'])} neue Datei(en))."
         )
 
+    def choose_revision_for_active_checkout(self):
+        checkout_id = self.active_checkout_id()
+        if checkout_id is None or self.active_checkout_dir is None:
+            self.set_status("Kein lokal geöffneter Checkout.")
+            return
+
+        project = self.active_checkout.get("project") or {}
+        project_item = self.find_tree_item("project", project.get("id"))
+        if project_item is None:
+            self.set_status("Projekt des aktiven Checkouts wurde nicht gefunden.")
+            return
+
+        self.load_project_parts(project_item)
+        existing_revision_ids = set()
+        try:
+            manifest = read_manifest(self.active_checkout_dir)
+            existing_revision_ids = {
+                entry.get("revision_id")
+                for entry in manifest.get("files") or []
+                if entry.get("revision_id") is not None
+            }
+        except Exception:
+            pass
+
+        candidates = []
+        for part_index in range(project_item.childCount()):
+            part_item = project_item.child(part_index)
+            if self.tree_item_kind(part_item) != "part":
+                continue
+            self.load_part_revisions(part_item)
+            part = self.tree_item_payload(part_item) or {}
+            for revision_index in range(part_item.childCount()):
+                revision_item = part_item.child(revision_index)
+                revision = self.tree_item_payload(revision_item) or {}
+                revision_id = revision.get("id")
+                if (
+                    self.tree_item_kind(revision_item) != "revision"
+                    or not revision_is_checkout_editable(revision)
+                    or revision_id in existing_revision_ids
+                ):
+                    continue
+                label = (
+                    f"{part_label(part)} · {compact_revision_summary(revision)} "
+                    f"[ID {revision_id}]"
+                )
+                candidates.append((label, revision_item))
+
+        self.reveal_active_checkouts()
+        if not candidates:
+            self.set_status("Keine weitere FCStd-Revision zum Hinzufügen gefunden.")
+            return
+
+        label, accepted = self.QtWidgets.QInputDialog.getItem(
+            self.widget,
+            "Teil zum Checkout hinzufügen",
+            "Revision",
+            [candidate[0] for candidate in candidates],
+            0,
+            False,
+        )
+        if not accepted:
+            self.set_status("Hinzufügen abgebrochen.")
+            return
+
+        selected_item = dict(candidates).get(label)
+        if selected_item is None:
+            self.set_status("Ausgewählte Revision wurde nicht gefunden.")
+            return
+        self.browser_tree.setCurrentItem(selected_item)
+        self.browser_tree.scrollToItem(selected_item)
+        self.add_selected_file_to_active_checkout()
+
     def remove_file_from_active_checkout(self):
         from . import fcstd
 
@@ -3314,7 +3743,7 @@ def show_panel():
 
     global _active_panel
 
-    QtCore, QtWidgets = _load_qt()
+    QtCore, _QtGui, QtWidgets = _load_qt()
     main_window = FreeCADGui.getMainWindow()
     dock = _find_dock(main_window, QtWidgets)
     if dock is None:
@@ -3377,3 +3806,30 @@ def open_selected_revision_in_slicer():
     show_panel()
     if _active_panel is not None:
         _active_panel.open_selected_revision_in_slicer()
+
+
+def open_revision_deep_link(deep_link):
+    show_panel()
+    if _active_panel is not None:
+        _active_panel.handle_revision_deep_link(deep_link)
+
+
+def prompt_for_revision_deep_link():
+    from .deeplink import parse_revision_deep_link
+
+    show_panel()
+    if _active_panel is None:
+        return
+    value, accepted = _active_panel.QtWidgets.QInputDialog.getText(
+        _active_panel.widget,
+        "PLM-Link öffnen",
+        "freecad-plm://-Link",
+    )
+    if not accepted:
+        return
+    try:
+        deep_link = parse_revision_deep_link(value)
+    except ValueError as exc:
+        _active_panel.set_status(str(exc))
+        return
+    _active_panel.handle_revision_deep_link(deep_link)

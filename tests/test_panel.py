@@ -16,11 +16,13 @@ from freecad_plm_addon.panel import (
     active_checkout_revision_id,
     checkout_label,
     checkout_guard_action,
+    checkout_visual_state,
     checkout_file_label,
     checkout_display_name,
     checkout_project_code,
     compact_revision_summary,
     connection_label,
+    context_primary_action,
     format_bytes,
     import_checkout_candidates,
     import_checkout_followup_text,
@@ -253,6 +255,40 @@ class PanelTests(unittest.TestCase):
 
     def test_checkout_guard_requires_revision_id(self):
         self.assertEqual(checkout_guard_action({"revision_id": 8}, {}), "missing_revision")
+
+    def test_checkout_visual_state_distinguishes_local_server_and_error(self):
+        checkout = {"id": 7}
+
+        self.assertEqual(checkout_visual_state(None, 7), "none")
+        self.assertEqual(checkout_visual_state(checkout, 7), "local")
+        self.assertEqual(checkout_visual_state(checkout, 8), "server")
+        self.assertEqual(checkout_visual_state(checkout, 7, error=True), "error")
+
+    def test_context_primary_action_matches_tree_context(self):
+        fcstd_revision = {"id": 10, "file_format": "fcstd"}
+        stl_revision = {"id": 11, "file_format": "stl"}
+        checkout = {"id": 7}
+
+        self.assertEqual(context_primary_action(None), "import_project")
+        self.assertEqual(context_primary_action("project"), "new_part")
+        self.assertEqual(context_primary_action("part"), "edit_part")
+        self.assertEqual(context_primary_action("checkout_error"), "refresh")
+        self.assertEqual(
+            context_primary_action("revision", fcstd_revision),
+            "checkout",
+        )
+        self.assertEqual(
+            context_primary_action("revision", stl_revision),
+            "open_readonly",
+        )
+        self.assertEqual(
+            context_primary_action("revision", fcstd_revision, checkout, 8),
+            "reopen_checkout",
+        )
+        self.assertEqual(
+            context_primary_action("revision", fcstd_revision, checkout, 7),
+            "checkin",
+        )
 
     def test_checkout_display_name_uses_path_name(self):
         self.assertEqual(

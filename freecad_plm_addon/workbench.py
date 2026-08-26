@@ -1,4 +1,8 @@
+import sys
 from pathlib import Path
+
+
+_handled_deep_link = False
 
 
 class FreeCADPLMWorkbenchMixin:
@@ -14,7 +18,25 @@ class FreeCADPLMWorkbenchMixin:
         self.appendMenu("FreeCAD-PLM", commands)
 
     def Activated(self):
-        pass
+        global _handled_deep_link
+        if _handled_deep_link:
+            return
+        from .deeplink import deep_link_from_argv
+
+        try:
+            deep_link = deep_link_from_argv(sys.argv)
+        except ValueError:
+            deep_link = None
+        if deep_link is None:
+            return
+        _handled_deep_link = True
+        from .panel import open_revision_deep_link
+
+        try:
+            from PySide import QtCore
+        except ImportError:
+            from PySide2 import QtCore
+        QtCore.QTimer.singleShot(0, lambda: open_revision_deep_link(deep_link))
 
     def Deactivated(self):
         pass
