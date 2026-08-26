@@ -1,9 +1,10 @@
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from freecad_plm_addon.panel import (
+    PLMPanel,
     annotation_create_payload,
     annotation_label,
     annotation_matches_filter,
@@ -16,6 +17,7 @@ from freecad_plm_addon.panel import (
     active_checkout_revision_id,
     checkout_label,
     checkout_guard_action,
+    checkout_can_cancel,
     checkout_visual_state,
     checkout_file_label,
     checkout_display_name,
@@ -263,6 +265,30 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(checkout_visual_state(checkout, 7), "local")
         self.assertEqual(checkout_visual_state(checkout, 8), "server")
         self.assertEqual(checkout_visual_state(checkout, 7, error=True), "error")
+
+    def test_checkout_can_cancel_requires_server_checkout_id(self):
+        self.assertTrue(checkout_can_cancel({"id": 7}))
+        self.assertFalse(checkout_can_cancel({}))
+        self.assertFalse(checkout_can_cancel(None))
+
+    def test_cancel_server_checkout_does_not_require_local_metadata(self):
+        panel = object.__new__(PLMPanel)
+        panel.active_checkout = None
+        panel.active_checkout_dir = None
+        panel.active_checkout_root_path = None
+        panel.checkout_document_names = []
+        panel.checkout_errors = {92: "Checkout-Metadaten sind veraltet."}
+        panel.set_status = Mock()
+        panel.refresh_active_checkouts = Mock()
+        client = Mock()
+        panel.client = Mock(return_value=client)
+
+        panel.cancel_checkout({"id": 92}, confirm=False)
+
+        client.cancel_checkout.assert_called_once_with(92)
+        panel.refresh_active_checkouts.assert_called_once_with()
+        self.assertNotIn(92, panel.checkout_errors)
+        panel.set_status.assert_called_with("Checkout abgebrochen.")
 
     def test_context_primary_action_matches_tree_context(self):
         fcstd_revision = {"id": 10, "file_format": "fcstd"}

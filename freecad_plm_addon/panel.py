@@ -291,6 +291,10 @@ def checkout_visual_state(checkout, local_checkout_id=None, error=False):
     return "server"
 
 
+def checkout_can_cancel(checkout):
+    return isinstance(checkout, dict) and checkout.get("id") is not None
+
+
 def context_primary_action(kind, revision=None, checkout=None, local_checkout_id=None):
     if kind in ("", None):
         return "import_project"
@@ -944,6 +948,8 @@ class PLMPanel:
             summary = item.text(0) if item is not None else "Checkout-Fehler"
             label = "Aktualisieren"
             callback = self.refresh_projects
+            if checkout_can_cancel(checkout):
+                more = [("Checkout abbrechen", self.cancel_selected_checkout)]
         elif kind == "revision":
             summary = compact_revision_summary(revision)
             state = checkout_visual_state(
@@ -977,15 +983,18 @@ class PLMPanel:
                     (None, None),
                     ("Checkout abbrechen", self.cancel_active_checkout),
                 ]
-            elif revision_is_checkout_editable(revision or {}):
-                more.append(("Schreibgeschützt öffnen", self.open_selected_revision_readonly))
-                if (
-                    self.active_checkout_id() is not None
-                    and revision.get("id") != active_checkout_revision_id(self.active_checkout)
-                ):
-                    more.append(
-                        ("Zum aktiven Checkout hinzufügen", self.add_selected_file_to_active_checkout)
-                    )
+            else:
+                if state in ("server", "error") and checkout_can_cancel(checkout):
+                    more.append(("Checkout abbrechen", self.cancel_selected_checkout))
+                if revision_is_checkout_editable(revision or {}):
+                    more.append(("Schreibgeschützt öffnen", self.open_selected_revision_readonly))
+                    if (
+                        self.active_checkout_id() is not None
+                        and revision.get("id") != active_checkout_revision_id(self.active_checkout)
+                    ):
+                        more.append(
+                            ("Zum aktiven Checkout hinzufügen", self.add_selected_file_to_active_checkout)
+                        )
             if revision_file_format(revision or {}) in ("fcstd", "step", "stl"):
                 more.append(("Im Slicer öffnen", self.open_selected_revision_in_slicer))
             more.extend(
@@ -3695,29 +3704,35 @@ class PLMPanel:
             return
         self.cancel_active_checkout(confirm=False)
 
-    def cancel_active_checkout(self, confirm=True):
+    def cancel_checkout(self, checkout, confirm=True):
         from . import fcstd
 
-        checkout_id = self.active_checkout_id()
+        checkout_id = checkout.get("id") if isinstance(checkout, dict) else None
         if checkout_id is None:
-            self.set_status("Kein aktiver Checkout.")
+            self.set_status("Kein Checkout ausgewählt.")
             return
 
         if confirm:
             answer = self.QtWidgets.QMessageBox.question(
                 self.widget,
                 "Checkout abbrechen",
-                "Aktiven Checkout wirklich abbrechen?",
+                f"Checkout {checkout_id} wirklich abbrechen?",
             )
             if answer != self.QtWidgets.QMessageBox.Yes:
                 self.set_status("Checkout-Abbruch abgebrochen.")
                 return
 
+        is_local_checkout = checkout_id == self.active_checkout_id()
+        closed = []
+        failed = []
         try:
             self.set_status("Breche Checkout ab...")
             self.client().cancel_checkout(checkout_id)
-            closed, failed = fcstd.close_documents(self.checkout_document_names)
-            self.reset_active_checkout()
+            if is_local_checkout:
+                closed, failed = fcstd.close_documents(self.checkout_document_names)
+                self.reset_active_checkout()
+            else:
+                self.checkout_errors.pop(checkout_id, None)
             self.refresh_active_checkouts()
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
@@ -3732,6 +3747,16 @@ class PLMPanel:
         if failed:
             message = f"{message} Schließen fehlgeschlagen: {', '.join(failed)}."
         self.set_status(message)
+
+    def cancel_selected_checkout(self, confirm=True):
+        checkout = self.selected_tree_checkout()
+        if checkout is None:
+            self.set_status("Kein Checkout ausgewählt.")
+            return
+        self.cancel_checkout(checkout, confirm=confirm)
+
+    def cancel_active_checkout(self, confirm=True):
+        self.cancel_checkout(self.active_checkout, confirm=confirm)
 
 
 def _find_dock(main_window, QtWidgets):
