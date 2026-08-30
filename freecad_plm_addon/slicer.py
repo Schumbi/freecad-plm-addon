@@ -4,11 +4,19 @@ import platform
 import shlex
 import shutil
 import subprocess
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
-from .errors import WorkspaceError
-from .workspace import safe_download_filename, server_slug, sha256_file
+from .errors import EmptyGeometryError, WorkspaceError
+from .workspace import (
+    download_manifest_files,
+    root_file_path,
+    safe_download_filename,
+    server_slug,
+    sha256_file,
+    write_manifest,
+)
 
 
 SLICERS = {
@@ -202,15 +210,51 @@ def validate_3mf(path):
         raise WorkspaceError("Das Slicer-Projekt ist keine 3MF-Datei.")
     try:
         with ZipFile(path) as archive:
-            names = set(archive.namelist())
-            if not any(name.lower().endswith(".model") for name in names):
+            names = archive.namelist()
+            model_names = [name for name in names if name.lower().endswith(".model")]
+            if not model_names:
                 raise WorkspaceError("Die 3MF enthält kein 3D-Modell.")
             bad_member = archive.testzip()
             if bad_member:
                 raise WorkspaceError(f"Die 3MF ist beschädigt: {bad_member}")
+            triangle_count = 0
+            for name in model_names:
+                try:
+                    root = ElementTree.fromstring(archive.read(name))
+                except ElementTree.ParseError as exc:
+                    raise WorkspaceError(
+                        f"Die 3MF-Modelldatei ist ungültig: {name}."
+                    ) from exc
+                triangle_count += sum(
+                    1
+                    for node in root.iter()
+                    if str(node.tag).rsplit("}", 1)[-1] == "triangle"
+                )
+            if triangle_count < 1:
+                raise EmptyGeometryError(
+                    "Die 3MF enthält keine Geometriedreiecke."
+                )
     except BadZipFile as exc:
         raise WorkspaceError("Die 3MF ist kein gültiger ZIP-Container.") from exc
     return path
+
+
+def export_revision_manifest_to_3mf(client, revision_id, workspace_dir, target_path):
+    workspace_dir = Path(workspace_dir)
+    target_path = Path(target_path)
+    manifest = client.get_revision_manifest(revision_id)
+    write_manifest(workspace_dir, manifest)
+    download_manifest_files(client, manifest, workspace_dir)
+    source_path = root_file_path(manifest, workspace_dir)
+    temporary = target_path.with_name(f".{target_path.stem}.exporting.3mf")
+    temporary.unlink(missing_ok=True)
+    try:
+        export_revision_to_3mf(source_path, temporary)
+        validate_3mf(temporary)
+        temporary.replace(target_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return target_path
 
 
 def reconcile_slicer_project(local_sha256, previous_server_sha256, server_sha256):

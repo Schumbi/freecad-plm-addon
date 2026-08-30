@@ -31,3 +31,7 @@ class WorkspaceError(PLMError):
 
 class HashMismatchError(WorkspaceError):
     pass
+
+
+class EmptyGeometryError(WorkspaceError):
+    pass

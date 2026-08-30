@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 from .api_client import PLMClient
-from .errors import ConflictError, PLMError
+from .errors import ConflictError, EmptyGeometryError, PLMError
 from .workspace import (
     archive_import_source_dir,
     build_checkout_metadata,
@@ -2845,7 +2845,7 @@ class PLMPanel:
         from .slicer import (
             SLICERS,
             SlicerProjectMonitor,
-            export_revision_to_3mf,
+            export_revision_manifest_to_3mf,
             launch_slicer,
             read_sync_state,
             reconcile_slicer_project,
@@ -2905,8 +2905,13 @@ class PLMPanel:
                     "Die lokale Datei bleibt unangetastet.",
                 )
             if reconcile_action == "upload":
-                self._sync_slicer_project_path(target_path, revision, state)
-                server_project = client.get_slicer_project(revision_id)
+                try:
+                    validate_3mf(target_path)
+                except EmptyGeometryError:
+                    reconcile_action = "rebuild"
+                else:
+                    self._sync_slicer_project_path(target_path, revision, state)
+                    server_project = client.get_slicer_project(revision_id)
             elif reconcile_action in ("download", "current") and server_project:
                 if reconcile_action == "download":
                     client.download_manufacturing_file(
@@ -2924,17 +2929,22 @@ class PLMPanel:
                     }
                 )
 
-            if not target_path.is_file():
-                revision_detail = client.get_revision(revision_id)
-                source_name = revision_detail.get("original_filename") or "revision.FCStd"
-                source_path = target_dir / "source" / Path(source_name).name
-                client.download_revision_file(
-                    revision_detail["download_url"],
-                    source_path,
-                    revision_detail["sha256"],
+            if target_path.is_file() and reconcile_action != "rebuild":
+                try:
+                    validate_3mf(target_path)
+                except EmptyGeometryError:
+                    reconcile_action = "rebuild"
+
+            if not target_path.is_file() or reconcile_action == "rebuild":
+                self.set_status(
+                    "Erzeuge 3MF aus der CAD-Revision und ihren Abhängigkeiten..."
                 )
-                self.set_status("Erzeuge generische 3MF aus der CAD-Revision...")
-                export_revision_to_3mf(source_path, target_path)
+                export_revision_manifest_to_3mf(
+                    client,
+                    revision_id,
+                    target_dir / "source",
+                    target_path,
+                )
 
             validate_3mf(target_path)
             slicer_label = SLICERS.get(self.slicer_kind, {}).get("label", "")
