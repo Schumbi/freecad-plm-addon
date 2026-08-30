@@ -114,7 +114,12 @@ class ProtocolHandlerTests(unittest.TestCase):
             self.assertTrue(result.success)
             launcher_path = Path(temp_dir) / ".local/share/freecad-plm/protocol_launcher.py"
             self.assertIn(str(launcher_path), content)
-            self.assertIn("org.freecad.FreeCAD", launcher_path.read_text())
+            launcher_content = launcher_path.read_text()
+            self.assertIn("org.freecad.FreeCAD", launcher_content)
+            self.assertIn(
+                r'\"org.freecad.FreeCAD\", \"-\", \"--single-instance\"',
+                launcher_content,
+            )
             self.assertIn(
                 [
                     "flatpak-spawn",

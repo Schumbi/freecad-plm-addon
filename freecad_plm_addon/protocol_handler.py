@@ -182,6 +182,7 @@ def register_linux_protocol_handler(
             "/usr/bin/flatpak",
             "run",
             flatpak_id,
+            "-",
             "--single-instance",
         ]
     else:
