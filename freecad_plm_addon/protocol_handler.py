@@ -14,6 +14,7 @@ WINDOWS_CLASS_KEY = rf"Software\Classes\{SCHEME}"
 LINK_FILE_SUFFIX = ".FCPLMLink"
 LINK_FILE_MAGIC = "FREECAD-PLM-LINK/1"
 LAUNCHER_FILENAME = "protocol_launcher.py"
+LINK_PATH_PLACEHOLDER = "{link_path}"
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,7 @@ from pathlib import Path
 SCHEME_PREFIX = "{SCHEME}://"
 MAGIC = "{LINK_FILE_MAGIC}"
 SUFFIX = "{LINK_FILE_SUFFIX}"
+LINK_PATH_PLACEHOLDER = "{LINK_PATH_PLACEHOLDER}"
 COMMAND = json.loads({json.dumps(command_json)})
 INBOX = Path(json.loads({json.dumps(inbox_json)}))
 
@@ -107,7 +109,13 @@ def main():
     link_path = INBOX / (uuid.uuid4().hex + SUFFIX)
     link_path.write_text(MAGIC + "\\n" + url + "\\n", encoding="utf-8")
     try:
-        subprocess.Popen(COMMAND + [str(link_path)], close_fds=True)
+        command = [
+            str(link_path) if value == LINK_PATH_PLACEHOLDER else value
+            for value in COMMAND
+        ]
+        if LINK_PATH_PLACEHOLDER not in COMMAND:
+            command.append(str(link_path))
+        subprocess.Popen(command, close_fds=True)
     except Exception as exc:
         try:
             link_path.unlink()
@@ -181,9 +189,14 @@ def register_linux_protocol_handler(
         freecad_command = [
             "/usr/bin/flatpak",
             "run",
+            "--command=FreeCAD",
+            "--file-forwarding",
             flatpak_id,
             "-",
             "--single-instance",
+            "@@",
+            LINK_PATH_PLACEHOLDER,
+            "@@",
         ]
     else:
         home = Path(home or Path.home())
@@ -196,7 +209,11 @@ def register_linux_protocol_handler(
                 False,
                 "FreeCAD-Programmdatei wurde nicht gefunden.",
             )
-        freecad_command = [freecad_executable, "--single-instance"]
+        freecad_command = [
+            freecad_executable,
+            "--single-instance",
+            LINK_PATH_PLACEHOLDER,
+        ]
 
     applications_dir = data_home / "applications"
     handler_dir = data_home / "freecad-plm"
@@ -342,7 +359,7 @@ def register_windows_protocol_handler(
     try:
         launcher_changed = _write_launcher(
             launcher_path,
-            [freecad_executable, "--single-instance"],
+            [freecad_executable, "--single-instance", LINK_PATH_PLACEHOLDER],
             inbox_dir,
         )
     except OSError as exc:

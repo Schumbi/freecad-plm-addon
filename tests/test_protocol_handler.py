@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 import subprocess
@@ -8,6 +9,7 @@ from freecad_plm_addon.protocol_handler import (
     LINUX_DESKTOP_ID,
     LINK_FILE_MAGIC,
     LINK_FILE_SUFFIX,
+    LINK_PATH_PLACEHOLDER,
     MIME_TYPE,
     WINDOWS_CLASS_KEY,
     linux_desktop_entry,
@@ -116,9 +118,9 @@ class ProtocolHandlerTests(unittest.TestCase):
             self.assertIn(str(launcher_path), content)
             launcher_content = launcher_path.read_text()
             self.assertIn("org.freecad.FreeCAD", launcher_content)
+            self.assertIn(r'\"--file-forwarding\"', launcher_content)
             self.assertIn(
-                r'\"org.freecad.FreeCAD\", \"-\", \"--single-instance\"',
-                launcher_content,
+                r'\"@@\", \"{link_path}\", \"@@\"', launcher_content
             )
             self.assertIn(
                 [
@@ -208,6 +210,47 @@ class ProtocolHandlerTests(unittest.TestCase):
                 link_path.read_text(encoding="utf-8"),
                 f"{LINK_FILE_MAGIC}\nfreecad-plm://revision/17?action=checkout\n",
             )
+
+    def test_launcher_expands_link_path_between_flatpak_markers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            capture_path = temp_path / "captured.json"
+            fake_freecad = temp_path / "fake_freecad.py"
+            fake_freecad.write_text(
+                "import json, pathlib, sys\n"
+                f"pathlib.Path({str(capture_path)!r}).write_text(json.dumps(sys.argv[1:]))\n",
+                encoding="utf-8",
+            )
+            launcher = temp_path / "launcher.py"
+            launcher.write_text(
+                protocol_launcher_script(
+                    [
+                        sys.executable,
+                        str(fake_freecad),
+                        "@@",
+                        LINK_PATH_PLACEHOLDER,
+                        "@@",
+                    ],
+                    temp_path / "links",
+                ),
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                [sys.executable, str(launcher), "freecad-plm://revision/17"],
+                check=True,
+            )
+            for _attempt in range(100):
+                if capture_path.exists():
+                    break
+                import time
+
+                time.sleep(0.01)
+
+            arguments = json.loads(capture_path.read_text())
+            self.assertEqual(arguments[0], "@@")
+            self.assertEqual(Path(arguments[1]).suffix, LINK_FILE_SUFFIX)
+            self.assertEqual(arguments[2], "@@")
 
 
 if __name__ == "__main__":
