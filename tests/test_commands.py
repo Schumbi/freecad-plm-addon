@@ -10,6 +10,7 @@ from freecad_plm_addon.commands import (
     OpenDeepLinkCommand,
     OpenInSlicerCommand,
     RefreshCommand,
+    SetupProtocolHandlerCommand,
 )
 
 from pathlib import Path
@@ -27,6 +28,7 @@ class CommandResourceTests(unittest.TestCase):
             CreateAnnotationCommand(),
             OpenInSlicerCommand(),
             OpenDeepLinkCommand(),
+            SetupProtocolHandlerCommand(),
         ]
 
         for command in commands:
@@ -43,6 +45,7 @@ class CommandResourceTests(unittest.TestCase):
             ConnectCommand(),
             OpenInSlicerCommand(),
             OpenDeepLinkCommand(),
+            SetupProtocolHandlerCommand(),
         ]
 
         for command in commands:

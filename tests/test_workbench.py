@@ -43,6 +43,22 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(workbench.toolbar, ("FreeCAD-PLM", commands))
         self.assertEqual(workbench.menu, ("FreeCAD-PLM", commands))
 
+    def test_initialize_keeps_protocol_setup_out_of_toolbar(self):
+        workbench = create_workbench(BaseWorkbench)
+        commands = [
+            "FreeCADPLM_ActivateConnection",
+            "FreeCADPLM_SetupProtocolHandler",
+        ]
+
+        with patch("freecad_plm_addon.commands.register_commands", return_value=commands):
+            workbench.Initialize()
+
+        self.assertEqual(
+            workbench.toolbar,
+            ("FreeCAD-PLM", ["FreeCADPLM_ActivateConnection"]),
+        )
+        self.assertEqual(workbench.menu, ("FreeCAD-PLM", commands))
+
 
 if __name__ == "__main__":
     unittest.main()

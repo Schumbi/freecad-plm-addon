@@ -2,8 +2,8 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>PLM Connector</name>
   <description>Verbindet CAD-Projekte mit einem PLM-Server. Projekte, Teile und Revisionen durchsuchen, schreibgeschützte Stände öffnen, Dateien aus- und einchecken sowie Metadaten, Notizen und Anmerkungen verwalten.</description>
-  <version>0.1.1</version>
-  <date>2026-07-13</date>
+  <version>0.1.2</version>
+  <date>2026-08-31</date>
   <author email="freecad-plm@schumbi.de">Ralf Warmuth</author>
   <maintainer email="freecad-plm@schumbi.de">Ralf Warmuth</maintainer>
   <license file="LICENSE">MIT</license>

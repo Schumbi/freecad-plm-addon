@@ -33,8 +33,8 @@ Aktuell umgesetzt:
 - Revisionsnotizen bearbeiten.
 - Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder öffnen und
   löschen.
-- Streng validierte `freecad-plm://revision/...`-Links aus dem Web öffnen;
-  Checkout-Links werden vor Ausführung nochmals bestätigt.
+- Streng validierte `freecad-plm://revision/...`-Links aus dem Web unter Linux
+  und Windows öffnen; Checkout-Links werden vor Ausführung nochmals bestätigt.
 - Lokale CAD-Ordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
 - FCStd-, STEP- und STL-Revisionen als 3MF in Bambu Studio oder OrcaSlicer
   öffnen und beim Speichern automatisch mit der zugehörigen PLM-Revision
@@ -80,11 +80,20 @@ werden. STEP/STP werden beim schreibgeschützten Öffnen über FreeCADs
 Arbeitsdokument geladen. Sie können außerdem als unveränderte Begleitdateien in
 einem FCStd-Checkout liegen.
 
-Der Befehl `PLM-Link öffnen` akzeptiert Revisionslinks aus dem Web-UI. Wenn das
-Betriebssystem das Schema `freecad-plm://` an FreeCAD übergibt, verarbeitet die
-Workbench denselben Link beim Aktivieren automatisch. Links dürfen nur
+Der Befehl `PLM-Link öffnen` akzeptiert Revisionslinks aus dem Web-UI. Beim
+FreeCAD-Start richtet das Addon das Schema `freecad-plm://` automatisch für den
+aktuellen Benutzer ein: unter Linux als XDG-MIME-Handler (auch aus dem
+FreeCAD-Flatpak heraus), unter Windows unter `HKCU\Software\Classes`, also ohne
+Administratorrechte. Der Menüpunkt `FreeCAD-PLM -> Web-Link-Handler
+einrichten` repariert die Zuordnung bei Bedarf.
+
+Der Handler funktioniert sowohl bei geschlossenem als auch bei bereits
+laufendem FreeCAD. Dazu übergibt er nicht die URL selbst an FreeCADs
+Ein-Instanz-Mechanismus, sondern eine kurzlebige `.FCPLMLink`-Datei. Das Addon
+prüft und entfernt diese Datei nach der Übergabe. Links dürfen nur
 `project_id`, `part_id` und eine der Aktionen `checkout`, `readonly` oder
-`slicer` enthalten; Zugangsdaten werden nie in den Link geschrieben.
+`slicer` enthalten; Zugangsdaten werden nie in den Link geschrieben. Je nach
+Browser muss die externe Anwendung beim ersten Aufruf bestätigt werden.
 
 `Neues Teil` fragt nur Name, optionale Teilenummer und Typ ab. Das Addon erzeugt
 die leere FCStd-Datei intern und übergibt sie direkt an das PLM. Bei einem
@@ -152,9 +161,10 @@ Branch:
 main
 ```
 
-Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Für die
-Nutzung muss anschließend im Addon unter `Verbindungseinstellungen` die
-Server-URL, ein API-Token und der lokale Workspace gesetzt werden.
+Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Beim
+Start wird zugleich der Web-Link-Handler für Linux oder Windows eingerichtet.
+Für die Nutzung muss anschließend im Addon unter `Verbindungseinstellungen`
+die Server-URL, ein API-Token und der lokale Workspace gesetzt werden.
 
 Die serverseitige Forgejo- und Reverse-Proxy-Konfiguration für eine Installation
 mit einem unveränderten FreeCAD ist in

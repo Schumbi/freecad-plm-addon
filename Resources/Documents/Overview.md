@@ -14,6 +14,9 @@ direkt in die CAD-Oberfläche.
 - Neue FreeCAD-Teile mit `R0001` anlegen und direkt öffnen, ohne zuvor eine lokale Datei speichern zu müssen.
 - Revisionsnotizen und Anmerkungen lesen und bearbeiten.
 - Lokale Modellordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
+- Revisionsaktionen aus der Web-Oberfläche über `freecad-plm://` direkt in
+  FreeCAD öffnen, unter Linux und Windows sowie auch bei schon laufendem
+  FreeCAD.
 
 Dateien werden anhand des Server-Manifests und ihrer SHA-256-Prüfsummen
 übertragen. Unveränderte Modelle und rein technische Speicherartefakte erzeugen
@@ -27,6 +30,11 @@ keine unnötigen Revisionen.
    Workspace eintragen.
 4. Ein Projekt, ein Teil und eine Revision auswählen.
 5. Die Revision schreibgeschützt öffnen oder einen Checkout starten.
+
+Beim FreeCAD-Start registriert das Addon den Web-Link-Handler automatisch für
+den aktuellen Linux- oder Windows-Benutzer. Falls ein Browserlink nicht mehr
+reagiert, kann die Zuordnung über `FreeCAD-PLM -> Web-Link-Handler einrichten`
+erneuert werden.
 
 Für ein neues FreeCAD-Modell genügt **Neues Teil**: Name, optionale
 Teilenummer und Typ eingeben und **Anlegen und öffnen** wählen. Das Addon

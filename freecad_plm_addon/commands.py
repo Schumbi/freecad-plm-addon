@@ -18,6 +18,7 @@ COMMAND_NAMES = [
     "FreeCADPLM_CreateAnnotation",
     "FreeCADPLM_OpenInSlicer",
     "FreeCADPLM_OpenDeepLink",
+    "FreeCADPLM_SetupProtocolHandler",
 ]
 
 
@@ -132,6 +133,29 @@ class OpenDeepLinkCommand(BaseCommand):
         prompt_for_revision_deep_link()
 
 
+class SetupProtocolHandlerCommand(BaseCommand):
+    menu_text = "Web-Link-Handler einrichten"
+    tooltip = "freecad-plm://-Links für diesen Benutzer registrieren"
+    pixmap = icon_path("open-deep-link.svg")
+
+    def Activated(self):
+        from .panel import _load_qt
+        from .protocol_handler import register_protocol_handler
+
+        result = register_protocol_handler()
+        _QtCore, _QtGui, QtWidgets = _load_qt()
+        message_box = (
+            QtWidgets.QMessageBox.information
+            if result.success
+            else QtWidgets.QMessageBox.warning
+        )
+        message_box(
+            None,
+            "FreeCAD-PLM Web-Link-Handler",
+            result.message,
+        )
+
+
 def register_commands():
     import FreeCADGui
 
@@ -145,6 +169,7 @@ def register_commands():
         "FreeCADPLM_CreateAnnotation": CreateAnnotationCommand(),
         "FreeCADPLM_OpenInSlicer": OpenInSlicerCommand(),
         "FreeCADPLM_OpenDeepLink": OpenDeepLinkCommand(),
+        "FreeCADPLM_SetupProtocolHandler": SetupProtocolHandlerCommand(),
     }
     for name, command in commands.items():
         FreeCADGui.addCommand(name, command)
