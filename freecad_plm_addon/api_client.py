@@ -102,6 +102,44 @@ class PLMClient:
             "GET", f"/api/revisions/{revision_id}/slicer-project/"
         )["slicer_project"]
 
+    def create_print_project(self, revision_id, code, name, description=""):
+        return self._json(
+            "POST",
+            "/api/print-projects/",
+            {
+                "revision_id": revision_id,
+                "code": code,
+                "name": name,
+                "description": description,
+            },
+        )["print_project"]
+
+    def get_print_projects(self):
+        return self._json("GET", "/api/print-projects/")["print_projects"]
+
+    def get_print_project(self, print_project_id):
+        return self._json(
+            "GET", f"/api/print-projects/{print_project_id}/slicer-project/"
+        )["print_project"]
+
+    def sync_print_project(self, print_project_id, project_path):
+        return self._multipart(
+            f"/api/print-projects/{print_project_id}/slicer-project/",
+            {},
+            "file",
+            Path(project_path),
+            "model/3mf",
+        )["print_project"]
+
+    def add_print_project_source(self, print_project_id, source_path, label=""):
+        return self._multipart(
+            f"/api/print-projects/{print_project_id}/sources/",
+            {"label": label},
+            "file",
+            Path(source_path),
+            "model/stl",
+        )
+
     def sync_slicer_project(
         self,
         revision_id,

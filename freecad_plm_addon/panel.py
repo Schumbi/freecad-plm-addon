@@ -2807,18 +2807,22 @@ class PLMPanel:
         local_sha256 = sha256_file(project_path)
         if local_sha256 == state.get("server_sha256"):
             return False
-        result = self.client().sync_slicer_project(
-            revision["id"],
-            project_path,
-            base_sha256=state.get("server_sha256", ""),
-            label="Slicer-Projekt",
-            slicer_name=state.get("slicer_name", ""),
-        )
-        server_project = result["slicer_project"]
+        if state.get("print_project_id"):
+            result = self.client().sync_print_project(
+                state["print_project_id"], project_path
+            )
+            server_project = result["slicer_project"]
+        else:
+            result = self.client().sync_slicer_project(
+                revision["id"], project_path,
+                base_sha256=state.get("server_sha256", ""),
+                label="Slicer-Projekt", slicer_name=state.get("slicer_name", ""),
+            )
+            server_project = result["slicer_project"]
         state.update(
             {
                 "revision_id": revision["id"],
-                "manufacturing_file_id": server_project["id"],
+                "manufacturing_file_id": server_project.get("id"),
                 "server_sha256": server_project["sha256"],
                 "local_sha256": local_sha256,
                 "sync_status": "synchronized",
@@ -2876,13 +2880,6 @@ class PLMPanel:
             revision_id,
         )
         target_dir.mkdir(parents=True, exist_ok=True)
-        target_path = target_dir / slicer_project_filename(
-            project_code,
-            part.get("number", ""),
-            revision.get("revision_code", ""),
-            revision.get("original_filename", ""),
-        )
-
         try:
             command = resolve_slicer_command(
                 self.slicer_kind,
@@ -2890,8 +2887,32 @@ class PLMPanel:
                 self.slicer_extra_args,
             )
             client = self.client()
-            server_project = client.get_slicer_project(revision_id)
+            matches = [
+                item for item in client.get_print_projects()
+                if item.get("primary_revision_id") == revision_id
+            ]
+            if matches:
+                print_project = matches[0]
+            else:
+                print_project = client.create_print_project(
+                    revision_id,
+                    f"DP-{revision_id}",
+                    f"Druckprojekt {part.get('number', '')} {revision.get('revision_code', '')}".strip(),
+                )
+                source_paths, _selected_filter = self.QtWidgets.QFileDialog.getOpenFileNames(
+                    None,
+                    "Externe STL-Quellen zum Druckprojekt hinzufügen (optional)",
+                    "",
+                    "STL-Dateien (*.stl)",
+                )
+                for source_path in source_paths:
+                    client.add_print_project_source(print_project["id"], source_path)
+            target_path = target_dir / slicer_project_filename(
+                project_code, print_project["code"], "", revision.get("original_filename", "")
+            )
+            server_project = print_project.get("slicer_project")
             state = read_sync_state(target_path)
+            state["print_project_id"] = print_project["id"]
             local_sha = sha256_file(target_path) if target_path.is_file() else ""
             previous_server_sha = state.get("server_sha256", "")
             current_server_sha = server_project.get("sha256", "") if server_project else ""
@@ -2912,7 +2933,7 @@ class PLMPanel:
                     reconcile_action = "rebuild"
                 else:
                     self._sync_slicer_project_path(target_path, revision, state)
-                    server_project = client.get_slicer_project(revision_id)
+                    server_project = client.get_print_project(print_project["id"]).get("slicer_project")
             elif reconcile_action in ("download", "current") and server_project:
                 if reconcile_action == "download":
                     client.download_manufacturing_file(
