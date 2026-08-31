@@ -169,8 +169,19 @@ def slicer_project_dir(base_root, server_url, project_code, revision_id):
     )
 
 
-def slicer_project_filename(part_number, revision_code, original_filename=""):
-    stem = f"{part_number}_{revision_code}".strip("_")
+def slicer_project_filename(
+    project_code, part_number, revision_code, original_filename=""
+):
+    """Return the globally unique name used by the slicer and Bambuddy."""
+    stem = "_".join(
+        value.strip("_")
+        for value in (
+            str(project_code or ""),
+            str(part_number or ""),
+            str(revision_code or ""),
+        )
+        if value
+    )
     if not stem:
         stem = Path(safe_download_filename(original_filename, "slicer-project")).stem
     safe_stem = "".join(char if char.isalnum() or char in "-_." else "_" for char in stem)

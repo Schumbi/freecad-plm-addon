@@ -2877,6 +2877,7 @@ class PLMPanel:
         )
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir / slicer_project_filename(
+            project_code,
             part.get("number", ""),
             revision.get("revision_code", ""),
             revision.get("original_filename", ""),

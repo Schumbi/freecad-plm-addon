@@ -114,7 +114,10 @@ class SlicerTests(unittest.TestCase):
         )
         path = slicer_project_dir("~/PLM", "https://plm.example", "P7", 12)
         self.assertTrue(str(path).endswith("plm-example/P7/slicer-projects/revision-12"))
-        self.assertEqual(slicer_project_filename("A 1", "R0002"), "A_1_R0002.3mf")
+        self.assertEqual(
+            slicer_project_filename("P7", "A 1", "R0002"),
+            "P7_A_1_R0002.3mf",
+        )
 
     def test_state_is_atomic_and_contains_no_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
