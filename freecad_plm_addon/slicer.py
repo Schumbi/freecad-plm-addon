@@ -268,6 +268,23 @@ def export_revision_manifest_to_3mf(client, revision_id, workspace_dir, target_p
     return target_path
 
 
+def export_revision_manifest_to_stl(client, revision_id, workspace_dir, target_path):
+    workspace_dir = Path(workspace_dir)
+    target_path = Path(target_path)
+    manifest = client.get_revision_manifest(revision_id)
+    write_manifest(workspace_dir, manifest)
+    download_manifest_files(client, manifest, workspace_dir)
+    source_path = root_file_path(manifest, workspace_dir)
+    temporary = target_path.with_name(f".{target_path.stem}.exporting.stl")
+    temporary.unlink(missing_ok=True)
+    try:
+        export_revision_to_stl(source_path, temporary)
+        temporary.replace(target_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return target_path
+
+
 def reconcile_slicer_project(local_sha256, previous_server_sha256, server_sha256):
     """Choose a safe action without silently discarding either side."""
     local_dirty = bool(
@@ -315,7 +332,7 @@ def select_export_objects(objects):
     return selected
 
 
-def export_revision_to_3mf(source_path, target_path):
+def export_revision_to_mesh(source_path, target_path):
     """Export an FCStd/STEP/STL revision through FreeCAD's Mesh workbench."""
     import FreeCAD
     import Mesh
@@ -343,10 +360,24 @@ def export_revision_to_3mf(source_path, target_path):
         if not objects:
             raise WorkspaceError("Die Revision enthält keine exportierbare Geometrie.")
         Mesh.export(objects, str(target_path))
-        return validate_3mf(target_path)
+        if not target_path.is_file() or target_path.stat().st_size < 1:
+            raise WorkspaceError("FreeCAD hat keine Exportdatei erzeugt.")
+        return target_path
     finally:
         for name in set((FreeCAD.listDocuments() or {}).keys()) - before:
             FreeCAD.closeDocument(name)
+
+
+def export_revision_to_3mf(source_path, target_path):
+    target_path = export_revision_to_mesh(source_path, target_path)
+    return validate_3mf(target_path)
+
+
+def export_revision_to_stl(source_path, target_path):
+    target_path = Path(target_path)
+    if target_path.suffix.lower() != ".stl":
+        raise WorkspaceError("Die Slicer-Übergabedatei muss eine STL-Datei sein.")
+    return export_revision_to_mesh(source_path, target_path)
 
 
 class SlicerProjectMonitor:

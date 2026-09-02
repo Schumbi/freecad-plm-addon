@@ -140,6 +140,15 @@ class PLMClient:
             "model/stl",
         )
 
+    def add_print_project_revision_source(
+        self, print_project_id, revision_id, label=""
+    ):
+        return self._json(
+            "POST",
+            f"/api/print-projects/{print_project_id}/sources/",
+            {"revision_id": revision_id, "label": label},
+        )
+
     def sync_slicer_project(
         self,
         revision_id,

@@ -10,6 +10,7 @@ from freecad_plm_addon.errors import EmptyGeometryError, WorkspaceError
 from freecad_plm_addon.slicer import (
     detect_slicer,
     export_revision_manifest_to_3mf,
+    export_revision_manifest_to_stl,
     flatpak_cli_command,
     launch_slicer,
     parse_extra_args,
@@ -213,6 +214,44 @@ class SlicerTests(unittest.TestCase):
             self.assertEqual(client.revision_id, 147)
             self.assertEqual(len(client.downloaded), 2)
             self.assertEqual(validate_3mf(target), target)
+
+    def test_manifest_stl_export_downloads_dependencies_and_uses_root(self):
+        class FakeClient:
+            def get_revision_manifest(self, revision_id):
+                self.revision_id = revision_id
+                digest = hashlib.sha256(b"fcstd").hexdigest()
+                return {
+                    "files": [
+                        {
+                            "path": "project/Scheibe.FCStd",
+                            "is_root": True,
+                            "download_url": "https://plm/scheibe",
+                            "sha256": digest,
+                        }
+                    ]
+                }
+
+            def download_revision_file(self, _url, target_path, _sha256):
+                Path(target_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(target_path).write_bytes(b"fcstd")
+
+        def fake_export(source_path, target_path):
+            self.assertEqual(source_path.name, "Scheibe.FCStd")
+            Path(target_path).write_bytes(b"solid scheibe\nendsolid\n")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            client = FakeClient()
+            target = Path(tmp) / "Scheibe.stl"
+            with patch(
+                "freecad_plm_addon.slicer.export_revision_to_stl",
+                side_effect=fake_export,
+            ):
+                export_revision_manifest_to_stl(
+                    client, 42, Path(tmp) / "source", target
+                )
+
+            self.assertEqual(client.revision_id, 42)
+            self.assertEqual(target.read_bytes(), b"solid scheibe\nendsolid\n")
 
     def test_reconcile_never_silently_overwrites_parallel_changes(self):
         self.assertEqual(reconcile_slicer_project("", "", ""), "create")

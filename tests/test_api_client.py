@@ -217,6 +217,25 @@ class PLMClientTests(unittest.TestCase):
         self.assertIn(b'filename="Halter.FCStd"', req.data)
         self.assertIn(b"generated-fcstd", req.data)
 
+    def test_add_print_project_revision_source_posts_revision_and_label(self):
+        client = PLMClient("https://plm.example", "token")
+        payload = {"source_id": 12, "created": True}
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload)) as urlopen:
+            self.assertEqual(
+                client.add_print_project_revision_source(8, 42, "A-002 R0001"),
+                payload,
+            )
+
+        req = urlopen.call_args.args[0]
+        self.assertEqual(
+            req.full_url,
+            "https://plm.example/api/print-projects/8/sources/",
+        )
+        self.assertEqual(
+            json.loads(req.data.decode("utf-8")),
+            {"revision_id": 42, "label": "A-002 R0001"},
+        )
+
     def test_update_project_posts_metadata_payload(self):
         client = PLMClient("https://plm.example", "token")
         payload = {"project": {"id": 3, "code": "PRJ", "name": "Demo"}}

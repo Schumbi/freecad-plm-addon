@@ -936,6 +936,7 @@ class PLMPanel:
             label = "Neues Teil"
             callback = self.create_part_dialog
             more = [
+                ("Lokale FCStd hinzufügen", self.add_local_fcstd_part_dialog),
                 ("Projekt importieren", self.import_project_dialog),
                 ("Projekt bearbeiten", self.show_project_dialog),
             ]
@@ -978,6 +979,7 @@ class PLMPanel:
             if state == "local":
                 more = [
                     ("Checkout öffnen", self.open_active_checkout_root),
+                    ("Lokale FCStd hinzufügen", self.add_local_fcstd_part_dialog),
                     ("Teil hinzufügen", self.choose_revision_for_active_checkout),
                     ("Teil entfernen", self.remove_file_from_active_checkout),
                     (None, None),
@@ -996,7 +998,8 @@ class PLMPanel:
                             ("Zum aktiven Checkout hinzufügen", self.add_selected_file_to_active_checkout)
                         )
             if revision_file_format(revision or {}) in ("fcstd", "step", "stl"):
-                more.append(("Im Slicer öffnen", self.open_selected_revision_in_slicer))
+                more.append(("Druckprojekt öffnen/erstellen", self.open_selected_revision_in_slicer))
+                more.append(("Zum Druckprojekt hinzufügen", self.add_selected_revision_to_print_project))
             more.extend(
                 [
                     (None, None),
@@ -2237,6 +2240,222 @@ class PLMPanel:
             self.select_revision_by_id(revision["id"])
         self.set_status(
             f"{part_label(part)} mit R0001 angelegt und {result_text}."
+        )
+
+    def add_local_fcstd_part_dialog(self):
+        from . import fcstd
+
+        project = self.selected_project()
+        project_id = project.get("id") if isinstance(project, dict) else None
+        active_checkout_id = self.active_checkout_id()
+        active_project = (
+            self.active_checkout.get("project")
+            if isinstance(self.active_checkout, dict)
+            and isinstance(self.active_checkout.get("project"), dict)
+            else {}
+        )
+        active_project_id = active_project.get("id")
+        if active_project_id is not None and active_project_id != project_id:
+            self.select_project_by_id(active_project_id)
+            project = self.selected_project() or active_project
+            project_id = project.get("id")
+        if project_id is None:
+            self.set_status("Kein Projekt ausgewählt.")
+            return
+        if active_checkout_id is not None and self.active_checkout_dir is None:
+            self.set_status(
+                "Bitte den aktiven Checkout zuerst öffnen, bevor eine lokale Datei hinzugefügt wird."
+            )
+            return
+
+        source_name, _selected_filter = self.QtWidgets.QFileDialog.getOpenFileName(
+            self.widget,
+            "Lokale FreeCAD-Datei zum PLM hinzufügen",
+            str(Path.home()),
+            "FreeCAD-Dateien (*.FCStd *.fcstd)",
+        )
+        if not source_name:
+            self.set_status("Hinzufügen abgebrochen.")
+            return
+        source_path = Path(source_name)
+        if not source_path.is_file() or source_path.suffix.lower() != ".fcstd":
+            self.set_status("Bitte eine vorhandene FCStd-Datei auswählen.")
+            return
+
+        open_names = fcstd.document_names_for_path(source_path)
+        modified_names = fcstd.modified_document_names(open_names)
+        if modified_names:
+            self.set_status("Bitte die lokale FCStd-Datei vor dem Hinzufügen speichern.")
+            return
+
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Lokale FCStd als neues Teil hinzufügen")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        intro = self.QtWidgets.QLabel(
+            "Das PLM legt aus der vorhandenen Datei ein neues Teil mit Revision R0001 an"
+            + (
+                " und nimmt es direkt in den geöffneten Checkout auf."
+                if active_checkout_id is not None
+                else " und öffnet dafür einen eigenen Checkout."
+            )
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        form = self.QtWidgets.QFormLayout()
+        name_input = self.QtWidgets.QLineEdit(source_path.stem)
+        number_input = self.QtWidgets.QLineEdit()
+        number_input.setPlaceholderText("automatisch")
+        category_input = self.QtWidgets.QComboBox()
+        category_input.addItem("Teil", "part")
+        category_input.addItem("Baugruppe", "assembly")
+        source_label = self.QtWidgets.QLabel(str(source_path))
+        source_label.setWordWrap(True)
+        form.addRow("Datei", source_label)
+        form.addRow("Name", name_input)
+        form.addRow("Teilenummer", number_input)
+        form.addRow("Typ", category_input)
+        layout.addLayout(form)
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        ok_button = buttons.button(self.QtWidgets.QDialogButtonBox.Ok)
+        ok_button.setText("Hinzufügen und öffnen")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            self.set_status("Hinzufügen abgebrochen.")
+            return
+
+        name = name_input.text().strip()
+        if not name:
+            self.set_status("Name ist erforderlich.")
+            return
+        _closed, failed = fcstd.close_documents(open_names)
+        if failed:
+            self.set_status(
+                f"Lokale Datei konnte nicht geschlossen werden: {', '.join(failed)}"
+            )
+            return
+        payload = {
+            "number": number_input.text().strip(),
+            "name": name,
+            "category": category_input.itemData(category_input.currentIndex()) or "part",
+            "source": "addon_local_fcstd",
+        }
+        try:
+            response = self.client().create_fcstd_part(
+                project_id,
+                payload,
+                source_path,
+                checkout_id=active_checkout_id,
+                workspace_hint=self.workspace_root.text().strip(),
+            )
+            if active_checkout_id is not None:
+                open_result = self.add_checkout_response_to_workspace(response)
+                result_text = f"zum Checkout hinzugefügt: {open_result['added_path']}"
+            else:
+                open_result = self.open_checkout_response_to_workspace(project, response)
+                result_text = f"als Checkout geöffnet: {open_result['root_path'].name}"
+        except PLMError as exc:
+            self.set_status(f"PLM-Fehler: {exc}")
+            return
+        except Exception as exc:
+            self.set_status(f"Lokale FCStd konnte nicht hinzugefügt werden: {exc}")
+            return
+
+        part = response.get("part") or {}
+        revision = response.get("revision") or {}
+        self.refresh_parts()
+        if part.get("id") is not None:
+            self.select_part_by_id(part["id"])
+        if revision.get("id") is not None:
+            self.select_revision_by_id(revision["id"])
+        self.set_status(f"{part_label(part)} mit R0001 angelegt und {result_text}.")
+
+    def add_selected_revision_to_print_project(self):
+        from .slicer import export_revision_manifest_to_stl
+        from .workspace import server_slug
+
+        project = self.selected_project()
+        part = self.selected_part()
+        revision = self.selected_revision()
+        if not project or not part or not revision or revision.get("id") is None:
+            self.set_status("Projekt, Teil und Revision auswählen.")
+            return
+        try:
+            candidates = [
+                item
+                for item in self.client().get_print_projects()
+                if item.get("project_id") == project.get("id")
+                and not any(
+                    source.get("revision_id") == revision["id"]
+                    for source in item.get("sources") or []
+                )
+            ]
+        except Exception as exc:
+            self.set_status(f"Druckprojekte konnten nicht geladen werden: {exc}")
+            return
+        if not candidates:
+            self.set_status("Kein passendes Druckprojekt ohne diese Revision gefunden.")
+            return
+        labels = [f"{item.get('code', '')} · {item.get('name', '')}" for item in candidates]
+        selected_label, accepted = self.QtWidgets.QInputDialog.getItem(
+            self.widget,
+            "Revision zum Druckprojekt hinzufügen",
+            "Druckprojekt",
+            labels,
+            0,
+            False,
+        )
+        if not accepted:
+            self.set_status("Hinzufügen zum Druckprojekt abgebrochen.")
+            return
+        print_project = candidates[labels.index(selected_label)]
+        safe_stem = "_".join(
+            "".join(char if char.isalnum() or char in "-_." else "_" for char in str(value))
+            for value in (
+                part.get("number") or part.get("name") or "Teil",
+                revision.get("revision_code") or f"revision-{revision['id']}",
+            )
+        )
+        export_dir = (
+            Path(self.workspace_root.text().strip()).expanduser()
+            / server_slug(self.server_url.text().strip())
+            / str(project.get("code") or f"project-{project.get('id')}")
+            / "slicer-projects"
+            / f"print-project-{print_project['id']}"
+            / "source-additions"
+        )
+        export_path = export_dir / f"{safe_stem}.stl"
+        try:
+            self.set_status("Erzeuge STL-Übergabedatei für das Druckprojekt...")
+            export_revision_manifest_to_stl(
+                self.client(),
+                revision["id"],
+                export_dir / "revision-source",
+                export_path,
+            )
+            self.client().add_print_project_revision_source(
+                print_project["id"],
+                revision["id"],
+                f"{part.get('number', '')} {revision.get('revision_code', '')}".strip(),
+            )
+        except Exception as exc:
+            self.set_status(f"Revision konnte nicht zum Druckprojekt hinzugefügt werden: {exc}")
+            return
+
+        self.QtGui.QDesktopServices.openUrl(
+            self.QtCore.QUrl.fromLocalFile(str(export_dir))
+        )
+        self.QtWidgets.QMessageBox.information(
+            self.widget,
+            "Revision zum Druckprojekt hinzugefügt",
+            "Die PLM-Revision ist jetzt als Quelle dokumentiert. Ziehe die erzeugte "
+            f"Datei in das geöffnete Slicerprojekt und ordne sie auf der gewünschten Platte an:\n\n{export_path}",
+        )
+        self.set_status(
+            f"Revision als Druckprojekt-Quelle hinzugefügt; STL bereit: {export_path}"
         )
 
     def save_selected_part(self):
