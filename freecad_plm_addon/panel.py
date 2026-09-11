@@ -3205,7 +3205,7 @@ class PLMPanel:
                 state.update(
                     {
                         "revision_id": revision_id,
-                        "manufacturing_file_id": server_project["id"],
+                        "manufacturing_file_id": server_project.get("id"),
                         "server_sha256": server_project["sha256"],
                         "local_sha256": server_project["sha256"],
                         "sync_status": "synchronized",

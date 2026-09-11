@@ -8,6 +8,7 @@ from zipfile import ZipFile
 from freecad_plm_addon.panel import PLMPanel
 from freecad_plm_addon.slicer import (
     read_3mf_sources,
+    read_sync_state,
     revision_sources,
     write_3mf_sources,
     write_sync_state,
@@ -65,8 +66,50 @@ class PanelSlicerTests(unittest.TestCase):
         write_sync_state(self.target, {"server_sha256": digest})
         self.client.get_print_projects.return_value = [{
             "id": 8, "primary_revision_id": 183, "code": "DP-183",
-            "slicer_project": {"id": 10, "sha256": digest},
+            "slicer_project": {
+                "sha256": digest,
+                "original_filename": self.target.name,
+                "download_url": "https://plm.example/api/print-projects/8/slicer-project/file/",
+            },
         }]
+
+    def test_print_project_without_manufacturing_file_id_opens_existing_local_file(self):
+        self.set_sources(187)
+        PLMPanel.open_selected_revision_in_slicer(self.panel)
+        self.launch.assert_called_once()
+        state = read_sync_state(self.target)
+        self.assertEqual(state["print_project_id"], 8)
+        self.assertIsNone(state["manufacturing_file_id"])
+        self.assertEqual(state["server_sha256"], sha256_file(self.target))
+
+    def test_print_project_without_manufacturing_file_id_downloads_and_opens(self):
+        self.set_sources(187)
+        content = self.target.read_bytes()
+        self.target.unlink()
+        self.client.download_manufacturing_file.side_effect = (
+            lambda url, path, digest: Path(path).write_bytes(content)
+        )
+        PLMPanel.open_selected_revision_in_slicer(self.panel)
+        self.client.download_manufacturing_file.assert_called_once()
+        self.launch.assert_called_once()
+        self.assertEqual(self.target.read_bytes(), content)
+        state = read_sync_state(self.target)
+        self.assertEqual(state["print_project_id"], 8)
+        self.assertIsNone(state["manufacturing_file_id"])
+
+    def test_print_project_sync_does_not_require_manufacturing_file_id(self):
+        self.set_sources(187)
+        digest = sha256_file(self.target)
+        self.client.sync_print_project.return_value = {
+            "id": 8, "slicer_project": {"sha256": digest},
+        }
+        synced = PLMPanel._sync_slicer_project_path(
+            self.panel, self.target, {"id": 183},
+            {"print_project_id": 8, "server_sha256": "old"},
+        )
+        self.assertTrue(synced)
+        self.client.sync_print_project.assert_called_once_with(8, self.target)
+        self.assertIsNone(read_sync_state(self.target)["manufacturing_file_id"])
 
     def test_changed_dependency_can_be_rebuilt_with_backup(self):
         self.set_sources(186)
@@ -115,6 +158,7 @@ class PanelSlicerTests(unittest.TestCase):
         original = self.target.read_bytes()
         self.panel.choose_slicer_geometry_action.return_value = "cancel"
         PLMPanel.open_selected_revision_in_slicer(self.panel)
+        self.panel.choose_slicer_geometry_action.assert_called_once_with("changed", False)
         self.export.assert_not_called()
         self.launch.assert_not_called()
         self.assertEqual(self.target.read_bytes(), original)
@@ -127,6 +171,7 @@ class PanelSlicerTests(unittest.TestCase):
         self.panel.choose_slicer_geometry_action.return_value = "rebuild"
         self.export.side_effect = RuntimeError("export failed")
         PLMPanel.open_selected_revision_in_slicer(self.panel)
+        self.export.assert_called_once()
         self.launch.assert_not_called()
         self.panel._sync_slicer_project_path.assert_not_called()
         self.assertEqual(self.target.read_bytes(), original)
