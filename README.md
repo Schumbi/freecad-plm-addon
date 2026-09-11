@@ -126,6 +126,37 @@ sinnvollen Ebene aus. Enthält ein sichtbarer `PartDesign::Body` ein ebenfalls
 sichtbares Tip-Feature, wird nur der Body exportiert; dadurch erscheint das
 Modell im Slicer nicht doppelt. Unabhängige Körper und Meshes bleiben erhalten.
 
+### Quellen prüfen und 3MF neu erzeugen
+
+Neu erzeugte 3MF enthalten unter `Metadata/freecad_plm_sources.json` den
+CAD-Quellenstand: Server ohne Zugangsdaten, Projekt-ID, Hauptrevision und alle
+tatsächlich für den Export geladenen CAD-Dateien mit relativem Pfad,
+Teil-/Revisions-ID, Revisionscode und SHA-256. Beim Öffnen vergleicht das Addon
+diese Angaben mit dem aktuellen Revisionsmanifest. Damit wird auch ein neuer
+Deckel erkannt, wenn die Revision der übergeordneten Druckbaugruppe gleich bleibt.
+
+Bei abweichenden Quellen bietet der Dialog `3MF neu erzeugen`,
+`Bisherigen Stand öffnen` und `Abbrechen` an. Ältere 3MF ohne Quellenangaben
+gelten als **nicht prüfbar**. Dasselbe gilt, wenn ein Slicer die zusätzlichen
+Metadaten beim Speichern entfernt; das Addon behauptet dann nicht, die Datei
+sei aktuell, und trägt auch keine heutigen Quellen nachträglich als Herkunft ein.
+Die Metadaten dokumentieren den CAD-Export, nicht spätere manuelle Änderungen
+der Geometrie oder zusätzlich im Slicer eingefügte Quellen.
+
+`Mehr → 3MF neu erzeugen` ist auch bei unveränderten Quellen verfügbar.
+Vor dem Bestätigen das bisherige Projekt im Slicer schließen. Exportiert wird
+die ausgewählte **gespeicherte** Revision mit ihren serverseitig aufgelösten
+Abhängigkeiten; lokale Checkout-Änderungen müssen vorher eingecheckt werden.
+Die Neuerzeugung übernimmt keine Druckeinstellungen, Plattenanordnung,
+Farbzuweisungen oder zusätzlich eingefügten Quellen. Sie sichert die bisherige
+3MF und `sync.json` lokal unter `backups/<UTC-Zeitstempel>-<Kennung>/` neben dem
+Arbeitsstand. Zum Wiederherstellen die gesicherte 3MF im Slicer öffnen und als
+Arbeitsdatei speichern. Erst nach erfolgreichem Export, Prüfung und Sicherung
+wird die Arbeitsdatei ersetzt und synchronisiert. Ein fehlgeschlagener Export
+oder eine fehlgeschlagene Sicherung lässt die bisherige 3MF unangetastet.
+
+### Slicer-Synchronisation
+
 Eine Dateiüberwachung erkennt anschließend das Speichern im Slicer und lädt
 die geänderte 3MF automatisch hoch. `sync.json` enthält nur IDs und Hashes,
 keine Zugangsdaten. Änderungen auf zwei Rechnern werden über den letzten

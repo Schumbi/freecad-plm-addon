@@ -999,6 +999,7 @@ class PLMPanel:
                         )
             if revision_file_format(revision or {}) in ("fcstd", "step", "stl"):
                 more.append(("Druckprojekt öffnen/erstellen", self.open_selected_revision_in_slicer))
+                more.append(("3MF neu erzeugen", self.rebuild_selected_revision_in_slicer))
                 more.append(("Zum Druckprojekt hinzufügen", self.add_selected_revision_to_print_project))
             more.extend(
                 [
@@ -3064,7 +3065,42 @@ class PLMPanel:
         except Exception as exc:
             self.set_status(f"Slicer-Projekt noch nicht synchronisiert: {exc}")
 
-    def open_selected_revision_in_slicer(self):
+    def rebuild_selected_revision_in_slicer(self):
+        self.open_selected_revision_in_slicer(force_rebuild=True)
+
+    def choose_slicer_geometry_action(self, sources_status, force_rebuild=False):
+        box = self.QtWidgets.QMessageBox(self.widget)
+        box.setWindowTitle("3MF neu erzeugen" if force_rebuild else "Slicer-Geometrie prüfen")
+        reasons = {
+            "changed": "Die CAD-Quellen haben sich seit dem Export geändert.",
+            "unknown": "Der Quellenstand dieser 3MF ist nicht prüfbar. Die Quellenangaben fehlen oder sind ungültig.",
+            "current": "Die 3MF wird aus dem gespeicherten CAD-Stand neu erzeugt.",
+            "empty": "Diese 3MF enthält keine druckbare Geometrie.",
+        }
+        box.setText(
+            reasons[sources_status]
+            + "\n\nNeu erzeugen exportiert die ausgewählte gespeicherte Revision samt "
+            "ihren Abhängigkeiten. Lokale Checkout-Änderungen müssen vorher eingecheckt werden. "
+            "Der bisherige Slicerstand wird lokal im Unterordner backups gesichert. "
+            "Anordnung, Druckeinstellungen, Farbzuweisungen und zusätzlich im Slicer "
+            "eingefügte Quellen werden nicht übernommen.\n\n"
+            "Bitte das bisherige Projekt im Slicer vor dem Neuerzeugen schließen."
+        )
+        rebuild = box.addButton("3MF neu erzeugen", self.QtWidgets.QMessageBox.AcceptRole)
+        keep = None
+        if not force_rebuild and sources_status != "empty":
+            keep = box.addButton("Bisherigen Stand öffnen", self.QtWidgets.QMessageBox.ActionRole)
+        cancel = box.addButton("Abbrechen", self.QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(cancel)
+        box.exec_()
+        clicked = box.clickedButton()
+        if clicked == rebuild:
+            return "rebuild"
+        if keep is not None and clicked == keep:
+            return "keep"
+        return "cancel"
+
+    def open_selected_revision_in_slicer(self, force_rebuild=False):
         from .slicer import (
             SLICERS,
             SlicerProjectMonitor,
@@ -3073,6 +3109,8 @@ class PLMPanel:
             read_sync_state,
             reconcile_slicer_project,
             resolve_slicer_command,
+            revision_sources,
+            slicer_sources_status,
             slicer_project_dir,
             slicer_project_filename,
             validate_3mf,
@@ -3099,6 +3137,7 @@ class PLMPanel:
             revision_id,
         )
         target_dir.mkdir(parents=True, exist_ok=True)
+        previous_monitor = None
         try:
             command = resolve_slicer_command(
                 self.slicer_kind,
@@ -3129,6 +3168,9 @@ class PLMPanel:
             target_path = target_dir / slicer_project_filename(
                 project_code, print_project["code"], "", revision.get("original_filename", "")
             )
+            previous_monitor = self.slicer_monitors.get(str(target_path))
+            if previous_monitor is not None:
+                previous_monitor.pause()
             server_project = print_project.get("slicer_project")
             state = read_sync_state(target_path)
             state["print_project_id"] = print_project["id"]
@@ -3176,6 +3218,21 @@ class PLMPanel:
                 except EmptyGeometryError:
                     reconcile_action = "rebuild"
 
+            manifest = client.get_revision_manifest(revision_id)
+            if target_path.is_file():
+                sources_status = (
+                    "empty" if reconcile_action == "rebuild" else slicer_sources_status(
+                        target_path, revision_sources(manifest, revision_id, client.base_url)
+                    )
+                )
+                if force_rebuild or sources_status != "current":
+                    choice = self.choose_slicer_geometry_action(sources_status, force_rebuild)
+                    if choice == "cancel":
+                        self.set_status("Öffnen des Slicer-Projekts abgebrochen.")
+                        return
+                    if choice == "rebuild":
+                        reconcile_action = "rebuild"
+
             if not target_path.is_file() or reconcile_action == "rebuild":
                 self.set_status(
                     "Erzeuge 3MF aus der CAD-Revision und ihren Abhängigkeiten..."
@@ -3185,6 +3242,8 @@ class PLMPanel:
                     revision_id,
                     target_dir / "source",
                     target_path,
+                    manifest=manifest,
+                    backup=True,
                 )
 
             validate_3mf(target_path)
@@ -3202,6 +3261,9 @@ class PLMPanel:
             )
             write_sync_state(target_path, state)
             self._sync_slicer_project_path(target_path, revision, state)
+            if previous_monitor is not None:
+                previous_monitor.stop()
+                previous_monitor = None
             monitor = SlicerProjectMonitor(
                 self.QtCore,
                 target_path,
@@ -3220,6 +3282,9 @@ class PLMPanel:
         except Exception as exc:
             self.set_status(f"Slicer konnte nicht geöffnet werden: {exc}")
             return
+        finally:
+            if previous_monitor is not None:
+                previous_monitor.resume()
 
         self.set_status(
             f"Slicer-Projekt geöffnet; Speichern wird automatisch synchronisiert: {target_path}"

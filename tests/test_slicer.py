@@ -1,4 +1,6 @@
 import hashlib
+import copy
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +20,12 @@ from freecad_plm_addon.slicer import (
     read_sync_state,
     resolve_slicer_command,
     select_export_objects,
+    revision_sources,
+    read_3mf_sources,
+    slicer_sources_status,
+    write_3mf_sources,
+    SOURCES_MEMBER,
+    SlicerProjectMonitor,
     slicer_project_dir,
     slicer_project_filename,
     validate_3mf,
@@ -26,6 +34,144 @@ from freecad_plm_addon.slicer import (
 
 
 class SlicerTests(unittest.TestCase):
+    def test_monitor_pauses_and_checks_for_saves_missed_during_dialog(self):
+        from unittest.mock import Mock
+
+        qt_core = Mock()
+        qt_core.QFileSystemWatcher.return_value.files.return_value = []
+        qt_core.QFileSystemWatcher.return_value.directories.return_value = []
+        callback = Mock()
+        with tempfile.TemporaryDirectory() as tmp:
+            monitor = SlicerProjectMonitor(qt_core, Path(tmp) / "model.3mf", callback)
+            monitor.pause()
+            monitor.schedule()
+            monitor.flush()
+            callback.assert_not_called()
+            monitor.timer.start.assert_not_called()
+            monitor.resume()
+            monitor.timer.start.assert_called_once()
+            monitor.flush()
+            callback.assert_called_once()
+
+    def source_manifest(self):
+        return {
+            "project": {"id": 15},
+            "files": [
+                {"path": "Druck.FCStd", "revision_id": 183, "sha256": "a" * 64, "is_root": True},
+                {"path": "Deckel.FCStd", "revision_id": 186, "sha256": "b" * 64, "is_root": False},
+            ],
+        }
+
+    def write_mesh(self, path):
+        with ZipFile(path, "w") as archive:
+            archive.writestr("3D/3dmodel.model", "<model><triangle /></model>")
+            archive.writestr("Metadata/project_settings.config", b"original settings")
+
+    def test_sources_roundtrip_preserves_mesh_settings_and_excludes_credentials(self):
+        manifest = self.source_manifest()
+        manifest["files"][0]["download_url"] = "https://secret/download?token=secret"
+        sources = revision_sources(manifest, 183, "https://user:secret@plm.example/base?token=secret#secret")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "model.3mf"
+            self.write_mesh(path)
+            write_3mf_sources(path, sources)
+            write_3mf_sources(path, sources)
+            self.assertEqual(slicer_sources_status(path, sources), "current")
+            with ZipFile(path) as archive:
+                self.assertEqual(archive.namelist().count(SOURCES_MEMBER), 1)
+                self.assertEqual(archive.read("Metadata/project_settings.config"), b"original settings")
+                self.assertEqual(archive.read("3D/3dmodel.model"), b"<model><triangle /></model>")
+                self.assertNotIn(b"secret", archive.read(SOURCES_MEMBER))
+                self.assertIn(b'application/json', archive.read("[Content_Types].xml"))
+                self.assertEqual(archive.read("_rels/.rels").count(b"urn:freecad-plm:relationships:sources"), 1)
+
+    def test_sources_detect_dependency_revision_hash_addition_and_removal(self):
+        manifest = self.source_manifest()
+        sources = revision_sources(manifest, 183)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "model.3mf"
+            self.write_mesh(path)
+            write_3mf_sources(path, sources)
+            reordered = copy.deepcopy(manifest)
+            reordered["files"].reverse()
+            self.assertEqual(slicer_sources_status(path, revision_sources(reordered, 183)), "current")
+            for key, value in (("revision_id", 187), ("sha256", "c" * 64)):
+                changed = copy.deepcopy(manifest)
+                changed["files"][1][key] = value
+                self.assertEqual(slicer_sources_status(path, revision_sources(changed, 183)), "changed")
+            for files in (manifest["files"][:1], manifest["files"] + [{"path": "Chip.FCStd", "sha256": "d" * 64}]):
+                self.assertEqual(slicer_sources_status(path, revision_sources({"files": files}, 183)), "changed")
+
+    def test_legacy_stripped_invalid_and_future_sources_are_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "model.3mf"
+            for payload in (None, "invalid json", "[]", '{"schema_version": 2}', '{"schema_version": 1, "files": [null]}'):
+                self.write_mesh(path)
+                if payload is not None:
+                    with ZipFile(path, "a") as archive:
+                        archive.writestr(SOURCES_MEMBER, payload)
+                self.assertEqual(slicer_sources_status(path, revision_sources(self.source_manifest(), 183)), "unknown")
+
+    def test_rebuild_is_atomic_backs_up_original_and_uses_checked_manifest(self):
+        from unittest.mock import Mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "model.3mf"
+            self.write_mesh(target)
+            original = target.read_bytes()
+            write_sync_state(target, {"server_sha256": "old"})
+            client = Mock(base_url="https://plm.example")
+            manifest = self.source_manifest()
+            with (
+                patch("freecad_plm_addon.slicer.download_manifest_files"),
+                patch("freecad_plm_addon.slicer.export_revision_to_3mf", side_effect=lambda source, output: self.write_mesh(output)),
+            ):
+                export_revision_manifest_to_3mf(client, 183, Path(tmp) / "source", target, manifest=manifest, backup=True)
+            client.get_revision_manifest.assert_not_called()
+            backups = list(Path(tmp).glob("backups/*/model.3mf"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_bytes(), original)
+            self.assertEqual(json.loads(backups[0].with_name("sync.json").read_text()), {"server_sha256": "old"})
+            self.assertEqual(read_3mf_sources(target)["root_revision_id"], 183)
+            self.assertFalse(list((Path(tmp) / "source").iterdir()))
+
+    def test_failed_rebuild_or_backup_preserves_previous_project(self):
+        from unittest.mock import Mock
+
+        for failure in ("export", "backup"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "model.3mf"
+                self.write_mesh(target)
+                original = target.read_bytes()
+                with (
+                    patch("freecad_plm_addon.slicer.download_manifest_files"),
+                    patch("freecad_plm_addon.slicer.export_revision_to_3mf", side_effect=RuntimeError("export failed") if failure == "export" else lambda source, output: self.write_mesh(output)),
+                    patch("freecad_plm_addon.slicer.backup_slicer_project", side_effect=OSError("disk full")),
+                ):
+                    with self.assertRaises((RuntimeError, OSError)):
+                        export_revision_manifest_to_3mf(Mock(base_url=""), 183, Path(tmp) / "source", target, manifest=self.source_manifest(), backup=True)
+                self.assertEqual(target.read_bytes(), original)
+                self.assertFalse(list(Path(tmp).glob(".*.exporting.3mf")))
+
+    def test_rebuild_does_not_overwrite_a_slicer_save_during_export(self):
+        from unittest.mock import Mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "model.3mf"
+            self.write_mesh(target)
+
+            def export_while_slicer_saves(source, output):
+                self.write_mesh(output)
+                target.write_bytes(b"new user changes")
+
+            with (
+                patch("freecad_plm_addon.slicer.download_manifest_files"),
+                patch("freecad_plm_addon.slicer.export_revision_to_3mf", side_effect=export_while_slicer_saves),
+            ):
+                with self.assertRaises(WorkspaceError):
+                    export_revision_manifest_to_3mf(Mock(base_url=""), 183, Path(tmp) / "source", target, manifest=self.source_manifest(), backup=True)
+            self.assertEqual(target.read_bytes(), b"new user changes")
+
     class ExportObject:
         def __init__(self, *, visible=True, parent=None, shape=False, mesh=False):
             self.ViewObject = SimpleNamespace(Visibility=visible)

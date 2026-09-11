@@ -4,9 +4,13 @@ import platform
 import shlex
 import shutil
 import subprocess
+import tempfile
 import xml.etree.ElementTree as ElementTree
+from datetime import datetime, timezone
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile
+from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
+from zipfile import BadZipFile, ZipFile, ZIP_DEFLATED
 
 from .errors import EmptyGeometryError, WorkspaceError
 from .workspace import (
@@ -250,18 +254,151 @@ def validate_3mf(path):
     return path
 
 
-def export_revision_manifest_to_3mf(client, revision_id, workspace_dir, target_path):
+SOURCES_MEMBER = "Metadata/freecad_plm_sources.json"
+SOURCES_RELATIONSHIP = "urn:freecad-plm:relationships:sources"
+
+
+def revision_sources(manifest, revision_id, server_url=""):
+    address = urlsplit(server_url)
+    server = urlunsplit((address.scheme, address.netloc.rsplit("@", 1)[-1], address.path, "", ""))
+    fields = ("path", "part_id", "revision_id", "revision_code", "sha256", "is_root")
+    return {
+        "schema_version": 1,
+        "server": server.rstrip("/"),
+        "project_id": manifest.get("project", {}).get("id"),
+        "root_revision_id": revision_id,
+        "files": sorted(
+            [{key: item.get(key) for key in fields} for item in manifest["files"]],
+            key=lambda item: item["path"],
+        ),
+    }
+
+
+def read_3mf_sources(project_path):
+    try:
+        with ZipFile(project_path) as archive:
+            if archive.getinfo(SOURCES_MEMBER).file_size > 1024 * 1024:
+                return None
+            data = json.loads(archive.read(SOURCES_MEMBER))
+        if not isinstance(data, dict) or data.get("schema_version") != 1:
+            return None
+        files = data.get("files")
+        if not isinstance(files, list) or not files:
+            return None
+        if any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("path"), str)
+            or not isinstance(item.get("sha256"), str)
+            or len(item["sha256"]) != 64
+            for item in files
+        ):
+            return None
+        return data
+    except (OSError, BadZipFile, KeyError, ValueError, RuntimeError):
+        return None
+
+
+def slicer_sources_status(project_path, current_sources):
+    stored = read_3mf_sources(project_path)
+    if stored is None:
+        return "unknown"
+    stored = {key: stored.get(key) for key in current_sources}
+    stored["files"] = sorted(stored["files"], key=lambda item: item["path"])
+    return "current" if stored == current_sources else "changed"
+
+
+def write_3mf_sources(project_path, sources):
+    project_path = Path(project_path)
+    temporary = project_path.with_name(f".{project_path.name}.{uuid4().hex}.tmp")
+    content_namespace = "http://schemas.openxmlformats.org/package/2006/content-types"
+    relation_namespace = "http://schemas.openxmlformats.org/package/2006/relationships"
+    try:
+        with ZipFile(project_path) as source, ZipFile(temporary, "w", ZIP_DEFLATED) as target:
+            names = set(source.namelist())
+            content = (
+                ElementTree.fromstring(source.read("[Content_Types].xml"))
+                if "[Content_Types].xml" in names
+                else ElementTree.Element(f"{{{content_namespace}}}Types")
+            )
+            for child in list(content):
+                if child.get("PartName") == f"/{SOURCES_MEMBER}":
+                    content.remove(child)
+            ElementTree.SubElement(content, f"{{{content_namespace}}}Override", {
+                "PartName": f"/{SOURCES_MEMBER}", "ContentType": "application/json",
+            })
+            relations = (
+                ElementTree.fromstring(source.read("_rels/.rels"))
+                if "_rels/.rels" in names
+                else ElementTree.Element(f"{{{relation_namespace}}}Relationships")
+            )
+            for child in list(relations):
+                if child.get("Type") == SOURCES_RELATIONSHIP:
+                    relations.remove(child)
+            ElementTree.SubElement(relations, f"{{{relation_namespace}}}Relationship", {
+                "Id": f"plmSources{uuid4().hex}",
+                "Type": SOURCES_RELATIONSHIP,
+                "Target": f"/{SOURCES_MEMBER}",
+            })
+            replaced = {SOURCES_MEMBER, "[Content_Types].xml", "_rels/.rels"}
+            for member in source.infolist():
+                if member.filename not in replaced:
+                    target.writestr(member, source.read(member))
+            ElementTree.register_namespace("", content_namespace)
+            target.writestr("[Content_Types].xml", ElementTree.tostring(content, encoding="utf-8", xml_declaration=True))
+            ElementTree.register_namespace("", relation_namespace)
+            target.writestr("_rels/.rels", ElementTree.tostring(relations, encoding="utf-8", xml_declaration=True))
+            target.writestr(SOURCES_MEMBER, json.dumps({
+                **sources,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            }, ensure_ascii=False, indent=2))
+        temporary.replace(project_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def backup_slicer_project(project_path):
+    project_path = Path(project_path)
+    backup_dir = project_path.parent / "backups" / (
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
+    )
+    backup_dir.mkdir(parents=True)
+    backup = backup_dir / project_path.name
+    shutil.copy2(project_path, backup)
+    state_path = sync_state_path(project_path)
+    if state_path.is_file():
+        shutil.copy2(state_path, backup_dir / state_path.name)
+    return backup
+
+
+def export_revision_manifest_to_3mf(
+    client, revision_id, workspace_dir, target_path, *, manifest=None, backup=False
+):
     workspace_dir = Path(workspace_dir)
     target_path = Path(target_path)
-    manifest = client.get_revision_manifest(revision_id)
-    write_manifest(workspace_dir, manifest)
-    download_manifest_files(client, manifest, workspace_dir)
-    source_path = root_file_path(manifest, workspace_dir)
-    temporary = target_path.with_name(f".{target_path.stem}.exporting.3mf")
-    temporary.unlink(missing_ok=True)
+    manifest = manifest if manifest is not None else client.get_revision_manifest(revision_id)
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    original_sha = sha256_file(target_path) if target_path.is_file() else None
+    temporary = target_path.with_name(f".{target_path.stem}.{uuid4().hex}.exporting.3mf")
     try:
-        export_revision_to_3mf(source_path, temporary)
+        with tempfile.TemporaryDirectory(prefix="export-", dir=workspace_dir) as isolated:
+            source_dir = Path(isolated)
+            write_manifest(source_dir, manifest)
+            download_manifest_files(client, manifest, source_dir)
+            source_path = root_file_path(manifest, source_dir)
+            export_revision_to_3mf(source_path, temporary)
+        write_3mf_sources(temporary, revision_sources(
+            manifest, revision_id, getattr(client, "base_url", "")
+        ))
         validate_3mf(temporary)
+        current_sha = sha256_file(target_path) if target_path.is_file() else None
+        if current_sha != original_sha:
+            raise WorkspaceError(
+                "Die 3MF wurde während des Exports geändert. Der neue Export wurde verworfen; "
+                "bitte das Projekt im Slicer schließen und erneut versuchen."
+            )
+        if backup and target_path.is_file():
+            backup_slicer_project(target_path)
         temporary.replace(target_path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -386,6 +523,7 @@ class SlicerProjectMonitor:
     def __init__(self, qt_core, project_path, callback, debounce_ms=1500):
         self.project_path = Path(project_path)
         self.callback = callback
+        self.paused = False
         self.watcher = qt_core.QFileSystemWatcher()
         self.timer = qt_core.QTimer()
         self.timer.setSingleShot(True)
@@ -405,9 +543,28 @@ class SlicerProjectMonitor:
             self.watcher.addPaths(missing)
 
     def schedule(self, *_args):
+        if self.paused:
+            return
         self._restore_paths()
         self.timer.start()
 
     def flush(self):
+        if self.paused:
+            return
         self._restore_paths()
         self.callback(self.project_path)
+
+    def pause(self):
+        self.paused = True
+        self.timer.stop()
+
+    def resume(self):
+        self.paused = False
+        self._restore_paths()
+        self.timer.start()
+
+    def stop(self):
+        self.pause()
+        self.watcher.blockSignals(True)
+        self.watcher.deleteLater()
+        self.timer.deleteLater()
