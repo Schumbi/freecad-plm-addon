@@ -14,6 +14,9 @@ direkt in die CAD-Oberfläche.
 - Neue FreeCAD-Teile mit `R0001` anlegen und direkt öffnen, ohne zuvor eine lokale Datei speichern zu müssen.
 - Revisionsnotizen und Anmerkungen lesen und bearbeiten.
 - Lokale Modellordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
+- Aus Revisionen Druckprojekte anlegen, weitere PLM-Revisionen oder externe
+  STL-Dateien als Quellen hinzufügen und den gemeinsamen 3MF-Arbeitsstand mit
+  Bambu Studio oder OrcaSlicer synchronisieren.
 - Revisionsaktionen aus der Web-Oberfläche über `freecad-plm://` direkt in
   FreeCAD öffnen, unter Linux und Windows sowie auch bei schon laufendem
   FreeCAD.
@@ -46,12 +49,17 @@ Server bleibt die verbindliche Quelle für Revisionen und Checkout-Sperren.
 
 STEP- und STL-Revisionen können schreibgeschützt geöffnet werden. Bearbeitbare Checkouts und Check-ins bleiben FCStd-Modellen vorbehalten.
 
+Mit **Druckprojekt öffnen/erstellen** wird die ausgewählte Revision zur ersten
+Quelle eines Druckprojekts. Weitere Quellen werden demselben Druckprojekt
+zugeordnet; dessen 3MF-Datei ist der gemeinsame, veränderliche Arbeitsstand für
+den Slicer.
+
 ## Berechtigungen
 
 | Scope | Ermöglicht |
 | --- | --- |
-| `read` | Projekte, Teile, Revisionen, Notizen und Anmerkungen lesen |
-| `write` | Teile anlegen/bearbeiten, importieren sowie Notizen und Anmerkungen bearbeiten |
+| `read` | Projekte, Teile, Revisionen, Druckprojekte, Notizen und Anmerkungen lesen |
+| `write` | Teile und Druckprojekte anlegen/bearbeiten, Quellen zuordnen, importieren sowie Notizen und Anmerkungen bearbeiten |
 | `checkout` | Modelle auschecken, einchecken, abbrechen und neue FCStd-Teile direkt öffnen |
 | `admin` | Projekte und Projektmetadaten anlegen oder bearbeiten |
 

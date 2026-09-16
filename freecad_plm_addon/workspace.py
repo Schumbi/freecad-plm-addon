@@ -55,11 +55,13 @@ def collect_project_fcstd_files(source_dir):
         raise WorkspaceError(f"Projektordner existiert nicht: {source_dir}")
 
     files = []
-    for path in sorted(source_dir.rglob("*")):
+    for path in source_dir.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in PROJECT_FILE_SUFFIXES:
             continue
         relative_path = safe_zip_path(path.relative_to(source_dir).as_posix())
         files.append((relative_path, path))
+
+    files.sort(key=lambda item: item[0])
 
     if not files:
         raise WorkspaceError("Projektordner enthält keine unterstützten CAD-Dateien.")

@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ElementTree
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile, ZIP_DEFLATED
@@ -58,10 +58,10 @@ def known_slicer_paths(kind, platform_name=None, environ=None):
             "bambu": ("BambuStudio.app/Contents/MacOS/BambuStudio",),
             "orca": ("OrcaSlicer.app/Contents/MacOS/OrcaSlicer",),
         }
-        return [Path("/Applications") / name for name in names.get(kind, ())]
+        return [PurePosixPath("/Applications") / name for name in names.get(kind, ())]
     if platform_name == "Windows":
         roots = [
-            Path(value)
+            PureWindowsPath(value)
             for value in (
                 environ.get("ProgramFiles"),
                 environ.get("LOCALAPPDATA"),
@@ -70,12 +70,12 @@ def known_slicer_paths(kind, platform_name=None, environ=None):
         ]
         names = {
             "bambu": (
-                Path("Bambu Studio") / "bambu-studio.exe",
-                Path("Programs") / "Bambu Studio" / "bambu-studio.exe",
+                PureWindowsPath("Bambu Studio") / "bambu-studio.exe",
+                PureWindowsPath("Programs") / "Bambu Studio" / "bambu-studio.exe",
             ),
             "orca": (
-                Path("OrcaSlicer") / "orca-slicer.exe",
-                Path("Programs") / "OrcaSlicer" / "orca-slicer.exe",
+                PureWindowsPath("OrcaSlicer") / "orca-slicer.exe",
+                PureWindowsPath("Programs") / "OrcaSlicer" / "orca-slicer.exe",
             ),
         }
         return [root / name for root in roots for name in names.get(kind, ())]
@@ -93,7 +93,7 @@ def detect_slicer(
 ):
     kinds = ("bambu", "orca") if kind == "auto" else (kind,)
     flatpak_apps = set(flatpak_apps or ())
-    path_exists = path_exists or Path.is_file
+    path_exists = path_exists or (lambda candidate: Path(candidate).is_file())
     for candidate_kind in kinds:
         definition = SLICERS.get(candidate_kind)
         if not definition:

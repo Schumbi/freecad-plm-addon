@@ -36,8 +36,9 @@ Aktuell umgesetzt:
 - Streng validierte `freecad-plm://revision/...`-Links aus dem Web unter Linux
   und Windows öffnen; Checkout-Links werden vor Ausführung nochmals bestätigt.
 - Lokale CAD-Ordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
-- FCStd-, STEP- und STL-Revisionen als 3MF in Bambu Studio oder OrcaSlicer
-  öffnen und beim Speichern automatisch mit der zugehörigen PLM-Revision
+- Aus FCStd-, STEP- und STL-Revisionen projektbezogene Druckprojekte anlegen,
+  zusätzliche PLM-Revisionen oder externe STL-Dateien als Quellen zuordnen und
+  den gemeinsamen 3MF-Arbeitsstand aus Bambu Studio oder OrcaSlicer
   synchronisieren.
 
 ## Konfiguration
@@ -102,7 +103,7 @@ Datei aufgenommen; andernfalls öffnet das Addon einen eigenen Checkout für das
 neue Teil. Ein auf dem Server bereits aktiver Projekt-Checkout muss dafür zuerst
 im Addon lokal geöffnet werden. Die Aktion benötigt `write` und `checkout`.
 
-### Slicer-Projekte
+### Druckprojekte und Slicer
 
 Unter `Verbindungseinstellungen` wird der Slicer auf `Automatisch erkennen`,
 `Bambu Studio`, `OrcaSlicer` oder `Benutzerdefiniert` gestellt. Der
@@ -111,11 +112,22 @@ Flatpaks `com.bambulab.BambuStudio` und `io.github.softfever.OrcaSlicer`.
 Zusätzliche Argumente werden als JSON-Liste, zum Beispiel
 `["--single-instance"]`, gespeichert und ohne Shell an den Prozess übergeben.
 
-Nach Auswahl einer FCStd-, STEP- oder STL-Revision startet `Im Slicer öffnen`
-den Ablauf. Existiert noch kein Slicer-Projekt, lädt das Addon die CAD-Datei,
-erzeugt mit FreeCAD eine generische 3MF und legt sie direkt im PLM ab. Ein
-vorhandener Arbeitsstand wird stattdessen vom Server geladen. Das lokale
-Projekt liegt unter:
+Nach Auswahl einer FCStd-, STEP- oder STL-Revision startet `Druckprojekt
+öffnen/erstellen` den Ablauf. Das Addon sucht ein `PrintProject`, dessen
+primäre CAD-Revision der Auswahl entspricht. Existiert keines, legt es ein
+Druckprojekt an und führt die Revision als erste, unveränderliche Quelle.
+Existieren mehrere Druckprojekte mit dieser Hauptrevision, muss das gewünschte
+Projekt anhand von Code, Name und ID ausgewählt werden; ein Abbruch lässt alle
+Projekte unverändert.
+Optional ausgewählte externe STL-Dateien werden als weitere Quellen im PLM
+gespeichert. Weitere PLM-Revisionen lassen sich später mit `Zum Druckprojekt
+hinzufügen` zuordnen.
+
+Das Druckprojekt besitzt genau einen veränderlichen 3MF-Arbeitsstand. Beim
+ersten Öffnen erzeugt das Addon aus der primären Revision und ihren
+Manifest-Abhängigkeiten eine generische 3MF; einen vorhandenen Arbeitsstand
+lädt es vom Server. Der lokale Ordner bleibt aus Kompatibilitätsgründen nach
+der ID der primären Revision benannt:
 
 ```text
 ~/FreeCAD-PLM/<server>/<projekt>/slicer-projects/revision-<id>/
@@ -140,16 +152,16 @@ Bei abweichenden Quellen bietet der Dialog `3MF neu erzeugen`,
 gelten als **nicht prüfbar**. Dasselbe gilt, wenn ein Slicer die zusätzlichen
 Metadaten beim Speichern entfernt; das Addon behauptet dann nicht, die Datei
 sei aktuell, und trägt auch keine heutigen Quellen nachträglich als Herkunft ein.
-Die Metadaten dokumentieren den CAD-Export, nicht spätere manuelle Änderungen
-der Geometrie oder zusätzlich im Slicer eingefügte Quellen.
+Die Metadaten dokumentieren den CAD-Export der primären Revision, nicht spätere
+manuelle Änderungen der Geometrie oder weitere Druckprojektquellen.
 
 `Mehr → 3MF neu erzeugen` ist auch bei unveränderten Quellen verfügbar.
 Vor dem Bestätigen das bisherige Projekt im Slicer schließen. Exportiert wird
 die ausgewählte **gespeicherte** Revision mit ihren serverseitig aufgelösten
 Abhängigkeiten; lokale Checkout-Änderungen müssen vorher eingecheckt werden.
 Die Neuerzeugung übernimmt keine Druckeinstellungen, Plattenanordnung,
-Farbzuweisungen oder zusätzlich eingefügten Quellen. Sie sichert die bisherige
-3MF und `sync.json` lokal unter `backups/<UTC-Zeitstempel>-<Kennung>/` neben dem
+Farbzuweisungen oder weitere Druckprojektquellen. Sie sichert die bisherige 3MF
+und `sync.json` lokal unter `backups/<UTC-Zeitstempel>-<Kennung>/` neben dem
 Arbeitsstand. Zum Wiederherstellen die gesicherte 3MF im Slicer öffnen und als
 Arbeitsdatei speichern. Erst nach erfolgreichem Export, Prüfung und Sicherung
 wird die Arbeitsdatei ersetzt und synchronisiert. Ein fehlgeschlagener Export
@@ -158,22 +170,49 @@ oder eine fehlgeschlagene Sicherung lässt die bisherige 3MF unangetastet.
 ### Slicer-Synchronisation
 
 Eine Dateiüberwachung erkennt anschließend das Speichern im Slicer und lädt
-die geänderte 3MF automatisch hoch. `sync.json` enthält nur IDs und Hashes,
-keine Zugangsdaten. Änderungen auf zwei Rechnern werden über den letzten
-Server-Hash erkannt; bei einem Konflikt bleibt die lokale Datei unangetastet.
-Der Workflow benötigt die Token-Scopes `read` und `write`, aber keinen
-Checkout und keinen zusätzlichen Hintergrunddienst.
+die geänderte Druckprojekt-3MF automatisch hoch. `sync.json` enthält nur IDs
+und Hashes, keine Zugangsdaten. Beim Öffnen gleicht das Addon lokalen Stand,
+zuletzt bekannten Server-Hash und aktuellen Server-Hash ab; bei bereits
+auseinandergelaufenen Ständen bleibt die lokale Datei unangetastet.
 
-Der Einzelrechner-Workflow wurde mit FreeCAD Flatpak und Bambu Studio Flatpak
-manuell abgenommen. Noch offen ist der manuelle Test mit zwei Rechnern:
-Serverstand auf Rechner B laden und eine parallele Änderung als Konflikt
-erkennen. Der Server überschreibt bei einem veralteten Basis-Hash nicht still.
+Der aktuelle PrintProject-Endpunkt besitzt noch keine serverseitige
+Versionssperre für zwei gleichzeitig geöffnete Arbeitsstände. Deshalb ein
+Druckprojekt nicht parallel auf mehreren Rechnern bearbeiten; der zuletzt
+gespeicherte Upload kann sonst den vorherigen Serverstand ersetzen. Der
+Workflow benötigt die Token-Scopes `read` und `write`, aber keinen Checkout
+und keinen zusätzlichen Hintergrunddienst.
 
 ## Tests
 
-```bash
-python3 -m unittest discover -s tests
+`tests/test_review_regressions.py` prüft zusätzlich die Sicherheits- und
+Synchronisationsgrenzen aus dem Review vom 2026-09-16. Bekannte Fehler sind
+mit `expectedFailure` markiert. Nach der jeweiligen Korrektur muss diese
+Markierung entfernt werden; ein unerwarteter Erfolg lässt den Testlauf scheitern.
+Die Netzwerkprüfungen verwenden nur temporäre Loopback-Server und Dummy-Tokens.
+
+Bei Schnittstellenänderungen außerdem im Server-Repository
+`python scripts/run_contract_tests.py` ausführen (Linux: `python3`). Dieser
+separate Lauf prüft den echten Addon-Client gegen einen Django-Testserver,
+einschließlich JSON, Multipart, Downloads und Fehlerzuordnung. Das Addon wird
+standardmäßig im Nachbarverzeichnis gesucht; alternativ `--addon PFAD` angeben.
+
+Der plattformunabhängige Teststarter prüft zuerst die Python-Quellen und führt
+danach die vollständige Unit-Test-Suite aus:
+
+Windows 11:
+
+```powershell
+python scripts/run_tests.py
 ```
+
+Linux Mint:
+
+```bash
+python3 scripts/run_tests.py
+```
+
+Python 3.10 oder neuer genügt; FreeCAD muss für die Unit-Tests nicht
+installiert sein.
 
 ## Installation über den FreeCAD Addon Manager
 

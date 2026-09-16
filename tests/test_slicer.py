@@ -186,7 +186,9 @@ class SlicerTests(unittest.TestCase):
 
     def test_detects_binary_and_flatpak_without_shell(self):
         detected = detect_slicer(
-            "auto", which=lambda name: "/usr/bin/orca-slicer" if name == "orca-slicer" else None
+            "auto",
+            which=lambda name: "/usr/bin/orca-slicer" if name == "orca-slicer" else None,
+            platform_name="Linux",
         )
         self.assertEqual(detected["kind"], "orca")
         self.assertEqual(detected["command"], ["/usr/bin/orca-slicer"])
@@ -195,6 +197,7 @@ class SlicerTests(unittest.TestCase):
             "bambu",
             which=lambda _name: None,
             flatpak_apps={"com.bambulab.BambuStudio"},
+            platform_name="Linux",
         )
         self.assertEqual(
             detected["command"],
@@ -217,7 +220,9 @@ class SlicerTests(unittest.TestCase):
             which=lambda _name: None,
             platform_name="Windows",
             environ={"ProgramFiles": "C:/Program Files"},
-            path_exists=lambda path: str(path).endswith("Bambu Studio/bambu-studio.exe"),
+            path_exists=lambda path: str(path).replace("\\", "/").endswith(
+                "Bambu Studio/bambu-studio.exe"
+            ),
         )
         self.assertIn("bambu-studio.exe", windows["command"][0])
 
@@ -236,6 +241,7 @@ class SlicerTests(unittest.TestCase):
             which=lambda _name: None,
             flatpak_apps={"com.bambulab.BambuStudio"},
             flatpak_command=["/usr/bin/flatpak-spawn", "--host", "flatpak"],
+            platform_name="Linux",
         )
         self.assertEqual(
             detected["command"],
@@ -257,10 +263,12 @@ class SlicerTests(unittest.TestCase):
     def test_custom_command_and_project_path(self):
         self.assertEqual(
             resolve_slicer_command("auto", "/opt/Bambu Studio", '["--flag"]'),
-            ["/opt/Bambu Studio", "--flag"],
+            [str(Path("/opt/Bambu Studio")), "--flag"],
         )
         path = slicer_project_dir("~/PLM", "https://plm.example", "P7", 12)
-        self.assertTrue(str(path).endswith("plm-example/P7/slicer-projects/revision-12"))
+        self.assertTrue(
+            path.as_posix().endswith("plm-example/P7/slicer-projects/revision-12")
+        )
         self.assertEqual(
             slicer_project_filename("P7", "A 1", "R0002"),
             "P7_A_1_R0002.3mf",

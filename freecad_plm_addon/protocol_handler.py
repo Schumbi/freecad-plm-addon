@@ -291,7 +291,7 @@ def _windows_freecad_executable(executable=None):
     return ""
 
 
-def _windows_python_executable(freecad_executable, executable=None):
+def _windows_python_executable(freecad_executable, executable=None, path_exists=None):
     candidates = [str(executable)] if executable else []
     bin_dir = PureWindowsPath(freecad_executable).parent
     candidates.extend((str(bin_dir / "pythonw.exe"), str(bin_dir / "python.exe")))
@@ -299,9 +299,10 @@ def _windows_python_executable(freecad_executable, executable=None):
     for candidate in candidates:
         if PureWindowsPath(candidate).name.lower() in {"pythonw.exe", "python.exe"}:
             matching.append(str(PureWindowsPath(candidate)))
+    path_exists = path_exists or Path.is_file
     if sys.platform.startswith("win"):
         for candidate in matching:
-            if Path(candidate).is_file():
+            if path_exists(Path(candidate)):
                 return candidate
         return ""
     if matching:
@@ -315,6 +316,7 @@ def register_windows_protocol_handler(
     python_executable=None,
     winreg_module=None,
     local_app_data=None,
+    path_exists=None,
 ):
     if winreg_module is None:
         try:
@@ -337,6 +339,7 @@ def register_windows_protocol_handler(
     python_executable = _windows_python_executable(
         freecad_executable,
         executable=python_executable,
+        path_exists=path_exists,
     )
     if not python_executable:
         return ProtocolRegistrationResult(

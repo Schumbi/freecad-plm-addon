@@ -41,6 +41,18 @@ def project_label(project):
     return code or name or f"Projekt {project.get('id', '')}".strip()
 
 
+def print_project_label(print_project):
+    code = str(print_project.get("code") or "").strip()
+    name = str(print_project.get("name") or "").strip()
+    project_id = print_project.get("id")
+    label = " · ".join(value for value in (code, name) if value)
+    if not label:
+        label = "Druckprojekt"
+    if project_id is not None:
+        label = f"{label} [ID {project_id}]"
+    return label
+
+
 def project_edit_payload(values):
     payload = {}
     fields = ("code", "name", "status", "project_date", "description")
@@ -2400,7 +2412,7 @@ class PLMPanel:
         if not candidates:
             self.set_status("Kein passendes Druckprojekt ohne diese Revision gefunden.")
             return
-        labels = [f"{item.get('code', '')} · {item.get('name', '')}" for item in candidates]
+        labels = [print_project_label(item) for item in candidates]
         selected_label, accepted = self.QtWidgets.QInputDialog.getItem(
             self.widget,
             "Revision zum Druckprojekt hinzufügen",
@@ -3149,8 +3161,22 @@ class PLMPanel:
                 item for item in client.get_print_projects()
                 if item.get("primary_revision_id") == revision_id
             ]
-            if matches:
+            if len(matches) == 1:
                 print_project = matches[0]
+            elif len(matches) > 1:
+                labels = [print_project_label(item) for item in matches]
+                selected_label, accepted = self.QtWidgets.QInputDialog.getItem(
+                    self.widget,
+                    "Druckprojekt öffnen",
+                    "Für diese Hauptrevision existieren mehrere Druckprojekte:",
+                    labels,
+                    0,
+                    False,
+                )
+                if not accepted:
+                    self.set_status("Öffnen des Druckprojekts abgebrochen.")
+                    return
+                print_project = matches[labels.index(selected_label)]
             else:
                 print_project = client.create_print_project(
                     revision_id,

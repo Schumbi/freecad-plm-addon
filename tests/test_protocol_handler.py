@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from freecad_plm_addon.protocol_handler import (
@@ -95,7 +96,8 @@ class ProtocolHandlerTests(unittest.TestCase):
             self.assertTrue(result.success)
             self.assertEqual(result.handler, str(desktop_path))
             launcher_path = Path(temp_dir) / "freecad-plm" / "protocol_launcher.py"
-            self.assertIn(str(launcher_path), desktop_path.read_text())
+            desktop_launcher = str(launcher_path).replace("\\", "\\\\")
+            self.assertIn(desktop_launcher, desktop_path.read_text())
             self.assertIn("/opt/FreeCAD/bin/FreeCAD", launcher_path.read_text())
             self.assertIn(
                 ["xdg-mime", "default", LINUX_DESKTOP_ID, MIME_TYPE],
@@ -115,7 +117,8 @@ class ProtocolHandlerTests(unittest.TestCase):
             content = desktop_path.read_text()
             self.assertTrue(result.success)
             launcher_path = Path(temp_dir) / ".local/share/freecad-plm/protocol_launcher.py"
-            self.assertIn(str(launcher_path), content)
+            desktop_launcher = str(launcher_path).replace("\\", "\\\\")
+            self.assertIn(desktop_launcher, content)
             launcher_content = launcher_path.read_text()
             self.assertIn("org.freecad.FreeCAD", launcher_content)
             self.assertIn(r'\"--file-forwarding\"', launcher_content)
@@ -153,6 +156,7 @@ class ProtocolHandlerTests(unittest.TestCase):
                 python_executable=r"C:\Program Files\FreeCAD\bin\pythonw.exe",
                 winreg_module=registry,
                 local_app_data=temp_dir,
+                path_exists=lambda _path: True,
             )
 
             launcher_path = Path(temp_dir) / "FreeCAD-PLM" / "protocol_launcher.py"
@@ -196,15 +200,16 @@ class ProtocolHandlerTests(unittest.TestCase):
                 [sys.executable, str(launcher), "freecad-plm://revision/17?action=checkout"],
                 check=False,
             )
+            captured = ""
             for _attempt in range(100):
                 if capture_path.exists():
+                    captured = capture_path.read_text()
+                if captured.endswith(LINK_FILE_SUFFIX):
                     break
-                import time
-
                 time.sleep(0.01)
 
             self.assertEqual(result.returncode, 0)
-            link_path = Path(capture_path.read_text())
+            link_path = Path(captured)
             self.assertEqual(link_path.suffix, LINK_FILE_SUFFIX)
             self.assertEqual(
                 link_path.read_text(encoding="utf-8"),
@@ -240,14 +245,15 @@ class ProtocolHandlerTests(unittest.TestCase):
                 [sys.executable, str(launcher), "freecad-plm://revision/17"],
                 check=True,
             )
+            captured = ""
             for _attempt in range(100):
                 if capture_path.exists():
+                    captured = capture_path.read_text()
+                if captured.endswith("]"):
                     break
-                import time
-
                 time.sleep(0.01)
 
-            arguments = json.loads(capture_path.read_text())
+            arguments = json.loads(captured)
             self.assertEqual(arguments[0], "@@")
             self.assertEqual(Path(arguments[1]).suffix, LINK_FILE_SUFFIX)
             self.assertEqual(arguments[2], "@@")

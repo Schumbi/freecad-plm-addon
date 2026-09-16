@@ -35,7 +35,7 @@ class FCStdTests(unittest.TestCase):
         result = fcstd.open_document("/tmp/assembly.FCStd")
 
         self.assertIs(result, document)
-        freecad.openDocument.assert_called_once_with("/tmp/assembly.FCStd")
+        freecad.openDocument.assert_called_once_with(str(Path("/tmp/assembly.FCStd")))
         document.recompute.assert_called_once_with()
         freecad_gui.updateGui.assert_called_once_with()
 
@@ -63,7 +63,7 @@ class FCStdTests(unittest.TestCase):
         self.assertIs(result, document)
         freecad.newDocument.assert_called_once_with()
         mesh.insert.assert_called_once_with(
-            "/tmp/Deep_TB_Fin_Adapter_.stl", "MeshDocument"
+            str(Path("/tmp/Deep_TB_Fin_Adapter_.stl")), "MeshDocument"
         )
         self.assertEqual(document.Label, "Deep_TB_Fin_Adapter_")
         document.recompute.assert_called_once_with()
@@ -82,7 +82,7 @@ class FCStdTests(unittest.TestCase):
 
         self.assertIs(result, document)
         import_module.insert.assert_called_once_with(
-            "/tmp/vendor-part.STP", "StepDocument"
+            str(Path("/tmp/vendor-part.STP")), "StepDocument"
         )
         self.assertEqual(document.Label, "vendor-part")
 

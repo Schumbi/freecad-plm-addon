@@ -179,7 +179,10 @@ class PLMClient:
         if target_path.exists() and sha256_file(target_path) == expected_sha256:
             return
         response = self._open("GET", download_url, absolute=True)
-        target_path.write_bytes(response.read())
+        try:
+            target_path.write_bytes(response.read())
+        finally:
+            response.close()
         digest = sha256_file(target_path)
         if digest != expected_sha256:
             target_path.unlink(missing_ok=True)
@@ -277,9 +280,12 @@ class PLMClient:
         if data is not None:
             body = json.dumps(data).encode("utf-8")
         response = self._open(method, path, body=body, content_type="application/json")
-        if response.status == 204:
-            return {}
-        return json.loads(response.read().decode("utf-8"))
+        try:
+            if response.status == 204:
+                return {}
+            return json.loads(response.read().decode("utf-8"))
+        finally:
+            response.close()
 
     def _open(self, method, path, body=None, content_type=None, absolute=False):
         req = request.Request(
@@ -294,7 +300,10 @@ class PLMClient:
             self._raise_api_error(exc)
 
     def _raise_api_error(self, exc):
-        raw = exc.read()
+        try:
+            raw = exc.read()
+        finally:
+            exc.close()
         payload = {}
         message = exc.reason or f"HTTP {exc.code}"
         if raw:
@@ -361,4 +370,7 @@ class PLMClient:
             body=body,
             content_type=f"multipart/form-data; boundary={boundary}",
         )
-        return json.loads(response.read().decode("utf-8"))
+        try:
+            return json.loads(response.read().decode("utf-8"))
+        finally:
+            response.close()

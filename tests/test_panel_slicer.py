@@ -97,6 +97,51 @@ class PanelSlicerTests(unittest.TestCase):
         self.assertEqual(state["print_project_id"], 8)
         self.assertIsNone(state["manufacturing_file_id"])
 
+    def test_multiple_print_projects_require_explicit_selection(self):
+        self.set_sources(187)
+        first = self.client.get_print_projects.return_value[0]
+        second = {
+            **first,
+            "id": 9,
+            "code": "DP-183-B",
+            "name": "Alternative Platte",
+        }
+        self.client.get_print_projects.return_value = [first, second]
+        self.panel.QtWidgets.QInputDialog.getItem.return_value = (
+            "DP-183-B · Alternative Platte [ID 9]",
+            True,
+        )
+
+        PLMPanel.open_selected_revision_in_slicer(self.panel)
+
+        self.panel.QtWidgets.QInputDialog.getItem.assert_called_once_with(
+            self.panel.widget,
+            "Druckprojekt öffnen",
+            "Für diese Hauptrevision existieren mehrere Druckprojekte:",
+            ["DP-183 [ID 8]", "DP-183-B · Alternative Platte [ID 9]"],
+            0,
+            False,
+        )
+        self.assertEqual(read_sync_state(self.target)["print_project_id"], 9)
+        self.client.create_print_project.assert_not_called()
+        self.launch.assert_called_once()
+
+    def test_canceling_multiple_print_project_selection_stops_opening(self):
+        self.set_sources(187)
+        first = self.client.get_print_projects.return_value[0]
+        self.client.get_print_projects.return_value = [
+            first,
+            {**first, "id": 9, "code": "DP-183-B"},
+        ]
+        self.panel.QtWidgets.QInputDialog.getItem.return_value = ("", False)
+
+        PLMPanel.open_selected_revision_in_slicer(self.panel)
+
+        self.panel.set_status.assert_called_with("Öffnen des Druckprojekts abgebrochen.")
+        self.client.create_print_project.assert_not_called()
+        self.client.get_revision_manifest.assert_not_called()
+        self.launch.assert_not_called()
+
     def test_print_project_sync_does_not_require_manufacturing_file_id(self):
         self.set_sources(187)
         digest = sha256_file(self.target)
