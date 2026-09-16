@@ -190,9 +190,8 @@ Ports noch bei einem Wechsel von HTTPS auf HTTP.
 ## Tests
 
 `tests/test_review_regressions.py` prüft zusätzlich die Sicherheits- und
-Synchronisationsgrenzen aus dem Review vom 2026-09-16. Bekannte Fehler sind
-mit `expectedFailure` markiert. Nach der jeweiligen Korrektur muss diese
-Markierung entfernt werden; ein unerwarteter Erfolg lässt den Testlauf scheitern.
+Synchronisationsgrenzen aus dem Review vom 2026-09-16. Die behobenen Befunde
+bleiben dort als normale Regressionstests erhalten.
 Die Netzwerkprüfungen verwenden nur temporäre Loopback-Server und Dummy-Tokens.
 
 Bei Schnittstellenänderungen außerdem im Server-Repository
