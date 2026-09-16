@@ -126,11 +126,11 @@ hinzufügen` zuordnen.
 Das Druckprojekt besitzt genau einen veränderlichen 3MF-Arbeitsstand. Beim
 ersten Öffnen erzeugt das Addon aus der primären Revision und ihren
 Manifest-Abhängigkeiten eine generische 3MF; einen vorhandenen Arbeitsstand
-lädt es vom Server. Der lokale Ordner bleibt aus Kompatibilitätsgründen nach
-der ID der primären Revision benannt:
+lädt es vom Server. Jedes Druckprojekt erhält unter der primären Revision
+einen eigenen lokalen Ordner:
 
 ```text
-~/FreeCAD-PLM/<server>/<projekt>/slicer-projects/revision-<id>/
+~/FreeCAD-PLM/<server>/<projekt>/slicer-projects/revision-<id>/print-project-<id>/
 ```
 
 Beim FCStd-Export wählt das Addon sichtbare Geometrie auf der höchsten
@@ -161,7 +161,7 @@ die ausgewählte **gespeicherte** Revision mit ihren serverseitig aufgelösten
 Abhängigkeiten; lokale Checkout-Änderungen müssen vorher eingecheckt werden.
 Die Neuerzeugung übernimmt keine Druckeinstellungen, Plattenanordnung,
 Farbzuweisungen oder weitere Druckprojektquellen. Sie sichert die bisherige 3MF
-und `sync.json` lokal unter `backups/<UTC-Zeitstempel>-<Kennung>/` neben dem
+und ihre `<datei>.3mf.sync.json` lokal unter `backups/<UTC-Zeitstempel>-<Kennung>/` neben dem
 Arbeitsstand. Zum Wiederherstellen die gesicherte 3MF im Slicer öffnen und als
 Arbeitsdatei speichern. Erst nach erfolgreichem Export, Prüfung und Sicherung
 wird die Arbeitsdatei ersetzt und synchronisiert. Ein fehlgeschlagener Export
@@ -170,7 +170,8 @@ oder eine fehlgeschlagene Sicherung lässt die bisherige 3MF unangetastet.
 ### Slicer-Synchronisation
 
 Eine Dateiüberwachung erkennt anschließend das Speichern im Slicer und lädt
-die geänderte Druckprojekt-3MF automatisch hoch. `sync.json` enthält nur IDs
+die geänderte Druckprojekt-3MF automatisch hoch. Die zugehörige
+`<datei>.3mf.sync.json` enthält nur IDs
 und Hashes, keine Zugangsdaten. Beim Öffnen gleicht das Addon lokalen Stand,
 zuletzt bekannten Server-Hash und aktuellen Server-Hash ab; bei bereits
 auseinandergelaufenen Ständen bleibt die lokale Datei unangetastet.

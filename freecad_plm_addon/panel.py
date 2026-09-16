@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 from .api_client import PLMClient
-from .errors import ConflictError, EmptyGeometryError, PLMError
+from .errors import ConflictError, EmptyGeometryError, PLMError, WorkspaceError
 from .workspace import (
     archive_import_source_dir,
     build_checkout_metadata,
@@ -3035,6 +3035,9 @@ class PLMPanel:
 
         project_path = Path(project_path)
         state = dict(state or read_sync_state(project_path))
+        directory_id = project_path.parent.name.removeprefix("print-project-")
+        if project_path.parent.name.startswith("print-project-") and str(state.get("print_project_id")) != directory_id:
+            raise WorkspaceError("Slicer-Datei und Druckprojekt-ID stimmen nicht überein.")
         validate_3mf(project_path)
         local_sha256 = sha256_file(project_path)
         if local_sha256 == state.get("server_sha256"):
@@ -3118,6 +3121,7 @@ class PLMPanel:
             SlicerProjectMonitor,
             export_revision_manifest_to_3mf,
             launch_slicer,
+            migrate_legacy_slicer_project,
             read_sync_state,
             reconcile_slicer_project,
             resolve_slicer_command,
@@ -3142,13 +3146,12 @@ class PLMPanel:
 
         revision_id = revision["id"]
         project_code = project.get("code") or f"project-{project.get('id')}"
-        target_dir = slicer_project_dir(
+        revision_dir = slicer_project_dir(
             self.workspace_root.text().strip(),
             self.server_url.text().strip(),
             project_code,
             revision_id,
         )
-        target_dir.mkdir(parents=True, exist_ok=True)
         previous_monitor = None
         try:
             command = resolve_slicer_command(
@@ -3191,8 +3194,20 @@ class PLMPanel:
                 )
                 for source_path in source_paths:
                     client.add_print_project_source(print_project["id"], source_path)
-            target_path = target_dir / slicer_project_filename(
+            target_dir = slicer_project_dir(
+                self.workspace_root.text().strip(),
+                self.server_url.text().strip(),
+                project_code,
+                revision_id,
+                print_project["id"],
+            )
+            target_dir.mkdir(parents=True, exist_ok=True)
+            filename = slicer_project_filename(
                 project_code, print_project["code"], "", revision.get("original_filename", "")
+            )
+            target_path = target_dir / filename
+            migrate_legacy_slicer_project(
+                revision_dir / filename, target_path, print_project["id"]
             )
             previous_monitor = self.slicer_monitors.get(str(target_path))
             if previous_monitor is not None:

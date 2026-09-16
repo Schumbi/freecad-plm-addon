@@ -163,14 +163,17 @@ def resolve_slicer_command(kind="auto", executable="", extra_args=""):
     return [*detected["command"], *args]
 
 
-def slicer_project_dir(base_root, server_url, project_code, revision_id):
-    return (
+def slicer_project_dir(base_root, server_url, project_code, revision_id, print_project_id=None):
+    revision_dir = (
         Path(base_root).expanduser()
         / server_slug(server_url)
         / str(project_code)
         / "slicer-projects"
         / f"revision-{revision_id}"
     )
+    if print_project_id is None:
+        return revision_dir
+    return revision_dir / f"print-project-{int(print_project_id)}"
 
 
 def slicer_project_filename(
@@ -193,7 +196,27 @@ def slicer_project_filename(
 
 
 def sync_state_path(project_path):
-    return Path(project_path).with_name("sync.json")
+    project_path = Path(project_path)
+    return project_path.with_name(f"{project_path.name}.sync.json")
+
+
+def migrate_legacy_slicer_project(legacy_path, project_path, print_project_id):
+    """Copy an identified old working file without touching other print projects."""
+    legacy_path = Path(legacy_path)
+    project_path = Path(project_path)
+    if project_path.is_file() or not legacy_path.is_file():
+        return False
+    legacy_state = legacy_path.with_name("sync.json")
+    try:
+        state = json.loads(legacy_state.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(state, dict) or state.get("print_project_id") != print_project_id:
+        return False
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy_path, project_path)
+    write_sync_state(project_path, state)
+    return True
 
 
 def read_sync_state(project_path):

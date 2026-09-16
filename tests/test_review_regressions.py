@@ -18,7 +18,10 @@ from zipfile import ZipFile
 from freecad_plm_addon.api_client import PLMClient
 from freecad_plm_addon.errors import APIError, ConflictError, WorkspaceError
 from freecad_plm_addon.panel import PLMPanel
-from freecad_plm_addon.slicer import read_sync_state, write_sync_state
+from freecad_plm_addon.slicer import (
+    migrate_legacy_slicer_project, read_sync_state, slicer_project_dir,
+    sync_state_path, write_sync_state,
+)
 from freecad_plm_addon.workspace import safe_join, sha256_file
 
 
@@ -121,13 +124,54 @@ class PrintProjectSyncTests(FileTests):
         self.state = {"print_project_id": 8, "server_sha256": "a" * 64}
         write_sync_state(self.target, self.state)
 
-    @unittest.expectedFailure  # Review 2
     def test_second_project_does_not_replace_first_projects_sync_state(self):
         second = self.root / "second.3mf"
         write_sync_state(second, {"print_project_id": 9, "server_sha256": "b" * 64})
         self.assertEqual(read_sync_state(self.target), self.state)
 
-    @unittest.expectedFailure  # Review 2: exercise the real monitor callback.
+    def test_print_project_paths_separate_the_same_revision(self):
+        first = slicer_project_dir(self.root, "https://plm.example", "P-1", 183, 8)
+        second = slicer_project_dir(self.root, "https://plm.example", "P-1", 183, 9)
+        self.assertNotEqual(first, second)
+        self.assertEqual(first.parent, second.parent)
+        self.assertEqual(first.name, "print-project-8")
+
+    def test_state_filename_is_unique_per_3mf(self):
+        other = self.root / "second.3mf"
+        self.assertNotEqual(sync_state_path(self.target), sync_state_path(other))
+        self.assertEqual(sync_state_path(self.target).name, "project.3mf.sync.json")
+
+    def test_matching_legacy_state_is_copied_without_deleting_old_work(self):
+        legacy = self.root / "revision-183" / "project.3mf"
+        legacy.parent.mkdir()
+        legacy.write_bytes(self.target.read_bytes())
+        (legacy.parent / "sync.json").write_text(
+            '{"print_project_id": 8, "server_sha256": "known"}', encoding="utf-8"
+        )
+        current = legacy.parent / "print-project-8" / legacy.name
+        self.assertTrue(migrate_legacy_slicer_project(legacy, current, 8))
+        self.assertEqual(current.read_bytes(), legacy.read_bytes())
+        self.assertEqual(read_sync_state(current)["print_project_id"], 8)
+        self.assertTrue(legacy.is_file())
+
+    def test_ambiguous_legacy_state_is_not_assigned_to_another_project(self):
+        legacy = self.root / "revision-183" / "project.3mf"
+        legacy.parent.mkdir()
+        legacy.write_bytes(self.target.read_bytes())
+        (legacy.parent / "sync.json").write_text('{"print_project_id": 9}', encoding="utf-8")
+        current = legacy.parent / "print-project-8" / legacy.name
+        self.assertFalse(migrate_legacy_slicer_project(legacy, current, 8))
+        self.assertFalse(current.exists())
+
+    def test_directory_and_state_disagreement_blocks_upload(self):
+        other = self.root / "print-project-8" / "project.3mf"
+        other.parent.mkdir()
+        other.write_bytes(self.target.read_bytes())
+        write_sync_state(other, {"print_project_id": 9})
+        with self.assertRaises(WorkspaceError):
+            self.panel._sync_slicer_project_path(other, {"id": 183})
+        self.client.sync_print_project.assert_not_called()
+
     def test_file_changed_uploads_to_its_own_project(self):
         write_sync_state(self.root / "second.3mf", {"print_project_id": 9})
         PLMPanel._slicer_file_changed(self.panel, self.target, {"id": 183})

@@ -28,6 +28,7 @@ from freecad_plm_addon.slicer import (
     SlicerProjectMonitor,
     slicer_project_dir,
     slicer_project_filename,
+    sync_state_path,
     validate_3mf,
     write_sync_state,
 )
@@ -131,7 +132,8 @@ class SlicerTests(unittest.TestCase):
             backups = list(Path(tmp).glob("backups/*/model.3mf"))
             self.assertEqual(len(backups), 1)
             self.assertEqual(backups[0].read_bytes(), original)
-            self.assertEqual(json.loads(backups[0].with_name("sync.json").read_text()), {"server_sha256": "old"})
+            state_backup = backups[0].with_name(sync_state_path(backups[0]).name)
+            self.assertEqual(json.loads(state_backup.read_text()), {"server_sha256": "old"})
             self.assertEqual(read_3mf_sources(target)["root_revision_id"], 183)
             self.assertFalse(list((Path(tmp) / "source").iterdir()))
 
