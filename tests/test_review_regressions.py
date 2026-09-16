@@ -1,7 +1,6 @@
 """Desired contracts for CODE_REVIEW_2026-09-16, including known defects.
 
-Remove expectedFailure when the corresponding fix lands: unexpected successes
-fail the suite. These tests deliberately do not assert the broken behaviour.
+The former expected failures remain as regression tests after their fixes.
 """
 
 from contextlib import contextmanager
@@ -42,7 +41,6 @@ class DownloadIntegrityTests(FileTests):
                 "https://plm.example/api/revisions/1/file/", self.target, digest
             )
 
-    @unittest.expectedFailure  # Review 7: keep the previous good file.
     def test_hash_mismatch_preserves_existing_file(self):
         previous = self.target.read_bytes()
         response = BytesIO(b"corrupt")

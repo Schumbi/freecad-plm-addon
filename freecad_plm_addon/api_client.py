@@ -1,5 +1,6 @@
 import json
 import re
+import tempfile
 from pathlib import Path
 from urllib import error, parse, request
 
@@ -206,14 +207,21 @@ class PLMClient:
         if target_path.exists() and sha256_file(target_path) == expected_sha256:
             return
         response = self._open("GET", download_url, absolute=True)
+        temporary_path = None
         try:
-            target_path.write_bytes(response.read())
+            with tempfile.NamedTemporaryFile(
+                mode="wb", dir=target_path.parent, prefix=f".{target_path.name}.",
+                suffix=".tmp", delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(response.read())
+            if sha256_file(temporary_path) != expected_sha256:
+                raise APIError(0, f"SHA-256 stimmt nicht: {target_path}")
+            temporary_path.replace(target_path)
         finally:
             response.close()
-        digest = sha256_file(target_path)
-        if digest != expected_sha256:
-            target_path.unlink(missing_ok=True)
-            raise APIError(0, f"SHA-256 stimmt nicht: {target_path}")
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     def checkout_revision(self, revision_id, snapshot_id=None, workspace_hint=""):
         payload = {"workspace_hint": workspace_hint}
