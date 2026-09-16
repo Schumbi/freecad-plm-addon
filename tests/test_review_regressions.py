@@ -37,7 +37,7 @@ class FileTests(unittest.TestCase):
 
 class DownloadIntegrityTests(FileTests):
     def download(self, response, digest):
-        with patch("urllib.request.urlopen", return_value=response):
+        with patch.object(PLMClient, "_absolute_urlopen", return_value=response):
             return PLMClient("https://plm.example", "dummy").download_revision_file(
                 "https://plm.example/api/revisions/1/file/", self.target, digest
             )
@@ -272,7 +272,6 @@ class CredentialBoundaryTests(FileTests):
         self.assertEqual(received, [("/same-origin", "Bearer dummy-test-token"),
                                     ("/file", "Bearer dummy-test-token")])
 
-    @unittest.expectedFailure  # Review 5: another port is another origin.
     def test_foreign_absolute_url_never_receives_token(self):
         with http_endpoint() as (foreign, received), http_endpoint() as (base, _):
             try:
@@ -281,7 +280,6 @@ class CredentialBoundaryTests(FileTests):
                 pass  # Rejecting the URL before sending is also safe.
         self.assertFalse(any(token for _, token in received))
 
-    @unittest.expectedFailure  # Review 5: test urllib's actual redirect behaviour.
     def test_cross_origin_redirect_never_receives_token(self):
         with http_endpoint() as (foreign, received):
             with http_endpoint(foreign + "/file") as (base, _):

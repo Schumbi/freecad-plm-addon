@@ -13,6 +13,33 @@ from .errors import (
 from .workspace import sha256_file
 
 
+def url_origin(url):
+    parsed = parse.urlsplit(url)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname:
+        raise ValueError("Ungültige HTTP(S)-URL.")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Zugangsdaten sind in Download-URLs nicht erlaubt.")
+    port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    return parsed.scheme.lower(), parsed.hostname.lower(), port
+
+
+class SameOriginRedirectHandler(request.HTTPRedirectHandler):
+    def __init__(self, allowed_origin):
+        super().__init__()
+        self.allowed_origin = allowed_origin
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        try:
+            destination = url_origin(newurl)
+        except ValueError as exc:
+            raise error.HTTPError(newurl, 403, str(exc), headers, fp) from exc
+        if destination != self.allowed_origin:
+            raise error.HTTPError(
+                newurl, 403, "Weiterleitung zu einer fremden Origin abgewiesen.", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class PLMClient:
     def __init__(self, base_url, api_token, timeout=30):
         self.base_url = base_url.rstrip("/")
@@ -288,16 +315,25 @@ class PLMClient:
             response.close()
 
     def _open(self, method, path, body=None, content_type=None, absolute=False):
+        url = self._url(path, absolute=absolute)
+        if absolute and url_origin(url) != url_origin(self.base_url):
+            raise APIError(400, "Download-URL gehört nicht zum konfigurierten PLM-Server.")
         req = request.Request(
-            self._url(path, absolute=absolute),
+            url,
             data=body,
             headers=self._headers(content_type=content_type),
             method=method,
         )
         try:
+            if absolute:
+                return self._absolute_urlopen(req)
             return request.urlopen(req, timeout=self.timeout)
         except error.HTTPError as exc:
             self._raise_api_error(exc)
+
+    def _absolute_urlopen(self, req):
+        opener = request.build_opener(SameOriginRedirectHandler(url_origin(self.base_url)))
+        return opener.open(req, timeout=self.timeout)
 
     def _raise_api_error(self, exc):
         try:

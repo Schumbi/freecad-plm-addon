@@ -80,7 +80,7 @@ class PLMClientTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "part.FCStd"
             digest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-            with patch("urllib.request.urlopen", return_value=FakeResponse(b"abc")):
+            with patch.object(client, "_absolute_urlopen", return_value=FakeResponse(b"abc")):
                 client.download_revision_file(
                     "https://plm.example/api/revisions/1/file/",
                     target,

@@ -183,6 +183,10 @@ erhalten. Der
 Workflow benötigt die Token-Scopes `read` und `write`, aber keinen Checkout
 und keinen zusätzlichen Hintergrunddienst.
 
+Download-URLs und Weiterleitungen müssen dieselbe Origin wie der konfigurierte
+PLM-Server besitzen. Das Addon sendet den API-Token weder an andere Hosts oder
+Ports noch bei einem Wechsel von HTTPS auf HTTP.
+
 ## Tests
 
 `tests/test_review_regressions.py` prüft zusätzlich die Sicherheits- und
