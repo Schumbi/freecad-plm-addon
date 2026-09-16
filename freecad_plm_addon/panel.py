@@ -592,6 +592,40 @@ def unchanged_checkout_text(saved_count=0):
     return message
 
 
+def checkout_primary_button_action(has_changes):
+    return "checkin" if has_changes else "cancel"
+
+
+def checkout_files_signature(manifest, checkout_path):
+    files_root = Path(checkout_path) / "files"
+    signature = []
+    for item in manifest.get("files") or []:
+        relative_path = item.get("path") or ""
+        target = safe_join(files_root, relative_path)
+        stat = target.stat()
+        signature.append((relative_path, stat.st_size, stat.st_mtime_ns))
+    return tuple(signature)
+
+
+def checkout_has_changes(
+    manifest,
+    checkout_metadata,
+    checkout_path,
+    modified_document_names=(),
+):
+    if modified_document_names:
+        return True
+    if manifest.get("removed_paths") or manifest.get("added_paths"):
+        return True
+    return bool(
+        technically_changed_manifest_files(
+            manifest,
+            checkout_metadata,
+            checkout_path,
+        )
+    )
+
+
 def _load_qt():
     try:
         from PySide import QtCore, QtGui
@@ -628,6 +662,8 @@ class PLMPanel:
         self.context_primary_callback = None
         self.context_primary_label = ""
         self.context_more_actions = []
+        self.checkout_change_signature = None
+        self.checkout_change_state = True
         self.current_annotations = []
         self.slicer_monitors = {}
 
@@ -884,6 +920,12 @@ class PLMPanel:
             lambda: self.update_selected_annotation_status("open")
         )
         self.delete_annotation_button.clicked.connect(self.delete_selected_annotation)
+        self.checkout_state_timer = self.QtCore.QTimer(self.widget)
+        self.checkout_state_timer.setInterval(1000)
+        self.checkout_state_timer.timeout.connect(
+            self.refresh_active_checkout_primary_button
+        )
+        self.checkout_state_timer.start()
         self.update_context_actions()
 
     def connection_summary_height(self):
@@ -901,6 +943,66 @@ class PLMPanel:
         callback = self.context_primary_callback
         if callable(callback):
             callback()
+
+    def invalidate_checkout_change_state(self):
+        self.checkout_change_signature = None
+        self.checkout_change_state = True
+
+    def active_checkout_has_changes(self):
+        from . import fcstd
+
+        if self.active_checkout_dir is None:
+            return True
+        try:
+            manifest = read_manifest(self.active_checkout_dir)
+            checkout_metadata = ensure_checkout_metadata(
+                manifest,
+                self.active_checkout_dir,
+            )
+            document_names = fcstd.document_names_in_directory(
+                self.active_checkout_dir / "files"
+            )
+            if not document_names:
+                document_names = list(self.checkout_document_names)
+            modified_names = fcstd.modified_document_names(document_names)
+            if modified_names:
+                return True
+
+            signature = checkout_files_signature(manifest, self.active_checkout_dir)
+            if signature == self.checkout_change_signature:
+                return self.checkout_change_state
+            state = checkout_has_changes(
+                manifest,
+                checkout_metadata,
+                self.active_checkout_dir,
+            )
+            self.checkout_change_signature = signature
+            self.checkout_change_state = state
+            return state
+        except Exception:
+            # Bei unklarem Zustand niemals einen möglicherweise geänderten
+            # Checkout über den primären Button abbrechen.
+            return True
+
+    def run_active_checkout_primary_action(self):
+        if self.active_checkout_has_changes():
+            self.checkin_active_checkout()
+        else:
+            self.cancel_active_checkout()
+
+    def refresh_active_checkout_primary_button(self):
+        item = self.browser_tree.currentItem()
+        checkout = self.selected_tree_checkout()
+        state = checkout_visual_state(checkout, self.active_checkout_id())
+        if self.tree_item_kind(item) != "revision" or state != "local":
+            return
+        action = checkout_primary_button_action(self.active_checkout_has_changes())
+        label = "Einchecken" if action == "checkin" else "Abbrechen"
+        if self.context_primary_label == label:
+            return
+        self.context_primary_button.setText(label)
+        self.context_primary_label = label
+        self.context_primary_callback = self.run_active_checkout_primary_action
 
     def set_context_actions(self, summary, primary_label, primary_callback, more_actions):
         self.context_summary.setText(summary)
@@ -984,10 +1086,16 @@ class PLMPanel:
                     self.open_selected_revision_readonly,
                 ),
                 "reopen_checkout": ("Checkout öffnen", self.reopen_selected_checkout),
-                "checkin": ("Einchecken", self.checkin_active_checkout),
                 "refresh": ("Aktualisieren", self.refresh_projects),
             }
-            label, callback = action_map.get(primary, ("Keine Aktion", None))
+            if primary == "checkin":
+                checkout_action = checkout_primary_button_action(
+                    self.active_checkout_has_changes()
+                )
+                label = "Einchecken" if checkout_action == "checkin" else "Abbrechen"
+                callback = self.run_active_checkout_primary_action
+            else:
+                label, callback = action_map.get(primary, ("Keine Aktion", None))
             if state == "local":
                 more = [
                     ("Checkout öffnen", self.open_active_checkout_root),
@@ -1575,6 +1683,7 @@ class PLMPanel:
         self.active_checkout_dir = None
         self.active_checkout_root_path = None
         self.checkout_document_names = []
+        self.invalidate_checkout_change_state()
         self.update_checkout_controls()
 
     def clear_revision_context(self):
@@ -3471,6 +3580,7 @@ class PLMPanel:
         )
         self.active_checkout_dir = target_dir
         self.active_checkout_root_path = root_path
+        self.invalidate_checkout_change_state()
         self.clear_checkout_error(checkout_id)
         touch_directory(target_dir)
         self.update_checkout_controls()
@@ -3708,6 +3818,7 @@ class PLMPanel:
             self.active_checkout.setdefault("id", checkout_id)
             self.active_checkout_dir = target_dir
             self.active_checkout_root_path = root_path
+            self.invalidate_checkout_change_state()
             self.clear_checkout_error(checkout_id)
             touch_directory(target_dir)
             self.update_checkout_controls()

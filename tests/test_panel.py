@@ -18,6 +18,7 @@ from freecad_plm_addon.panel import (
     checkout_label,
     checkout_guard_action,
     checkout_can_cancel,
+    checkout_primary_button_action,
     checkout_visual_state,
     checkout_file_label,
     checkout_display_name,
@@ -270,6 +271,26 @@ class PanelTests(unittest.TestCase):
         self.assertTrue(checkout_can_cancel({"id": 7}))
         self.assertFalse(checkout_can_cancel({}))
         self.assertFalse(checkout_can_cancel(None))
+
+    def test_checkout_primary_button_switches_between_checkin_and_cancel(self):
+        self.assertEqual(checkout_primary_button_action(True), "checkin")
+        self.assertEqual(checkout_primary_button_action(False), "cancel")
+
+    def test_active_checkout_primary_action_rechecks_state_before_running(self):
+        panel = object.__new__(PLMPanel)
+        panel.active_checkout_has_changes = Mock(return_value=False)
+        panel.checkin_active_checkout = Mock()
+        panel.cancel_active_checkout = Mock()
+
+        panel.run_active_checkout_primary_action()
+
+        panel.cancel_active_checkout.assert_called_once_with()
+        panel.checkin_active_checkout.assert_not_called()
+
+        panel.active_checkout_has_changes.return_value = True
+        panel.run_active_checkout_primary_action()
+
+        panel.checkin_active_checkout.assert_called_once_with()
 
     def test_cancel_server_checkout_does_not_require_local_metadata(self):
         panel = object.__new__(PLMPanel)
