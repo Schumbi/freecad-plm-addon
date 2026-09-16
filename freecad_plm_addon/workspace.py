@@ -4,7 +4,7 @@ import re
 import shutil
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
@@ -34,19 +34,36 @@ CHECKOUT_FILE_REFERENCE_RE = re.compile(
 FLOAT_RE = re.compile(r"^[+-]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?$")
 
 
+def safe_relative_path(relative_path, label="Manifest"):
+    raw = str(relative_path)
+    windows_path = PureWindowsPath(raw)
+    path = PurePosixPath(raw.replace("\\", "/"))
+    if (
+        not raw.strip()
+        or "\0" in raw
+        or windows_path.drive
+        or windows_path.root
+        or path.is_absolute()
+        or ".." in path.parts
+    ):
+        raise WorkspaceError(f"Unsicherer {label}-Pfad: {relative_path}")
+    return path
+
+
 def safe_join(root, relative_path):
     root = Path(root)
-    path = PurePosixPath(relative_path)
-    if path.is_absolute() or ".." in path.parts:
+    path = safe_relative_path(relative_path)
+    resolved_root = root.resolve()
+    candidate = root.joinpath(*path.parts)
+    try:
+        candidate.resolve().relative_to(resolved_root)
+    except ValueError:
         raise WorkspaceError(f"Unsicherer Manifest-Pfad: {relative_path}")
-    return root.joinpath(*path.parts)
+    return candidate
 
 
 def safe_zip_path(path):
-    path = PurePosixPath(path)
-    if path.is_absolute() or ".." in path.parts or not str(path).strip():
-        raise WorkspaceError(f"Unsicherer ZIP-Pfad: {path}")
-    return str(path)
+    return str(safe_relative_path(path, label="ZIP"))
 
 
 def collect_project_fcstd_files(source_dir):

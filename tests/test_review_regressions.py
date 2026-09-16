@@ -92,21 +92,34 @@ class PortablePathTests(FileTests):
         self.assertEqual(safe_join(self.root, "Baugruppe/Deckel ä.FCStd"),
                          self.root / "Baugruppe" / "Deckel ä.FCStd")
 
-    @unittest.expectedFailure  # Review 3: reject on Linux as well as Windows.
     def test_windows_parent_is_rejected(self):
         self.reject(r"..\escape/model.FCStd")
 
-    @unittest.expectedFailure
     def test_drive_absolute_is_rejected(self):
         self.reject(r"C:\outside.FCStd")
 
-    @unittest.expectedFailure
     def test_drive_relative_is_rejected(self):
         self.reject("C:outside.FCStd")
 
-    @unittest.expectedFailure
     def test_unc_is_rejected(self):
         self.reject(r"\\server\share\outside.FCStd")
+
+    def test_windows_separators_are_normalized_inside_root(self):
+        self.assertEqual(
+            safe_join(self.root, r"Baugruppe\Deckel.FCStd"),
+            self.root / "Baugruppe" / "Deckel.FCStd",
+        )
+
+    def test_symlink_escape_is_rejected_when_supported(self):
+        outside = self.root.parent / f"{self.root.name}-outside"
+        outside.mkdir(exist_ok=True)
+        self.addCleanup(lambda: outside.rmdir() if outside.exists() else None)
+        link = self.root / "linked"
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            self.skipTest(f"Symlinks are unavailable: {exc}")
+        self.reject("linked/outside.FCStd")
 
 
 class PrintProjectSyncTests(FileTests):
