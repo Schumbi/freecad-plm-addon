@@ -3044,7 +3044,8 @@ class PLMPanel:
             return False
         if state.get("print_project_id"):
             result = self.client().sync_print_project(
-                state["print_project_id"], project_path
+                state["print_project_id"], project_path,
+                base_sha256=state.get("server_sha256", ""),
             )
             server_project = result["slicer_project"]
         else:

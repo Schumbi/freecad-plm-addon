@@ -192,7 +192,6 @@ class PrintProjectSyncTests(FileTests):
         self.assertEqual(self.client.sync_print_project.call_args.args[:2],
                          (8, self.target))
 
-    @unittest.expectedFailure  # Review 4: the saved base must reach the API.
     def test_sync_sends_last_known_server_hash(self):
         self.panel._sync_slicer_project_path(self.target, {"id": 183})
         self.assertEqual(self.client.sync_print_project.call_args.kwargs.get("base_sha256"),

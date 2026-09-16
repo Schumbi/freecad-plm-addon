@@ -122,10 +122,10 @@ class PLMClient:
             "GET", f"/api/print-projects/{print_project_id}/slicer-project/"
         )["print_project"]
 
-    def sync_print_project(self, print_project_id, project_path):
+    def sync_print_project(self, print_project_id, project_path, *, base_sha256=""):
         return self._multipart(
             f"/api/print-projects/{print_project_id}/slicer-project/",
-            {},
+            {"base_sha256": base_sha256},
             "file",
             Path(project_path),
             "model/3mf",

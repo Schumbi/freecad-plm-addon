@@ -176,10 +176,10 @@ und Hashes, keine Zugangsdaten. Beim Öffnen gleicht das Addon lokalen Stand,
 zuletzt bekannten Server-Hash und aktuellen Server-Hash ab; bei bereits
 auseinandergelaufenen Ständen bleibt die lokale Datei unangetastet.
 
-Der aktuelle PrintProject-Endpunkt besitzt noch keine serverseitige
-Versionssperre für zwei gleichzeitig geöffnete Arbeitsstände. Deshalb ein
-Druckprojekt nicht parallel auf mehreren Rechnern bearbeiten; der zuletzt
-gespeicherte Upload kann sonst den vorherigen Serverstand ersetzen. Der
+Beim Hochladen übermittelt das Addon den zuletzt bekannten Server-Hash. Hat
+ein anderer Rechner das Druckprojekt inzwischen geändert, weist der Server
+den Upload mit HTTP 409 ab und die lokale Datei bleibt zur Konfliktlösung
+erhalten. Der
 Workflow benötigt die Token-Scopes `read` und `write`, aber keinen Checkout
 und keinen zusätzlichen Hintergrunddienst.
 

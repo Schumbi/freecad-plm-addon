@@ -153,7 +153,9 @@ class PanelSlicerTests(unittest.TestCase):
             {"print_project_id": 8, "server_sha256": "old"},
         )
         self.assertTrue(synced)
-        self.client.sync_print_project.assert_called_once_with(8, self.target)
+        self.client.sync_print_project.assert_called_once_with(
+            8, self.target, base_sha256="old"
+        )
         self.assertIsNone(read_sync_state(self.target)["manufacturing_file_id"])
 
     def test_changed_dependency_can_be_rebuilt_with_backup(self):
