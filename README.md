@@ -41,6 +41,19 @@ Aktuell umgesetzt:
   den gemeinsamen 3MF-Arbeitsstand aus Bambu Studio oder OrcaSlicer
   synchronisieren.
 
+## Code-Struktur
+
+`freecad_plm_addon/panel.py` erstellt das Dock-Widget und stellt die
+Einstiegspunkte für die FreeCAD-Befehle bereit. Die Panel-Methoden sind
+nach Aufgaben aufgeteilt:
+
+- `panel_state.py` und `panel_browser.py`: Verbindungsstatus, Aktionen und Projektbaum.
+- `panel_projects.py` und `panel_parts.py`: Projekte, Teile und Revisionen.
+- `panel_annotations.py`: Revisionsdetails, Notizen und Anmerkungen.
+- `panel_slicer.py`: Druckprojekte und 3MF-Synchronisation.
+- `panel_checkout.py`: Checkout, Check-in und Workspace-Dateien.
+- `panel_helpers.py`: gemeinsam genutzte Beschriftungen und Ablaufentscheidungen.
+
 ## Konfiguration
 
 Server-URL:
