@@ -18,12 +18,18 @@ def next_print_project_code(projects, project_id, revision_id):
 def choose_print_project(parent, QtCore, QtGui, QtWidgets, projects, client):
     dialog = QtWidgets.QDialog(parent)
     dialog.setWindowTitle("Druckprojekt öffnen oder erstellen")
-    dialog.resize(660, 460)
+    dialog.resize(920, 480)
     layout = QtWidgets.QVBoxLayout(dialog)
-    hint = QtWidgets.QLabel("Vorhandenen Slicerstand öffnen oder ein neues Druckprojekt für diese Revision erstellen.")
+    hint = QtWidgets.QLabel("Alle Druckprojekte dieses PLM-Projekts. Neu erstellen verwendet die im Baum ausgewählte Revision.")
     hint.setWordWrap(True)
     layout.addWidget(hint)
-    listing = QtWidgets.QListWidget()
+    listing = QtWidgets.QTreeWidget()
+    listing.setHeaderLabels(["Druckprojekt", "Teil / FCStd-Datei", "Revision", "Vorschau"])
+    listing.setRootIsDecorated(False)
+    listing.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+    listing.setColumnWidth(0, 260)
+    listing.setColumnWidth(1, 220)
+    listing.setColumnWidth(2, 100)
     listing.setIconSize(QtCore.QSize(128, 96))
     layout.addWidget(listing)
     buttons = QtWidgets.QHBoxLayout()
@@ -46,22 +52,27 @@ def choose_print_project(parent, QtCore, QtGui, QtWidgets, projects, client):
             caption = f"Platte {plate['number']} · Vorschau wird geladen …"
         else:
             caption = "Keine Vorschau vorhanden"
-        item = QtWidgets.QListWidgetItem(label + "\n" + caption)
-        item.setSizeHint(QtCore.QSize(560, 108))
-        listing.addItem(item)
+        revision = project.get("primary_revision") or {}
+        part_label = " · ".join(str(value) for value in (
+            revision.get("part_number"), revision.get("original_filename"),
+        ) if value)
+        revision_label = revision.get("revision_code") or f"ID {project.get('primary_revision_id', '?')}"
+        item = QtWidgets.QTreeWidgetItem([label, part_label, revision_label, caption])
+        item.setSizeHint(0, QtCore.QSize(260, 108))
+        listing.addTopLevelItem(item)
         if plate:
             pending[executor.submit(client.get_print_project_preview, plate["preview_url"])] = (item, label, plate)
     if projects:
-        listing.setCurrentRow(0)
+        listing.setCurrentItem(listing.topLevelItem(0))
     else:
-        hint.setText("Für diese Revision gibt es noch kein Druckprojekt. Du kannst jetzt ein neues erstellen.")
+        hint.setText("Für dieses PLM-Projekt gibt es noch kein Druckprojekt. Du kannst jetzt ein neues erstellen.")
 
     def choose_new():
         selection.append(("new", None))
         dialog.accept()
 
     def choose_existing(*args):
-        row = listing.currentRow()
+        row = listing.indexOfTopLevelItem(listing.currentItem())
         if 0 <= row < len(projects):
             selection.append(("existing", projects[row]))
             dialog.accept()
@@ -84,10 +95,10 @@ def choose_print_project(parent, QtCore, QtGui, QtWidgets, projects, client):
                 image = reader.read()
                 if image.isNull():
                     raise ValueError("Ungültiges Vorschaubild")
-                item.setIcon(QtGui.QIcon(QtGui.QPixmap.fromImage(image)))
-                item.setText(label + f"\nVorschau: Platte {plate['number']}")
+                item.setIcon(3, QtGui.QIcon(QtGui.QPixmap.fromImage(image)))
+                item.setText(3, f"Platte {plate['number']}")
             except Exception:
-                item.setText(label + "\nVorschau nicht verfügbar")
+                item.setText(3, "Vorschau nicht verfügbar")
         if not pending:
             timer.stop()
 

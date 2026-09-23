@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 – 2026-09-23
+
+- Die Druckprojekt-Auswahl zeigt alle Druckprojekte des gewählten PLM-Projekts über sämtliche Revisionen hinweg.
+- Eigene Tabellenspalten zeigen Teil/FCStd-Datei, zugeordnete Revision und Vorschau.
+- Beim Öffnen wird die Revision des gewählten Druckprojekts für Workspace und Quellen verwendet, unabhängig von der Baum-Auswahl.
+
 ## 0.1.7 – 2026-09-23
 
 - Druckprojekte werden immer explizit ausgewählt: vorhandenen Slicerstand öffnen oder ein neues Projekt mit eigenem Code erstellen.

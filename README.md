@@ -7,7 +7,7 @@ Die nutzerorientierte Darstellung für den Addon Manager steht in
 
 ## Status
 
-Aktuelle Paketversion: **0.1.7** (2026-09-23). Änderungen stehen im
+Aktuelle Paketversion: **0.1.8** (2026-09-23). Änderungen stehen im
 [Changelog](CHANGELOG.md).
 
 Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die
@@ -130,8 +130,11 @@ Zusätzliche Argumente werden als JSON-Liste, zum Beispiel
 
 Nach Auswahl einer FCStd-, STEP- oder STL-Revision zeigt `Druckprojekt
 öffnen/erstellen` immer einen Dialog: **Neues Druckprojekt erstellen** oder
-**Ausgewähltes öffnen**. Vorhandene Projekte dieser Hauptrevision erscheinen
-mit Code, Name, ID und – sofern verfügbar – dem Vorschaubild einer Druckplatte.
+**Ausgewähltes öffnen**. Alle Druckprojekte des ausgewählten PLM-Projekts erscheinen in einer Tabelle
+mit Code/Name, Teil und FCStd-Datei, zugeordneter Revision und – sofern verfügbar –
+dem Vorschaubild einer Druckplatte. Beim Öffnen verwendet das Addon die
+zugeordnete Revision des gewählten Druckprojekts; ein neues Druckprojekt bezieht
+sich auf die im Baum ausgewählte Revision.
 Die Bilder werden im Hintergrund geladen. Bei Neuerstellung wird ein freier
 Code vorgeschlagen; belegte Codes werden abgewiesen. **Abbrechen** öffnet und
 erstellt kein Projekt.
@@ -332,3 +335,8 @@ oder bei versionierten FreeCAD-Profilen:
 ```text
 %APPDATA%\FreeCAD\v1-1\Mod\freecad-plm-addon
 ```
+
+Im Web-UI kann ein Editor/Admin ein Druckprojekt über **Revision zuordnen**
+an eine andere FCStd-Revision desselben PLM-Projekts hängen. Diese Zuordnung
+ändert den gespeicherten 3MF-Stand nicht; ursprüngliche Quellen und
+Druck-Snapshots bleiben erhalten.

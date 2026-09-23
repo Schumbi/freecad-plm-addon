@@ -158,7 +158,7 @@ class PanelSlicerMixin:
             )
             client = self.client()
             projects = client.get_print_projects()
-            matches = [item for item in projects if item.get("primary_revision_id") == revision_id]
+            matches = [item for item in projects if item.get("project_id") == project["id"]]
             selection = self.choose_print_project(matches, client)
             if selection is None:
                 self.set_status("Öffnen des Druckprojekts abgebrochen.")
@@ -187,6 +187,15 @@ class PanelSlicerMixin:
                 )
                 for source_path in source_paths:
                     client.add_print_project_source(print_project["id"], source_path)
+            if action == "existing" and print_project["primary_revision_id"] != revision_id:
+                revision = client.get_revision(print_project["primary_revision_id"])
+                revision_id = revision["id"]
+                part = {"id": revision["part_id"]}
+            # Existing projects always use their assigned revision, not the tree selection.
+            revision_dir = slicer_project_dir(
+                self.workspace_root.text().strip(), self.server_url.text().strip(),
+                project_code, revision_id,
+            )
             target_dir = slicer_project_dir(
                 self.workspace_root.text().strip(),
                 self.server_url.text().strip(),

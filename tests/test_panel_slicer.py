@@ -66,7 +66,7 @@ class PanelSlicerTests(unittest.TestCase):
         digest = sha256_file(self.target)
         write_sync_state(self.target, {"server_sha256": digest})
         self.client.get_print_projects.return_value = [{
-            "id": 8, "primary_revision_id": 183, "code": "DP-183",
+            "id": 8, "project_id": 15, "primary_revision_id": 183, "code": "DP-183",
             "slicer_project": {
                 "sha256": digest,
                 "original_filename": self.target.name,
@@ -159,6 +159,26 @@ class PanelSlicerTests(unittest.TestCase):
         self.panel.choose_slicer_geometry_action.assert_not_called()
         self.export.assert_not_called()
         self.assertEqual(self.target.read_bytes(), original)
+        self.launch.assert_called_once()
+
+    def test_project_wide_choice_uses_assigned_revision_for_opening(self):
+        self.set_sources(187)
+        current = self.client.get_print_projects.return_value[0]
+        older = {**current, "id": 9, "primary_revision_id": 180, "code": "Old"}
+        foreign = {**current, "id": 10, "project_id": 99}
+        self.client.get_print_projects.return_value = [current, older, foreign]
+        self.panel.choose_print_project.side_effect = None
+        self.panel.choose_print_project.return_value = ("existing", older)
+        self.client.get_revision.return_value = {"id": 180, "part_id": 45, "file_format": "fcstd"}
+        PLMPanel.open_selected_revision_in_slicer(self.panel)
+        self.panel.choose_print_project.assert_called_once_with([current, older], self.client)
+        self.client.get_revision.assert_called_once_with(180)
+        self.client.get_revision_manifest.assert_called_once_with(180)
+        state = read_sync_state(self.target)
+        self.assertEqual(state["revision_id"], 180)
+        self.assertEqual(state["part_id"], 45)
+        self.assertEqual(state["print_project_id"], 9)
+        self.export.assert_not_called()
         self.launch.assert_called_once()
 
     def test_print_project_sync_does_not_require_manufacturing_file_id(self):
