@@ -11,6 +11,10 @@ from .panel_helpers import (
 
 
 class PanelSlicerMixin:
+    def choose_print_project(self, matches, client):
+        from .print_project_dialog import choose_print_project
+        return choose_print_project(self.widget, self.QtCore, self.QtGui, self.QtWidgets, matches, client)
+
     def open_selected_revision(self):
         revision = self.selected_revision()
         action = revision_primary_action(revision)
@@ -153,31 +157,27 @@ class PanelSlicerMixin:
                 self.slicer_extra_args,
             )
             client = self.client()
-            matches = [
-                item for item in client.get_print_projects()
-                if item.get("primary_revision_id") == revision_id
-            ]
-            if len(matches) == 1:
-                print_project = matches[0]
-            elif len(matches) > 1:
-                labels = [print_project_label(item) for item in matches]
-                selected_label, accepted = self.QtWidgets.QInputDialog.getItem(
-                    self.widget,
-                    "Druckprojekt öffnen",
-                    "Für diese Hauptrevision existieren mehrere Druckprojekte:",
-                    labels,
-                    0,
-                    False,
+            projects = client.get_print_projects()
+            matches = [item for item in projects if item.get("primary_revision_id") == revision_id]
+            selection = self.choose_print_project(matches, client)
+            if selection is None:
+                self.set_status("Öffnen des Druckprojekts abgebrochen.")
+                return
+            action, print_project = selection
+            if action == "new":
+                from .print_project_dialog import next_print_project_code
+                suggested = next_print_project_code(projects, project["id"], revision_id)
+                code, accepted = self.QtWidgets.QInputDialog.getText(
+                    self.widget, "Neues Druckprojekt", "Code des neuen Druckprojekts:",
+                    self.QtWidgets.QLineEdit.Normal, suggested,
                 )
-                if not accepted:
-                    self.set_status("Öffnen des Druckprojekts abgebrochen.")
+                if not accepted or not code.strip():
+                    self.set_status("Erstellen des Druckprojekts abgebrochen.")
                     return
-                print_project = matches[labels.index(selected_label)]
-            else:
                 print_project = client.create_print_project(
-                    revision_id,
-                    f"DP-{revision_id}",
+                    revision_id, code.strip(),
                     f"Druckprojekt {part.get('number', '')} {revision.get('revision_code', '')}".strip(),
+                    require_new=True,
                 )
                 source_paths, _selected_filter = self.QtWidgets.QFileDialog.getOpenFileNames(
                     None,
@@ -259,7 +259,7 @@ class PanelSlicerMixin:
                         target_path, revision_sources(manifest, revision_id, client.base_url)
                     )
                 )
-                if force_rebuild or sources_status != "current":
+                if force_rebuild or sources_status == "empty":
                     choice = self.choose_slicer_geometry_action(sources_status, force_rebuild)
                     if choice == "cancel":
                         self.set_status("Öffnen des Slicer-Projekts abgebrochen.")

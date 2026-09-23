@@ -39,6 +39,7 @@ class PanelSlicerTests(unittest.TestCase):
         self.panel.slicer_kind = "bambu"
         self.monitor = Mock()
         self.panel.slicer_monitors = {str(self.target): self.monitor}
+        self.panel.choose_print_project.side_effect = lambda matches, client: ("existing", matches[0])
         self.client = self.panel.client.return_value
         self.client.base_url = "https://plm.example"
         self.client.get_revision_manifest.return_value = self.manifest
@@ -107,21 +108,12 @@ class PanelSlicerTests(unittest.TestCase):
             "name": "Alternative Platte",
         }
         self.client.get_print_projects.return_value = [first, second]
-        self.panel.QtWidgets.QInputDialog.getItem.return_value = (
-            "DP-183-B · Alternative Platte [ID 9]",
-            True,
-        )
+        self.panel.choose_print_project.side_effect = None
+        self.panel.choose_print_project.return_value = ("existing", second)
 
         PLMPanel.open_selected_revision_in_slicer(self.panel)
 
-        self.panel.QtWidgets.QInputDialog.getItem.assert_called_once_with(
-            self.panel.widget,
-            "Druckprojekt öffnen",
-            "Für diese Hauptrevision existieren mehrere Druckprojekte:",
-            ["DP-183 [ID 8]", "DP-183-B · Alternative Platte [ID 9]"],
-            0,
-            False,
-        )
+        self.panel.choose_print_project.assert_called_once_with([first, second], self.client)
         self.assertEqual(read_sync_state(self.target)["print_project_id"], 9)
         self.client.create_print_project.assert_not_called()
         self.launch.assert_called_once()
@@ -133,7 +125,8 @@ class PanelSlicerTests(unittest.TestCase):
             first,
             {**first, "id": 9, "code": "DP-183-B"},
         ]
-        self.panel.QtWidgets.QInputDialog.getItem.return_value = ("", False)
+        self.panel.choose_print_project.side_effect = None
+        self.panel.choose_print_project.return_value = None
 
         PLMPanel.open_selected_revision_in_slicer(self.panel)
 
@@ -141,6 +134,32 @@ class PanelSlicerTests(unittest.TestCase):
         self.client.create_print_project.assert_not_called()
         self.client.get_revision_manifest.assert_not_called()
         self.launch.assert_not_called()
+
+    def test_new_project_can_be_created_despite_existing_project(self):
+        self.set_sources(187)
+        self.target.unlink()
+        self.panel.choose_print_project.side_effect = None
+        self.panel.choose_print_project.return_value = ("new", None)
+        self.panel.QtWidgets.QInputDialog.getText.return_value = ("DP-183-2", True)
+        self.panel.QtWidgets.QFileDialog.getOpenFileNames.return_value = ([], "")
+        self.client.create_print_project.return_value = {"id": 9, "code": "DP-183-2"}
+        PLMPanel.open_selected_revision_in_slicer(self.panel)
+        self.client.create_print_project.assert_called_once_with(
+            183, "DP-183-2", "Druckprojekt A-001", require_new=True,
+        )
+        self.assertEqual(read_sync_state(self.target)["print_project_id"], 9)
+        self.export.assert_called_once()
+        self.launch.assert_called_once()
+
+    def test_existing_changed_sources_open_without_rebuilding(self):
+        self.set_sources(186)
+        original = self.target.read_bytes()
+        PLMPanel.open_selected_revision_in_slicer(self.panel)
+        self.panel.choose_print_project.assert_called_once()
+        self.panel.choose_slicer_geometry_action.assert_not_called()
+        self.export.assert_not_called()
+        self.assertEqual(self.target.read_bytes(), original)
+        self.launch.assert_called_once()
 
     def test_print_project_sync_does_not_require_manufacturing_file_id(self):
         self.set_sources(187)
@@ -162,8 +181,8 @@ class PanelSlicerTests(unittest.TestCase):
         self.set_sources(186)
         original = self.target.read_bytes()
         self.panel.choose_slicer_geometry_action.return_value = "rebuild"
-        PLMPanel.open_selected_revision_in_slicer(self.panel)
-        self.panel.choose_slicer_geometry_action.assert_called_once_with("changed", False)
+        PLMPanel.open_selected_revision_in_slicer(self.panel, force_rebuild=True)
+        self.panel.choose_slicer_geometry_action.assert_called_once_with("changed", True)
         self.export.assert_called_once()
         self.launch.assert_called_once()
         self.assertEqual(read_3mf_sources(self.target)["files"][0]["revision_id"], 187)
@@ -194,7 +213,7 @@ class PanelSlicerTests(unittest.TestCase):
         original = self.target.read_bytes()
         self.panel.choose_slicer_geometry_action.return_value = "keep"
         PLMPanel.open_selected_revision_in_slicer(self.panel)
-        self.panel.choose_slicer_geometry_action.assert_called_once_with("unknown", False)
+        self.panel.choose_slicer_geometry_action.assert_not_called()
         self.export.assert_not_called()
         self.launch.assert_called_once()
         self.assertEqual(self.target.read_bytes(), original)
@@ -204,8 +223,8 @@ class PanelSlicerTests(unittest.TestCase):
         self.set_sources(186)
         original = self.target.read_bytes()
         self.panel.choose_slicer_geometry_action.return_value = "cancel"
-        PLMPanel.open_selected_revision_in_slicer(self.panel)
-        self.panel.choose_slicer_geometry_action.assert_called_once_with("changed", False)
+        PLMPanel.open_selected_revision_in_slicer(self.panel, force_rebuild=True)
+        self.panel.choose_slicer_geometry_action.assert_called_once_with("changed", True)
         self.export.assert_not_called()
         self.launch.assert_not_called()
         self.assertEqual(self.target.read_bytes(), original)
@@ -217,7 +236,7 @@ class PanelSlicerTests(unittest.TestCase):
         original = self.target.read_bytes()
         self.panel.choose_slicer_geometry_action.return_value = "rebuild"
         self.export.side_effect = RuntimeError("export failed")
-        PLMPanel.open_selected_revision_in_slicer(self.panel)
+        PLMPanel.open_selected_revision_in_slicer(self.panel, force_rebuild=True)
         self.export.assert_called_once()
         self.launch.assert_not_called()
         self.panel._sync_slicer_project_path.assert_not_called()

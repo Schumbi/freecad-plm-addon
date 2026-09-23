@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7 – 2026-09-23
+
+- Druckprojekte werden immer explizit ausgewählt: vorhandenen Slicerstand öffnen oder ein neues Projekt mit eigenem Code erstellen.
+- Der Dialog zeigt verfügbare Plattenvorschaubilder neben den Projekten; Bilder werden im Hintergrund geladen.
+- Normales Öffnen behält vorhandene Slicer-Geometrie bei. Neuaufbau erfolgt über die separate, bestätigte Aktion.
+
 ## 0.1.6 – 2026-09-23
 
 - Der globale Deep-Link-Event-Filter lässt fremde Ereignisse direkt passieren. Das verhindert den PySide6-TypeError beim Weiterreichen von `QStandardItem` an `QObject.eventFilter`.

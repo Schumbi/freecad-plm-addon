@@ -130,20 +130,35 @@ class PLMClient:
             "GET", f"/api/revisions/{revision_id}/slicer-project/"
         )["slicer_project"]
 
-    def create_print_project(self, revision_id, code, name, description=""):
-        return self._json(
+    def create_print_project(self, revision_id, code, name, description="", *, require_new=False):
+        result = self._json(
             "POST",
             "/api/print-projects/",
             {
                 "revision_id": revision_id,
+                "require_new": require_new,
                 "code": code,
                 "name": name,
                 "description": description,
             },
-        )["print_project"]
+        )
+        if require_new and result.get("created") is False:
+            raise ConflictError(409, "Dieser Druckprojekt-Code ist bereits vergeben.")
+        return result["print_project"]
 
     def get_print_projects(self):
         return self._json("GET", "/api/print-projects/")["print_projects"]
+
+    def get_print_project_preview(self, url):
+        url = parse.urljoin(self.base_url + "/", url)
+        response = self._open("GET", url, absolute=True)
+        try:
+            data = response.read(2 * 1024 * 1024 + 1)
+            if len(data) > 2 * 1024 * 1024:
+                raise APIError(0, "Vorschaubild ist zu groß.")
+            return data
+        finally:
+            response.close()
 
     def get_print_project(self, print_project_id):
         return self._json(

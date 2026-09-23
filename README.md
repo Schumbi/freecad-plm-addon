@@ -7,7 +7,7 @@ Die nutzerorientierte Darstellung für den Addon Manager steht in
 
 ## Status
 
-Aktuelle Paketversion: **0.1.6** (2026-09-23). Änderungen stehen im
+Aktuelle Paketversion: **0.1.7** (2026-09-23). Änderungen stehen im
 [Changelog](CHANGELOG.md).
 
 Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die
@@ -128,13 +128,13 @@ Flatpaks `com.bambulab.BambuStudio` und `io.github.softfever.OrcaSlicer`.
 Zusätzliche Argumente werden als JSON-Liste, zum Beispiel
 `["--single-instance"]`, gespeichert und ohne Shell an den Prozess übergeben.
 
-Nach Auswahl einer FCStd-, STEP- oder STL-Revision startet `Druckprojekt
-öffnen/erstellen` den Ablauf. Das Addon sucht ein `PrintProject`, dessen
-primäre CAD-Revision der Auswahl entspricht. Existiert keines, legt es ein
-Druckprojekt an und führt die Revision als erste, unveränderliche Quelle.
-Existieren mehrere Druckprojekte mit dieser Hauptrevision, muss das gewünschte
-Projekt anhand von Code, Name und ID ausgewählt werden; ein Abbruch lässt alle
-Projekte unverändert.
+Nach Auswahl einer FCStd-, STEP- oder STL-Revision zeigt `Druckprojekt
+öffnen/erstellen` immer einen Dialog: **Neues Druckprojekt erstellen** oder
+**Ausgewähltes öffnen**. Vorhandene Projekte dieser Hauptrevision erscheinen
+mit Code, Name, ID und – sofern verfügbar – dem Vorschaubild einer Druckplatte.
+Die Bilder werden im Hintergrund geladen. Bei Neuerstellung wird ein freier
+Code vorgeschlagen; belegte Codes werden abgewiesen. **Abbrechen** öffnet und
+erstellt kein Projekt.
 Optional ausgewählte externe STL-Dateien werden als weitere Quellen im PLM
 gespeichert. Weitere PLM-Revisionen lassen sich später mit `Zum Druckprojekt
 hinzufügen` zuordnen.
@@ -163,11 +163,11 @@ Teil-/Revisions-ID, Revisionscode und SHA-256. Beim Öffnen vergleicht das Addon
 diese Angaben mit dem aktuellen Revisionsmanifest. Damit wird auch ein neuer
 Deckel erkannt, wenn die Revision der übergeordneten Druckbaugruppe gleich bleibt.
 
-Bei abweichenden Quellen bietet der Dialog `3MF neu erzeugen`,
-`Bisherigen Stand öffnen` und `Abbrechen` an. Ältere 3MF ohne Quellenangaben
-gelten als **nicht prüfbar**. Dasselbe gilt, wenn ein Slicer die zusätzlichen
-Metadaten beim Speichern entfernt; das Addon behauptet dann nicht, die Datei
-sei aktuell, und trägt auch keine heutigen Quellen nachträglich als Herkunft ein.
+Beim normalen Öffnen bleibt der gespeicherte Slicerstand auch bei abweichenden
+oder unbekannten CAD-Quellen erhalten. **Mehr → 3MF neu erzeugen** prüft die
+Quellen und verlangt eine Bestätigung für den Neuaufbau. Eine geometrisch
+leere 3MF muss vor dem Öffnen repariert oder der Vorgang abgebrochen werden.
+Fehlende Quellenangaben werden nicht nachträglich als aktuelle Herkunft ausgegeben.
 Die Metadaten dokumentieren den CAD-Export der primären Revision, nicht spätere
 manuelle Änderungen der Geometrie oder weitere Druckprojektquellen.
 
