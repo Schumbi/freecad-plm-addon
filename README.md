@@ -7,7 +7,7 @@ Die nutzerorientierte Darstellung für den Addon Manager steht in
 
 ## Status
 
-Aktuelle Paketversion: **0.1.5** (2026-09-23). Änderungen stehen im
+Aktuelle Paketversion: **0.1.6** (2026-09-23). Änderungen stehen im
 [Changelog](CHANGELOG.md).
 
 Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die

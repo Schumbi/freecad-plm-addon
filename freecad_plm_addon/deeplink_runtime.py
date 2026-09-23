@@ -88,7 +88,9 @@ def install_deep_link_runtime(arguments=None):
                     except ValueError:
                         return False
                     return True
-            return super().eventFilter(watched, event)
+            # Let Qt continue delivery without a second Python/C++ conversion
+            # of watched (FreeCAD may expose it as a non-QObject wrapper).
+            return False
 
     if _event_filter is None:
         _event_filter = DeepLinkEventFilter(application)

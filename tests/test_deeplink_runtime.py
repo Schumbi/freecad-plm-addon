@@ -113,6 +113,23 @@ class DeepLinkRuntimeTests(unittest.TestCase):
         self.assertTrue(handled)
         dispatch.assert_called_once_with(DEEPLINK)
 
+    def test_unhandled_events_pass_without_calling_qobject_base(self):
+        FakeQApplication.application = FakeApplication()
+        with (
+            patch("freecad_plm_addon.deeplink_runtime._load_qt",
+                  return_value=(FakeQtCore, FakeQApplication)),
+            patch.object(FakeQObject, "eventFilter",
+                         side_effect=TypeError("watched is not a QObject")) as base,
+            patch("freecad_plm_addon.deeplink_runtime.dispatch_deep_link") as dispatch,
+        ):
+            install_deep_link_runtime(arguments=["FreeCAD"])
+            event_filter = FakeQApplication.application.event_filter
+            for event in (FakeEvent("", event_type=7), FakeEvent("C:/model.FCStd")):
+                with self.subTest(event_type=event.type(), value=event.value):
+                    self.assertFalse(event_filter.eventFilter(object(), event))
+            base.assert_not_called()
+            dispatch.assert_not_called()
+
     def test_dispatches_startup_argument_without_workbench_activation(self):
         FakeQApplication.application = FakeApplication()
         with (

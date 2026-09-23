@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6 – 2026-09-23
+
+- Der globale Deep-Link-Event-Filter lässt fremde Ereignisse direkt passieren. Das verhindert den PySide6-TypeError beim Weiterreichen von `QStandardItem` an `QObject.eventFilter`.
+- Ein Regressionstest sichert ab, dass normale Ereignisse und FCStd-Dateiöffnungen weder abgefangen noch an die QObject-Basismethode übergeben werden.
+
 ## 0.1.5 – 2026-09-23
 
 Änderungen seit 0.1.4:
