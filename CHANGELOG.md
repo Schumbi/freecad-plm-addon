@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.9 – 2026-09-24
+
+- Projekte über Text und mehrere Tags filtern: UND, ODER und Ohne Tags.
+- Tags in den Projekteigenschaften bearbeiten, mit Vorschlägen vorhandener Namen.
+- Ein Klick auf „Alle“ setzt Filter zurück; Direktnavigation kann ausgeblendete
+  Projekte wieder sichtbar machen. Ältere Server ohne Tags bleiben nutzbar.
+
 ## 0.1.8 – 2026-09-23
 
 - Die Druckprojekt-Auswahl zeigt alle Druckprojekte des gewählten PLM-Projekts über sämtliche Revisionen hinweg.

@@ -33,6 +33,8 @@ def project_edit_payload(values):
     for field in fields:
         value = values.get(field, "")
         payload[field] = value.strip() if isinstance(value, str) else value
+    if "tags" in values:
+        payload["tags"] = [name.strip() for name in values["tags"].split(",") if name.strip()]
     payload["code"] = payload.get("code", "").upper()
     return payload
 

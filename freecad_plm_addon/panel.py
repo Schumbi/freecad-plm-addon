@@ -52,6 +52,7 @@ from .panel_helpers import (
     save_slicer_settings,
     unchanged_checkout_text,
 )
+from .project_tags import PanelProjectTagsMixin
 from .panel_state import PanelStateMixin
 from .panel_browser import PanelBrowserMixin
 from .panel_projects import PanelProjectsMixin
@@ -83,7 +84,7 @@ def _load_qt():
         return QtCore, QtGui, QtWidgets
 
 
-class PLMPanel(PanelStateMixin, PanelBrowserMixin, PanelProjectsMixin, PanelPartsMixin, PanelAnnotationsMixin, PanelSlicerMixin, PanelCheckoutMixin):
+class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelProjectsMixin, PanelPartsMixin, PanelAnnotationsMixin, PanelSlicerMixin, PanelCheckoutMixin):
     def __init__(self):
         from . import config
 
@@ -173,6 +174,8 @@ class PLMPanel(PanelStateMixin, PanelBrowserMixin, PanelProjectsMixin, PanelPart
         tree_header.addStretch(1)
         browser_layout.addLayout(tree_header)
 
+        self.build_project_filters(browser_layout)
+
         self.browser_tree = self.QtWidgets.QTreeWidget()
         self.browser_tree.setHeaderHidden(True)
         self.browser_tree.setUniformRowHeights(True)
@@ -199,6 +202,8 @@ class PLMPanel(PanelStateMixin, PanelBrowserMixin, PanelProjectsMixin, PanelPart
         project_form = self.QtWidgets.QFormLayout(self.project_details)
         self.project_code = self.QtWidgets.QLineEdit()
         self.project_name = self.QtWidgets.QLineEdit()
+        self.project_tags = self.QtWidgets.QLineEdit()
+        self.project_tags.setPlaceholderText("Tags durch Kommas trennen …")
         self.project_status = self.QtWidgets.QComboBox()
         self.project_status.addItem("Laufend", "running")
         self.project_status.addItem("Abgeschlossen", "completed")
@@ -213,6 +218,7 @@ class PLMPanel(PanelStateMixin, PanelBrowserMixin, PanelProjectsMixin, PanelPart
         self.save_project_button.setEnabled(False)
         project_form.addRow("Code", self.project_code)
         project_form.addRow("Name", self.project_name)
+        project_form.addRow("Tags", self.project_tags)
         project_form.addRow("Status", self.project_status)
         project_form.addRow("Datum", self.project_date)
         project_form.addRow("Beschreibung", self.project_description)

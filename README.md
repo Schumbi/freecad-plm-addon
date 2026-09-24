@@ -7,7 +7,7 @@ Die nutzerorientierte Darstellung für den Addon Manager steht in
 
 ## Status
 
-Aktuelle Paketversion: **0.1.8** (2026-09-23). Änderungen stehen im
+Aktuelle Paketversion: **0.1.9** (2026-09-24). Änderungen stehen im
 [Changelog](CHANGELOG.md).
 
 Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die
@@ -340,3 +340,15 @@ Im Web-UI kann ein Editor/Admin ein Druckprojekt über **Revision zuordnen**
 an eine andere FCStd-Revision desselben PLM-Projekts hängen. Diese Zuordnung
 ändert den gespeicherten 3MF-Stand nicht; ursprüngliche Quellen und
 Druck-Snapshots bleiben erhalten.
+
+## Projekte nach Tags filtern
+
+Ab 0.1.9 stehen über dem Projektbaum eine Textsuche und eine Tag-Auswahl bereit.
+Mehrere Tags lassen sich mit **UND** oder **ODER** kombinieren; **Ohne Tags**
+zeigt noch nicht einsortierte Projekte. **Alle** setzt sämtliche Filter zurück.
+Die Textsuche berücksichtigt Code, Name, Beschreibung und Tag-Namen.
+Im Projekteigenschaftendialog lassen sich Tags durch Kommas getrennt bearbeiten;
+vorhandene Namen werden beim Tippen vorgeschlagen. Zentrales Umbenennen,
+Zusammenführen und Entfernen erfolgt im Web unter **Tags verwalten**.
+Erforderlich ist ein Server mit Projekt-Tags (Migration 0026); ältere Server
+liefern weiterhin Projekte, jedoch ohne Tag-Funktionen.

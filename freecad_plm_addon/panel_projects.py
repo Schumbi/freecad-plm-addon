@@ -3,6 +3,7 @@
 from pathlib import Path
 import tempfile
 
+from .project_tags import project_tag_names, install_tag_completer
 from .errors import PLMError
 from .workspace import archive_import_source_dir, build_project_import_zip
 from .panel_helpers import (
@@ -22,6 +23,7 @@ class PanelProjectsMixin:
     def clear_project_form(self):
         self.project_code.setText("")
         self.project_name.setText("")
+        self.project_tags.setText("")
         self.project_status.setCurrentIndex(0)
         self.project_date.setText("")
         self.project_description.setPlainText("")
@@ -30,6 +32,7 @@ class PanelProjectsMixin:
     def set_project_form(self, project):
         self.project_code.setText(project.get("code", "") or "")
         self.project_name.setText(project.get("name", "") or "")
+        self.project_tags.setText(", ".join(project_tag_names(project)))
         status = project.get("status") or "running"
         index = self.project_status.findData(status)
         self.project_status.setCurrentIndex(index if index >= 0 else 0)
@@ -45,6 +48,7 @@ class PanelProjectsMixin:
         return {
             "code": self.project_code.text(),
             "name": self.project_name.text(),
+            "tags": self.project_tags.text(),
             "status": status or "running",
             "project_date": self.project_date.text(),
             "description": self.project_description.toPlainText(),
@@ -167,6 +171,10 @@ class PanelProjectsMixin:
             message = f"{message} Aktive Checkouts: {checkout_count}."
         self.set_status(message)
         self.set_connected(server_url)
+        self.update_project_tag_options()
+        if hasattr(self, "project_tags"):
+            self.project_tag_completer = install_tag_completer(self.project_tags, self.QtCore,
+                self.QtWidgets, [name for p in projects for name in project_tag_names(p)])
 
     def refresh_parts(self):
         project_item = self.tree_ancestor(self.browser_tree.currentItem(), "project")
@@ -242,6 +250,7 @@ class PanelProjectsMixin:
             item.setData(0, self.tree_role(5), label)
         self.set_project_form(updated_project)
         self.set_status(f"Projekt gespeichert: {project_label(updated_project)}")
+        self.update_project_tag_options()
 
     def import_project_dialog(self):
         selected_project = self.selected_project()

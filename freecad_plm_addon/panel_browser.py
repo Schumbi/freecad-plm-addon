@@ -19,6 +19,8 @@ class PanelBrowserMixin:
         for item in self.iter_tree_items():
             project = self.tree_item_payload(item)
             if self.tree_item_kind(item) == "project" and project and project.get("id") == project_id:
+                if hasattr(self, "project_search") and item.isHidden():
+                    self.reset_project_filters()
                 self.browser_tree.setCurrentItem(item)
                 item.setExpanded(True)
                 return True
@@ -32,6 +34,8 @@ class PanelBrowserMixin:
         for item in self.iter_tree_items():
             part = self.tree_item_payload(item)
             if self.tree_item_kind(item) == "part" and part and part.get("id") == part_id:
+                if hasattr(self, "project_search") and item.isHidden():
+                    self.reset_project_filters()
                 self.browser_tree.setCurrentItem(item)
                 item.setExpanded(True)
                 return True

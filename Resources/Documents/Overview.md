@@ -72,3 +72,15 @@ Projektabläufe benötigt.
 Das ausführliche
 [Addon-Handbuch](https://git.home.schumbi.de/ralf/freecad-plm/wiki/FreeCAD-Addon-Handbuch)
 beschreibt Konfiguration und Arbeitsabläufe im Detail.
+
+## Projekte nach Tags filtern
+
+Ab 0.1.9 stehen über dem Projektbaum eine Textsuche und eine Tag-Auswahl bereit.
+Mehrere Tags lassen sich mit **UND** oder **ODER** kombinieren; **Ohne Tags**
+zeigt noch nicht einsortierte Projekte. **Alle** setzt sämtliche Filter zurück.
+Die Textsuche berücksichtigt Code, Name, Beschreibung und Tag-Namen.
+Im Projekteigenschaftendialog lassen sich Tags durch Kommas getrennt bearbeiten;
+vorhandene Namen werden beim Tippen vorgeschlagen. Zentrales Umbenennen,
+Zusammenführen und Entfernen erfolgt im Web unter **Tags verwalten**.
+Erforderlich ist ein Server mit Projekt-Tags (Migration 0026); ältere Server
+liefern weiterhin Projekte, jedoch ohne Tag-Funktionen.
