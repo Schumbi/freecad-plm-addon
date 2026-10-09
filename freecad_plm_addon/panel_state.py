@@ -154,6 +154,8 @@ class PanelStateMixin:
             label = "Teil bearbeiten"
             callback = self.show_part_dialog
             more = [("Revisionen aktualisieren", self.refresh_revisions)]
+            if (part or {}).get("family"):
+                more.append(("Varianten anzeigen", self.show_variants_dialog))
         elif kind == "checkout_error":
             summary = item.text(0) if item is not None else "Checkout-Fehler"
             label = "Aktualisieren"
@@ -224,6 +226,10 @@ class PanelStateMixin:
                     ("Anmerkungen", self.show_annotations_dialog),
                 ]
             )
+            if revision_file_format(revision or {}) == "fcstd" and (part or {}).get("can_create_variant", False):
+                more.append(("Als neue Variante speichern", self.create_variant_dialog))
+            if (part or {}).get("family"):
+                more.append(("Varianten anzeigen", self.show_variants_dialog))
         self.set_context_actions(summary, label, callback, more)
 
     def client(self):

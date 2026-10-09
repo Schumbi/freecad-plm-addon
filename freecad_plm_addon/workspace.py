@@ -310,6 +310,25 @@ def read_manifest(path):
     return json.loads((Path(path) / "manifest.json").read_text(encoding="utf-8"))
 
 
+def document_source_revision(path, workspace_root, server_url, *, with_context=False):
+    """Resolve the actual open document, rather than trusting the browser selection."""
+    path = Path(path).resolve()
+    server_root = (Path(workspace_root).expanduser() / server_slug(server_url)).resolve()
+    if not path.is_relative_to(server_root):
+        raise WorkspaceError("Bitte die Ausgangsrevision aus diesem PLM in FreeCAD öffnen.")
+    for directory in path.parents:
+        if directory == server_root:
+            break
+        if not (directory / "manifest.json").is_file():
+            continue
+        manifest = read_manifest(directory)
+        for entry in manifest.get("files", []):
+            if safe_join(directory / "files", entry["path"]).resolve() == path:
+                return (entry["revision_id"], directory, manifest) if with_context else entry["revision_id"]
+        break
+    raise WorkspaceError("Das aktive Dokument gehört zu keiner bekannten PLM-Revision.")
+
+
 def write_checkout_metadata(path, metadata):
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,5 @@
 from pathlib import Path
+import tempfile
 
 
 def active_document_path():
@@ -33,6 +34,71 @@ def save_active_document():
         return None
     document.save()
     return active_document_path()
+
+
+def save_active_document_copy(path):
+    """Snapshot parameter changes without saving or renaming the source document."""
+    import FreeCAD
+
+    document = FreeCAD.ActiveDocument
+    if document is None:
+        raise ValueError("Kein aktives FreeCAD-Dokument.")
+    return save_document_copy(document, path)
+
+
+def save_document_copy(document, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document.recompute()
+    if document.saveCopy(str(path)) is False or not path.is_file():
+        raise RuntimeError("Die FreeCAD-Kopie konnte nicht gespeichert werden.")
+    return path
+
+
+def build_variant_bundle(manifest, workspace_dir, target_path):
+    """Capture every dependency, including unsaved changes in open parameter files."""
+    from zipfile import ZipFile, ZIP_DEFLATED
+    from .workspace import safe_join
+
+    open_documents = {
+        document_path(document).resolve(): document
+        for document in documents_by_name().values() if document_path(document) is not None
+    }
+    # Recompute parameter documents before the geometry that depends on them.
+    entries = {entry["path"]: entry for entry in manifest["files"]}
+    ordered = []
+    visited = set()
+    visiting = set()
+
+    def visit(path):
+        if path in visited or path in visiting:
+            return
+        visiting.add(path)
+        from pathlib import PurePosixPath
+        for reference in entries[path].get("reference_files", []):
+            candidate = str(PurePosixPath(path).parent / reference)
+            if candidate not in entries:
+                matches = [value for value in entries if PurePosixPath(value).name == PurePosixPath(reference).name]
+                candidate = matches[0] if len(matches) == 1 else None
+            if candidate in entries:
+                visit(candidate)
+        visiting.remove(path)
+        visited.add(path)
+        ordered.append(entries[path])
+
+    for path in entries:
+        visit(path)
+    with tempfile.TemporaryDirectory() as tmp:
+        with ZipFile(target_path, "w", compression=ZIP_DEFLATED) as archive:
+            for entry in ordered:
+                source = safe_join(Path(workspace_dir) / "files", entry["path"])
+                if not source.is_file():
+                    raise ValueError(f"Referenzdatei fehlt: {entry['path']}")
+                document = open_documents.get(source.resolve())
+                if document is not None:
+                    source = save_document_copy(document, safe_join(tmp, entry["path"]))
+                archive.write(source, entry["path"])
+    return Path(target_path)
 
 
 def documents_by_name():

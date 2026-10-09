@@ -7,7 +7,7 @@ Die nutzerorientierte Darstellung für den Addon Manager steht in
 
 ## Status
 
-Aktuelle Paketversion: **0.1.9** (2026-09-24). Änderungen stehen im
+Aktuelle Paketversion: **0.1.10** (2026-10-09). Änderungen stehen im
 [Changelog](CHANGELOG.md).
 
 Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die
@@ -33,6 +33,8 @@ Aktuell umgesetzt:
 - Projektmetadaten im Addon bearbeiten: Code, Name, Status, Datum und
   Beschreibung.
 - Neue Teile/Baugruppen samt leerer FCStd-Revision `R0001` anlegen und direkt öffnen, ohne vorheriges lokales Speichern.
+- Geometrische Varianten einschließlich verknüpfter Parameterdateien als
+  eigene Teile mit R0001 speichern und zwischen Familienmitgliedern wechseln.
 - Revisionsnotizen bearbeiten.
 - Anmerkungen lesen, anlegen, bearbeiten, erledigen/wieder öffnen und
   löschen.
@@ -43,6 +45,31 @@ Aktuell umgesetzt:
   zusätzliche PLM-Revisionen oder externe STL-Dateien als Quellen zuordnen und
   den gemeinsamen 3MF-Arbeitsstand aus Bambu Studio oder OrcaSlicer
   synchronisieren.
+
+## Geometrische Varianten erstellen
+
+Ab 0.1.10 kannst Du beispielsweise Chipboxen für 10, 20 und 25 Chips als
+unabhängige Ausführungen speichern:
+
+1. Die bestehende Hauptrevision aus dem PLM öffnen oder auschecken.
+2. Die gewünschten Parameter in FreeCAD ändern, auch in einer verknüpften
+   Parameterdatei wie `Chip.FCStd`.
+3. Im PLM-Browser die Hauptrevision auswählen, beispielsweise `Druck.FCStd`.
+4. **Mehr → Als neue Variante speichern** wählen, einen Namen und optional
+   eine Teilenummer eingeben.
+5. Die Variante wird mit eigenem Dateisatz und eigenem Checkout geöffnet.
+   Weitere Änderungen dieser Ausführung wie gewohnt einchecken.
+
+Die Ausgangsdateien bleiben erhalten. Ungespeicherte Änderungen der geöffneten
+Referenzdateien werden über Kopien übernommen. Jede Variante erhält eine eigene
+Revisionshistorie; **Varianten anzeigen** wechselt zwischen den Ausführungen.
+Für jede Variante ein eigenes Druckprojekt anlegen und dessen 3MF speichern.
+Beim nächsten Druck dieses bestehende Projekt öffnen oder den zugehörigen
+bewährten Druckstand über Bambuddy wiederholen.
+
+Erforderlich sind Editor-/Adminrechte, die Token-Scopes `read`, `write` und
+`checkout` sowie ein Server mit Migration 0027. Bei älteren Servern wird die
+Aktion nicht angeboten. Nach einem Add-on-Update FreeCAD neu starten.
 
 ## Code-Struktur
 

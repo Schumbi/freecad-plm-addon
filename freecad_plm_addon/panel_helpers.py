@@ -125,6 +125,9 @@ def part_label(part):
     label = " - ".join(value for value in (number, name) if value)
     if not label:
         label = f"Teil {part.get('id', '')}".strip()
+    family = part.get("family")
+    if isinstance(family, dict) and family.get("name"):
+        label = f"{label} · Familie: {family['name']}"
     if status:
         return f"{label} [{status}]"
     return label

@@ -18,6 +18,96 @@ from .panel_helpers import (
 
 
 class PanelPartsMixin:
+    def create_variant_dialog(self):
+        from . import fcstd
+        from .workspace import document_source_revision
+
+        try:
+            source_path = fcstd.active_document_path()
+            if source_path is None:
+                raise ValueError("Bitte eine PLM-Revision in FreeCAD öffnen.")
+            client = self.client()
+            document_revision_id, source_dir, local_manifest = document_source_revision(
+                source_path, self.workspace_root.text().strip(), self.server_url.text().strip(),
+                with_context=True,
+            )
+            revision_id = document_revision_id
+            selected = self.selected_revision() or {}
+            local_revision_ids = {item["revision_id"] for item in local_manifest["files"]}
+            if selected.get("id") in local_revision_ids:
+                revision_id = selected["id"]
+            snapshot_id = (local_manifest.get("snapshot") or {}).get("id")
+            source_manifest = client.get_revision_manifest(revision_id, snapshot_id=snapshot_id)
+            if not any(item["revision_id"] == document_revision_id for item in source_manifest["files"]):
+                raise ValueError("Das aktive Dokument gehört nicht zur ausgewählten Ausgangsrevision.")
+            revision = client.get_revision(revision_id)
+            detail = client.get_part(revision["part_id"])
+            source_part = detail["part"]
+            if not detail.get("can_create_variant", False):
+                raise ValueError("Keine Berechtigung zum Erstellen einer Variante (Serverrechte und Token prüfen).")
+            project = client.get_project(source_part["project_id"])
+        except Exception as exc:
+            self.set_status(f"Variante kann nicht erstellt werden: {exc}")
+            return
+
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Als neue Variante speichern")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        intro = self.QtWidgets.QLabel(
+            f"Ausgang: {part_label(source_part)} · {revision.get('revision_code', '')}\n"
+            "Die aktuellen Parameter und verknüpften Dateien werden unabhängig mit Revision R0001 gespeichert."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        form = self.QtWidgets.QFormLayout()
+        name = self.QtWidgets.QLineEdit()
+        name.setPlaceholderText("z. B. Chipbox – 20 Chips")
+        number = self.QtWidgets.QLineEdit()
+        number.setPlaceholderText("automatisch")
+        form.addRow("Variantenname", name)
+        form.addRow("Teilenummer", number)
+        layout.addLayout(form)
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        ok_button = buttons.button(self.QtWidgets.QDialogButtonBox.Ok)
+        ok_button.setText("Variante speichern und öffnen")
+        ok_button.setEnabled(False)
+        name.textChanged.connect(lambda value: ok_button.setEnabled(bool(value.strip())))
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        name.setFocus()
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            return
+        if not name.text().strip():
+            self.set_status("Ein Variantenname ist erforderlich.")
+            return
+        response = None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                copy_path = fcstd.build_variant_bundle(source_manifest, source_dir, Path(tmp) / "variant.zip")
+                response = client.create_variant(
+                    project["id"], revision_id,
+                    {"name": name.text().strip(), "number": number.text().strip()}, copy_path,
+                    workspace_hint=self.workspace_root.text().strip(),
+                    source_snapshot_id=snapshot_id,
+                )
+            self.open_checkout_response_to_workspace(project, response, preserve_readonly=True)
+        except Exception as exc:
+            if response is not None:
+                self.refresh_parts()
+                self.refresh_active_checkouts()
+                self.set_status(f"Variante wurde gespeichert, konnte aber nicht geöffnet werden: {exc}")
+            else:
+                self.set_status(f"Variante konnte nicht gespeichert werden: {exc}")
+            return
+        self.select_project_by_id(project["id"])
+        self.refresh_parts()
+        self.select_part_by_id(response["part"]["id"])
+        self.select_revision_by_id(response["revision"]["id"])
+        self.set_status(f"Variante {part_label(response['part'])} mit R0001 gespeichert und geöffnet.")
+
     def refresh_revisions(self):
         part_item = self.tree_ancestor(self.browser_tree.currentItem(), "part")
         if part_item is None:
@@ -55,6 +145,8 @@ class PanelPartsMixin:
         revisions = revisions_from_part_detail(part_detail)
         detail_part = part_detail.get("part") if isinstance(part_detail, dict) else None
         if isinstance(detail_part, dict):
+            detail_part["can_create_variant"] = bool(part_detail.get("can_create_variant", False))
+            detail_part["variants"] = part_detail.get("variants", [])
             part_item.setData(0, int(self.QtCore.Qt.UserRole), detail_part)
             label = part_label(detail_part)
             part_item.setText(0, label)
@@ -76,6 +168,25 @@ class PanelPartsMixin:
         count = len(revisions)
         suffix = "" if count == 1 else "en"
         self.set_status(f"{count} Revision{suffix} geladen.")
+
+    def show_variants_dialog(self):
+        part = self.selected_part()
+        if not part or part.get("id") is None:
+            return
+        try:
+            variants = self.client().get_part(part["id"]).get("variants", [])
+        except Exception as exc:
+            self.set_status(f"Varianten konnten nicht geladen werden: {exc}")
+            return
+        if not variants:
+            self.set_status("Dieses Teil hat noch keine Variantenfamilie.")
+            return
+        labels = [part_label(item) for item in variants]
+        label, accepted = self.QtWidgets.QInputDialog.getItem(
+            self.widget, "Varianten der Teilefamilie", "Variante", labels, 0, False,
+        )
+        if accepted:
+            self.select_part_by_id(variants[labels.index(label)]["id"])
 
     def create_part_dialog(self):
         from . import fcstd

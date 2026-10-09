@@ -12,6 +12,8 @@ direkt in die CAD-Oberfläche.
 - Root-Dateien und referenzierte Modelle gemeinsam einchecken.
 - Aktive Checkouts wieder öffnen oder kontrolliert abbrechen.
 - Neue FreeCAD-Teile mit `R0001` anlegen und direkt öffnen, ohne zuvor eine lokale Datei speichern zu müssen.
+- Geometrische Varianten mit eigenen Revisionen und Druckprojekten aus den
+  aktuellen FreeCAD-Parametern erstellen, einschließlich verknüpfter Dateien.
 - Revisionsnotizen und Anmerkungen lesen und bearbeiten.
 - Lokale Modellordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
 - Aus Revisionen Druckprojekte anlegen, weitere PLM-Revisionen oder externe
@@ -53,6 +55,24 @@ Mit **Druckprojekt öffnen/erstellen** wird die ausgewählte Revision zur ersten
 Quelle eines Druckprojekts. Weitere Quellen werden demselben Druckprojekt
 zugeordnet; dessen 3MF-Datei ist der gemeinsame, veränderliche Arbeitsstand für
 den Slicer.
+
+## Varianten direkt in FreeCAD
+
+Ab Version **0.1.10**: Ausgangsrevision öffnen, Parameter in FreeCAD ändern,
+im PLM-Browser die Hauptrevision auswählen und unter **Mehr → Als neue Variante
+speichern** einen Namen vergeben. Beispielsweise wird aus der Chipbox für
+25 Chips eine eigene Ausführung für 20 Chips.
+
+Geöffnete Parameter- und Referenzdateien werden mit ihren aktuellen Änderungen
+kopiert. Die Variante erhält R0001 und einen eigenen Checkout. Quelle und
+vorhandene Druckprojekte bleiben erhalten. **Varianten anzeigen** erlaubt den
+Wechsel innerhalb der Teilefamilie.
+
+Für die Variante ein eigenes Druckprojekt mit passender 3MF vorbereiten.
+Danach diesen Slicerstand erneut öffnen oder den zugehörigen Druck über
+Bambuddy wiederholen. Erforderlich sind ein Server mit Migration 0027,
+Editor-/Adminrechte sowie `read`, `write` und `checkout`. Nach dem Update
+FreeCAD neu starten.
 
 ## Berechtigungen
 

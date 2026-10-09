@@ -123,7 +123,7 @@ class PanelCheckoutMixin:
         )
         return self.open_checkout_response_to_workspace(project, response)
 
-    def open_checkout_response_to_workspace(self, project, response):
+    def open_checkout_response_to_workspace(self, project, response, *, preserve_readonly=False):
         from . import fcstd
 
         project_code = (
@@ -134,8 +134,9 @@ class PanelCheckoutMixin:
         workspace_root = self.workspace_root.text().strip()
         server_url = self.server_url.text().strip()
 
-        closed, failed = fcstd.close_documents(self.readonly_document_names)
-        self.readonly_document_names = []
+        closed, failed = ([], []) if preserve_readonly else fcstd.close_documents(self.readonly_document_names)
+        if not preserve_readonly:
+            self.readonly_document_names = []
         if failed:
             failed_names = ", ".join(failed)
             raise RuntimeError(

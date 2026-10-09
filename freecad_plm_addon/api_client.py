@@ -106,6 +106,15 @@ class PLMClient:
     def get_part(self, part_id):
         return self._json("GET", f"/api/parts/{part_id}/")
 
+    def create_variant(self, project_id, source_revision_id, data, fcstd_path, *, workspace_hint="", source_snapshot_id=None):
+        fields = dict(data)
+        fields["source_revision_id"] = source_revision_id
+        if source_snapshot_id is not None:
+            fields["source_snapshot_id"] = source_snapshot_id
+        return self.create_fcstd_part(
+            project_id, fields, fcstd_path, workspace_hint=workspace_hint,
+        )
+
     def update_part(self, part_id, data):
         return self._json("POST", f"/api/parts/{part_id}/", data)["part"]
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.10 – 2026-10-09
+
+- „Als neue Variante speichern“ übernimmt aktuelle FreeCAD-Parameter und
+  verknüpfte Dateien als unabhängiges Teil mit eigenem Checkout.
+- Ungespeicherte Parameteränderungen werden über Dokumentkopien übernommen;
+  die Ausgangsdateien und vorhandenen Checkouts bleiben erhalten.
+- Teilefamilien werden im Browser angezeigt; „Varianten anzeigen“ erlaubt
+  den Wechsel zwischen Ausführungen. Die Anlage berücksichtigt Serverrechte
+  und Token-Scopes und benötigt einen Server mit Variantenunterstützung.
+
 ## 0.1.9 – 2026-09-24
 
 - Projekte über Text und mehrere Tags filtern: UND, ODER und Ohne Tags.
