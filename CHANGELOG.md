@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.12 – 2026-10-12
+
+- Check-in prüft Dateien und überträgt sie im Hintergrund mit Fortschrittsanzeige; FreeCAD-/Qt-Aufrufe bleiben im Hauptthread.
+- Die Änderungserkennung liest keine BREP-Caches mehr und läuft nur einmal. Revisionsnummern werden erst nach dem Kommentar in temporären Upload-Kopien angepasst; die Arbeitsdateien bleiben erhalten. Parallele Dateiänderungen werden vor dem Upload abgewiesen.
+- Der Server validiert jede Upload-Datei einmal und verwendet das Ergebnis für Vergleich und Revisionserzeugung weiter.
+
 ## 0.1.11 – 2026-10-12
 
 - Reine Farb- und Materialänderungen lassen sich einchecken. Der Vergleich berücksichtigt gespeicherte Darstellungseigenschaften und Materialdateien; Kamerabewegungen bleiben ohne Einfluss.

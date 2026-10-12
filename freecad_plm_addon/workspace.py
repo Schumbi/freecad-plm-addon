@@ -2,6 +2,8 @@ import hashlib
 import json
 import re
 import shutil
+from contextlib import contextmanager
+from tempfile import TemporaryDirectory
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -531,7 +533,7 @@ def normalized_document_xml(document_xml):
     return ElementTree.tostring(root, encoding="utf-8")
 
 
-def fcstd_technical_hashes(path):
+def fcstd_technical_hashes(path, *, include_brep=True):
     try:
         with ZipFile(path) as archive:
             if "Document.xml" not in archive.namelist():
@@ -546,7 +548,7 @@ def fcstd_technical_hashes(path):
     return {
         "document_sha256": hashlib.sha256(document_xml).hexdigest(),
         "appearance_sha256": appearance_sha256,
-        "brep_sha256": _hash_zip_members(path, _is_brep_member),
+        "brep_sha256": _hash_zip_members(path, _is_brep_member) if include_brep else None,
     }
 
 
@@ -677,7 +679,7 @@ def technically_changed_manifest_files(manifest, metadata, path):
                     "STEP- und STL-Dateien sind im Checkout schreibgeschützt."
                 )
             continue
-        technical_hashes = fcstd_technical_hashes(target)
+        technical_hashes = fcstd_technical_hashes(target, include_brep=False)
         if (
             technical_hashes["document_sha256"] == base.get("document_sha256")
             and (
@@ -774,6 +776,25 @@ def update_changed_files_plm_revisions(changed_files):
         set_fcstd_plm_revision(item["local_path"], revision_code)
         updated.append({**item, "expected_revision_code": revision_code})
     return updated
+
+
+@contextmanager
+def checkin_upload_copies(changed_files):
+    """Upload immutable copies; never rewrite open working documents."""
+    with TemporaryDirectory(prefix="plm-checkin-") as directory:
+        copies = []
+        for index, item in enumerate(changed_files):
+            source = Path(item["local_path"])
+            target = Path(directory) / str(index) / source.name
+            target.parent.mkdir()
+            shutil.copyfile(source, target)
+            if sha256_file(target) != item["sha256"] or sha256_file(source) != item["sha256"]:
+                raise WorkspaceError(f"Datei wurde während des Check-ins geändert: {source.name}. Bitte erneut einchecken.")
+            copies.append({**item, "local_path": target})
+        copies = update_changed_files_plm_revisions(copies)
+        for item in copies:
+            item["sha256"] = sha256_file(item["local_path"])
+        yield copies
 
 
 def root_file_path(manifest, path):

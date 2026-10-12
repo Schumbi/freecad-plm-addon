@@ -46,6 +46,8 @@ class PanelStateMixin:
     def active_checkout_has_changes(self):
         from . import fcstd
 
+        if getattr(self, "checkin_busy", False):
+            return True
         if self.active_checkout_dir is None:
             return True
         try:

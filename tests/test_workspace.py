@@ -13,6 +13,7 @@ from freecad_plm_addon.workspace import (
     archive_import_source_dir,
     archived_import_dir,
     build_checkout_metadata,
+    checkin_upload_copies,
     build_project_import_zip,
     changed_manifest_files,
     collect_project_fcstd_files,
@@ -838,6 +839,44 @@ class WorkspaceTests(unittest.TestCase):
 
             self.assertEqual(updated[0]["expected_revision_code"], "R0003")
             self.assertEqual(self.read_fcstd_plm_revision(path), "R0003")
+
+    def test_upload_copy_updates_revision_without_changing_working_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path, "R0001")
+            before = path.read_bytes()
+            files = [{"path": "part.FCStd", "local_path": path, "revision_code": "R0001", "sha256": sha256_file(path)}]
+            with checkin_upload_copies(files) as copies:
+                copied = copies[0]["local_path"]
+                self.assertEqual(copied.name, path.name)
+                self.assertEqual(self.read_fcstd_plm_revision(copied), "R0002")
+                self.assertEqual(copies[0]["sha256"], sha256_file(copied))
+                self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(copied.exists())
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_upload_copy_rejects_concurrent_file_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "part.FCStd"
+            self.make_fcstd(path)
+            files = [{"path": "part.FCStd", "local_path": path, "revision_code": "R0001", "sha256": sha256_file(path)}]
+            self.set_fcstd_string_property(path, "Comment", "Parallel geändert")
+            changed = path.read_bytes()
+            with self.assertRaisesRegex(WorkspaceError, "während des Check-ins geändert"):
+                with checkin_upload_copies(files):
+                    self.fail("Changed file must not be uploaded")
+            self.assertEqual(path.read_bytes(), changed)
+
+    def test_change_detection_does_not_decompress_brep_caches(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "files" / "part.FCStd"
+            path.parent.mkdir()
+            self.make_fcstd(path)
+            manifest = {"files": [{"path": "part.FCStd", "sha256": sha256_file(path)}]}
+            metadata = build_checkout_metadata(manifest, tmp)
+            with patch("freecad_plm_addon.workspace._hash_zip_members", side_effect=AssertionError("BREP must not be read")):
+                self.assertEqual(technically_changed_manifest_files(manifest, metadata, tmp), [])
 
 
 if __name__ == "__main__":

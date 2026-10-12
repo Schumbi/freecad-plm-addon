@@ -1,8 +1,10 @@
 """Read-only opening, checkout, check-in and workspace files."""
 
 from .errors import ConflictError, PLMError
+from .background_work import run_background_work
 from .workspace import (
     build_checkout_metadata,
+    checkin_upload_copies,
     checkout_dir,
     delete_checkout_manifest_file,
     download_manifest_files,
@@ -17,7 +19,6 @@ from .workspace import (
     safe_join,
     technically_changed_manifest_files,
     touch_directory,
-    update_changed_files_plm_revisions,
     write_checkout_metadata,
     write_manifest,
 )
@@ -444,6 +445,8 @@ class PanelCheckoutMixin:
     def checkin_active_checkout(self):
         from . import fcstd
 
+        if getattr(self, "checkin_busy", False):
+            return
         checkout_id = self.active_checkout_id()
         if (
             checkout_id is None
@@ -456,6 +459,11 @@ class PanelCheckoutMixin:
         saved = []
         closed = []
         close_failed = []
+        state_timer = getattr(self, "checkout_state_timer", None)
+        resume_timer = state_timer is not None and state_timer.isActive()
+        self.checkin_busy = True
+        if state_timer is not None:
+            state_timer.stop()
         try:
             manifest = read_manifest(self.active_checkout_dir)
             checkout_metadata = ensure_checkout_metadata(manifest, self.active_checkout_dir)
@@ -473,23 +481,15 @@ class PanelCheckoutMixin:
                     )
                     return
 
-            changed_files = technically_changed_manifest_files(
-                manifest,
-                checkout_metadata,
-                self.active_checkout_dir,
+            changed_files = run_background_work(
+                self.QtCore, self.QtWidgets, self.widget,
+                "Prüfe geänderte Dateien …",
+                lambda: technically_changed_manifest_files(
+                    manifest, checkout_metadata, self.active_checkout_dir,
+                ),
             )
             has_structural_changes = bool(
                 manifest.get("removed_paths") or manifest.get("added_paths")
-            )
-            if not changed_files and not has_structural_changes:
-                self.offer_cancel_unchanged_checkout(saved_count=len(saved))
-                return
-
-            update_changed_files_plm_revisions(changed_files)
-            changed_files = technically_changed_manifest_files(
-                manifest,
-                checkout_metadata,
-                self.active_checkout_dir,
             )
             if not changed_files and not has_structural_changes:
                 self.offer_cancel_unchanged_checkout(saved_count=len(saved))
@@ -511,10 +511,15 @@ class PanelCheckoutMixin:
                 return
 
             self.set_status("Sende Check-in...")
-            response = self.client().checkin_files(
-                checkout_id,
-                changed_files,
-                change_summary,
+            client = self.client()
+            def upload():
+                with checkin_upload_copies(changed_files) as copies:
+                    return client.checkin_files(checkout_id, copies, change_summary)
+
+            response = run_background_work(
+                self.QtCore, self.QtWidgets, self.widget,
+                "Übertrage geänderte Dateien und warte auf die Bestätigung …",
+                upload,
             )
             if checkin_created_revision_count(response) == 0 and not checkin_completed(response):
                 self.refresh_active_checkouts()
@@ -542,6 +547,10 @@ class PanelCheckoutMixin:
         except Exception as exc:
             self.set_status(f"Einchecken fehlgeschlagen: {exc}")
             return
+        finally:
+            self.checkin_busy = False
+            if resume_timer:
+                state_timer.start()
 
         message = "Check-in abgeschlossen."
         result_text = checkin_result_text(response)
