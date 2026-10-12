@@ -1,4 +1,5 @@
 import json
+import struct
 import os
 import tempfile
 import unittest
@@ -659,6 +660,33 @@ class WorkspaceTests(unittest.TestCase):
             self.replace_fcstd_member(path, "GuiDocument.xml", b"<GuiDocument camera='changed' />")
 
             self.assertEqual(technically_changed_manifest_files(manifest, metadata, tmp), [])
+
+    def test_color_only_changes_are_detected_in_new_and_existing_checkouts(self):
+        for modern in (False, True):
+            for legacy in (False, True):
+                with self.subTest(modern=modern, legacy=legacy), tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "files" / "part.FCStd"
+                    path.parent.mkdir(parents=True)
+                    self.make_fcstd(path)
+                    if modern:
+                        prop = '<Property name="ShapeAppearance"><MaterialList file="Appearance" version="3"/></Property>'
+                        def set_color(value):
+                            self.replace_fcstd_member(path, "Appearance", struct.pack("<IIIIIff", 1, 0x555555ff, value, 0x888888ff, 0xff, 0.9, 0.0))
+                    else:
+                        prop = '<Property name="ShapeColor"><PropertyColor value="4278190335"/></Property>'
+                        def set_color(value):
+                            self.replace_fcstd_member(path, "GuiDocument.xml", f'<GuiDocument><ViewProvider name="Body"><Properties><Property name="ShapeColor"><PropertyColor value="{value}"/></Property></Properties></ViewProvider></GuiDocument>'.encode())
+                    self.replace_fcstd_member(path, "GuiDocument.xml", f'<GuiDocument><ViewProvider name="Body"><Properties>{prop}</Properties></ViewProvider></GuiDocument>'.encode())
+                    set_color(0xff0000ff)
+                    manifest = {"files": [{"path": "part.FCStd", "revision_id": 10, "sha256": sha256_file(path), "is_root": True}]}
+                    metadata = build_checkout_metadata(manifest, tmp)
+                    if legacy:
+                        metadata["files"][0].pop("appearance_sha256")
+                    self.assertEqual(technically_changed_manifest_files(manifest, metadata, tmp), [])
+                    set_color(0x0000ffff)
+                    changed = technically_changed_manifest_files(manifest, metadata, tmp)
+                    self.assertEqual([f["path"] for f in changed], ["part.FCStd"])
+                    self.assertEqual(changed[0]["document_sha256"], metadata["files"][0]["document_sha256"])
 
     def test_technically_changed_manifest_files_ignores_brep_only_change(self):
         with tempfile.TemporaryDirectory() as tmp:

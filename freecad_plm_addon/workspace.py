@@ -10,6 +10,7 @@ from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
 from .errors import HashMismatchError, WorkspaceError
+from .fcstd_appearance import fcstd_appearance_signature
 
 CHECKOUT_METADATA_VERSION = 6
 PROJECT_FILE_SUFFIXES = {".fcstd", ".step", ".stp", ".stl"}
@@ -536,11 +537,15 @@ def fcstd_technical_hashes(path):
             if "Document.xml" not in archive.namelist():
                 raise WorkspaceError(f"Document.xml fehlt in {path}")
             document_xml = normalized_document_xml(archive.read("Document.xml"))
+            appearance_sha256 = fcstd_appearance_signature(archive)
     except BadZipFile as exc:
         raise WorkspaceError(f"Ungueltige FCStd-Datei: {path}") from exc
+    except (ElementTree.ParseError, KeyError) as exc:
+        raise WorkspaceError(f"FCStd-Darstellungseigenschaften konnten nicht gelesen werden: {path}") from exc
 
     return {
         "document_sha256": hashlib.sha256(document_xml).hexdigest(),
+        "appearance_sha256": appearance_sha256,
         "brep_sha256": _hash_zip_members(path, _is_brep_member),
     }
 
@@ -675,6 +680,14 @@ def technically_changed_manifest_files(manifest, metadata, path):
         technical_hashes = fcstd_technical_hashes(target)
         if (
             technical_hashes["document_sha256"] == base.get("document_sha256")
+            and (
+                technical_hashes["appearance_sha256"] == base.get("appearance_sha256")
+                if "appearance_sha256" in base
+                # Old checkouts have no appearance baseline. Send byte changes
+                # to the server, which compares with the immutable source;
+                # never replace the baseline with the already edited file.
+                else sha256_file(target) == item.get("sha256")
+            )
         ):
             continue
         digest = sha256_file(target)

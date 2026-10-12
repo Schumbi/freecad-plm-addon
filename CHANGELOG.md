@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.11 – 2026-10-12
+
+- Reine Farb- und Materialänderungen lassen sich einchecken. Der Vergleich berücksichtigt gespeicherte Darstellungseigenschaften und Materialdateien; Kamerabewegungen bleiben ohne Einfluss.
+- Bestehende Checkouts ohne Darstellungshash bleiben verwendbar: Dateiänderungen werden vom Server gegen die ursprüngliche Revision geprüft. Erfordert den Server mit Signaturregeln Version 4.
+
 ## 0.1.10 – 2026-10-09
 
 - „Als neue Variante speichern“ übernimmt aktuelle FreeCAD-Parameter und
