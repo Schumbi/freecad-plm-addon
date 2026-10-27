@@ -72,6 +72,38 @@ class VariantTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             fcstd.save_document_copy(document, self.root / "failed.FCStd")
 
+    def test_windows_clears_ucrt_errno_immediately_before_save_copy(self):
+        events = []
+        document = Mock()
+        document.recompute.side_effect = lambda: events.append("recompute")
+        def save(target):
+            events.append("saveCopy")
+            Path(target).write_bytes(b"valid copy")
+        document.saveCopy.side_effect = save
+        with patch.object(fcstd, "sys", types.SimpleNamespace(platform="win32")), patch("ctypes.CDLL") as load_ucrt:
+            load_ucrt.return_value._set_errno.side_effect = lambda value: events.append(f"errno={value}")
+            target = fcstd.save_document_copy(document, self.root / "copy.FCStd")
+            load_ucrt.assert_called_once_with("ucrtbase.dll")
+            self.assertEqual(load_ucrt.return_value._set_errno.argtypes, [__import__("ctypes").c_int])
+        self.assertEqual(events, ["recompute", "errno=0", "saveCopy"])
+        self.assertEqual(target.read_bytes(), b"valid copy")
+
+    def test_non_windows_save_copy_does_not_load_ucrt(self):
+        document = Mock()
+        document.saveCopy.side_effect = lambda target: Path(target).write_bytes(b"copy")
+        with patch.object(fcstd, "sys", types.SimpleNamespace(platform="linux")), patch("ctypes.CDLL") as load_ucrt:
+            result = fcstd.save_document_copy(document, self.root / "linux.FCStd")
+            load_ucrt.assert_not_called()
+        self.assertEqual(result.read_bytes(), b"copy")
+
+    def test_save_copy_error_includes_path_and_original_cause(self):
+        document = Mock()
+        document.saveCopy.side_effect = OSError("disk full")
+        target = self.root / "failed.FCStd"
+        with self.assertRaisesRegex(RuntimeError, "failed.FCStd") as captured:
+            fcstd.save_document_copy(document, target)
+        self.assertIsInstance(captured.exception.__cause__, OSError)
+
     def test_client_sends_provenance_snapshot_and_no_source_checkout(self):
         client = PLMClient("https://plm.example", "token")
         with patch.object(client, "_multipart", return_value={}) as upload:

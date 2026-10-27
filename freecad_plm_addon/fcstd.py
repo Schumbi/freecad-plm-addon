@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 import tempfile
 
 
@@ -46,11 +47,32 @@ def save_active_document_copy(path):
     return save_document_copy(document, path)
 
 
+def _clear_windows_save_errno():
+    """Discard stale UCRT errors before FreeCAD's native ZIP writer runs.
+
+    FreeCAD 1.1's Writer::checkErrNo() can treat an unrelated earlier EACCES
+    as a saveCopy failure. ctypes.set_errno() changes only ctypes' private copy;
+    reset the thread-local errno in the UCRT used by FreeCAD instead.
+    """
+    if sys.platform == "win32":
+        import ctypes
+
+        set_errno = ctypes.CDLL("ucrtbase.dll")._set_errno
+        set_errno.argtypes = [ctypes.c_int]
+        set_errno.restype = ctypes.c_int
+        set_errno(0)
+
+
 def save_document_copy(document, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     document.recompute()
-    if document.saveCopy(str(path)) is False or not path.is_file():
+    _clear_windows_save_errno()
+    try:
+        saved = document.saveCopy(str(path))
+    except Exception as exc:
+        raise RuntimeError(f"FreeCAD-Kopie konnte nicht gespeichert werden ({path}): {exc}") from exc
+    if saved is False or not path.is_file():
         raise RuntimeError("Die FreeCAD-Kopie konnte nicht gespeichert werden.")
     return path
 
