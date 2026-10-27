@@ -7,7 +7,7 @@ Die nutzerorientierte Darstellung für den Addon Manager steht in
 
 ## Status
 
-Aktuelle Paketversion: **0.1.12** (2026-10-12). Änderungen stehen im
+Aktuelle Paketversion: **0.1.13** (2026-10-27). Änderungen stehen im
 [Changelog](CHANGELOG.md).
 
 Arbeitsfähige FreeCAD-Workbench für den aktuellen PLM-Addon-Workflow. Die
@@ -379,3 +379,9 @@ vorhandene Namen werden beim Tippen vorgeschlagen. Zentrales Umbenennen,
 Zusammenführen und Entfernen erfolgt im Web unter **Tags verwalten**.
 Erforderlich ist ein Server mit Projekt-Tags (Migration 0026); ältere Server
 liefern weiterhin Projekte, jedoch ohne Tag-Funktionen.
+
+Beim Projektimport werden STEP- und STL-Dateien einer FCStd-Datei als
+abhängige Dateien zugeordnet. Bei mehreren FCStd-Dateien wird die gewünschte
+Datei ausgewählt; bei genau einer erfolgt die Zuordnung automatisch. Ohne
+FCStd-Datei werden ein vorhandenes Projekt und ein FreeCAD-Teil ausgewählt.
+Andere Dateitypen werden nicht importiert.

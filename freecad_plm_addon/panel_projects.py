@@ -357,7 +357,47 @@ class PanelProjectsMixin:
                 zip_path = Path(tmp) / "freecad-plm-import.zip"
                 paths = build_project_import_zip(source, zip_path)
                 client = self.client()
-                if new_project_radio.isChecked():
+                fcstd_paths = [path for path in paths if Path(path).suffix.lower() == ".fcstd"]
+                external_paths = [path for path in paths if Path(path).suffix.lower() in (".step", ".stp", ".stl")]
+                dependency_root_path = ""
+                dependency_revision_id = None
+                import_project_id = selected_project.get("id") if isinstance(selected_project, dict) else None
+                if external_paths and len(fcstd_paths) > 1:
+                    dependency_root_path, accepted = self.QtWidgets.QInputDialog.getItem(
+                        dialog, "Abhängige Dateien zuordnen", "FreeCAD-Datei", fcstd_paths, 0, False)
+                    if not accepted:
+                        self.set_status("Projektimport abgebrochen.")
+                        return
+                elif external_paths and not fcstd_paths:
+                    projects = client.get_projects()
+                    if not projects:
+                        self.set_status("Kein Projekt mit FreeCAD-Teil vorhanden.")
+                        return
+                    labels = [project_label(item) for item in projects]
+                    label, accepted = self.QtWidgets.QInputDialog.getItem(dialog, "Projekt wählen", "Projekt", labels, 0, False)
+                    if not accepted:
+                        self.set_status("Projektimport abgebrochen.")
+                        return
+                    import_project_id = projects[labels.index(label)]["id"]
+                    candidates = []
+                    for item in client.get_parts(import_project_id):
+                        details = client.get_part(item["id"])
+                        revision = next((rev for rev in details.get("revisions", []) if rev.get("file_format") == "fcstd"), None)
+                        if revision:
+                            candidates.append((part_label(item), revision["id"]))
+                    if not candidates:
+                        self.set_status("Das gewählte Projekt enthält kein FreeCAD-Teil.")
+                        return
+                    if len(candidates) == 1:
+                        dependency_revision_id = candidates[0][1]
+                    else:
+                        labels = [label for label, _revision_id in candidates]
+                        label, accepted = self.QtWidgets.QInputDialog.getItem(dialog, "Abhängige Dateien zuordnen", "FreeCAD-Teil", labels, 0, False)
+                        if not accepted:
+                            self.set_status("Projektimport abgebrochen.")
+                            return
+                        dependency_revision_id = candidates[labels.index(label)][1]
+                if new_project_radio.isChecked() and not dependency_revision_id:
                     project_data = project_edit_payload(
                         {
                             "code": code.text(),
@@ -370,13 +410,13 @@ class PanelProjectsMixin:
                     if not project_data["code"] or not project_data["name"]:
                         self.set_status("Code und Name sind erforderlich.")
                         return
-                    result = client.import_project(zip_path, project_data, snapshot)
+                    result = client.import_project(zip_path, project_data, snapshot, dependency_root_path=dependency_root_path)
                 else:
-                    project_id = selected_project.get("id") if isinstance(selected_project, dict) else None
+                    project_id = import_project_id
                     if project_id is None:
                         self.set_status("Kein Projekt ausgewählt.")
                         return
-                    result = client.import_project_snapshot(project_id, zip_path, snapshot)
+                    result = client.import_project_snapshot(project_id, zip_path, snapshot, dependency_root_path=dependency_root_path, dependency_revision_id=dependency_revision_id)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return

@@ -56,9 +56,11 @@ class PLMClient:
     def update_project(self, project_id, data):
         return self._json("POST", f"/api/projects/{project_id}/", data)["project"]
 
-    def import_project(self, zip_path, project_data, snapshot_name):
+    def import_project(self, zip_path, project_data, snapshot_name, dependency_root_path=""):
         fields = dict(project_data)
         fields["snapshot_name"] = snapshot_name
+        if dependency_root_path:
+            fields["dependency_root_path"] = dependency_root_path
         return self._multipart(
             "/api/projects/import/",
             fields,
@@ -67,10 +69,10 @@ class PLMClient:
             "application/zip",
         )
 
-    def import_project_snapshot(self, project_id, zip_path, snapshot_name):
+    def import_project_snapshot(self, project_id, zip_path, snapshot_name, dependency_root_path="", dependency_revision_id=None):
         return self._multipart(
             f"/api/projects/{project_id}/snapshots/import/",
-            {"name": snapshot_name},
+            {"name": snapshot_name, **({"dependency_root_path": dependency_root_path} if dependency_root_path else {}), **({"dependency_revision_id": str(dependency_revision_id)} if dependency_revision_id else {})},
             "file",
             Path(zip_path),
             "application/zip",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.13 – 2026-10-27
+
+- Beim Projektimport werden STEP- und STL-Dateien einem gewählten FreeCAD-Teil zugeordnet; bei nur einer FCStd-Datei erfolgt die Zuordnung automatisch. Ohne FCStd-Datei kann ein vorhandenes Projekt und FreeCAD-Teil gewählt werden. Benötigt einen Server mit Unterstützung für diese Zuordnung.
+
 ## 0.1.12 – 2026-10-12
 
 - Check-in prüft Dateien und überträgt sie im Hintergrund mit Fortschrittsanzeige; FreeCAD-/Qt-Aufrufe bleiben im Hauptthread.
