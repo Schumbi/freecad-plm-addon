@@ -35,6 +35,8 @@ def project_edit_payload(values):
         payload[field] = value.strip() if isinstance(value, str) else value
     if "tags" in values:
         payload["tags"] = [name.strip() for name in values["tags"].split(",") if name.strip()]
+    if "folder_id" in values:
+        payload["folder_id"] = values["folder_id"]
     payload["code"] = payload.get("code", "").upper()
     return payload
 

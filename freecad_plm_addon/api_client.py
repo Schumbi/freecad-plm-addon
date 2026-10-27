@@ -50,6 +50,23 @@ class PLMClient:
     def get_projects(self):
         return self._json("GET", "/api/projects/")["projects"]
 
+    def get_folders(self):
+        return self._json("GET", "/api/folders/")["folders"]
+
+    def get_project_documents(self, project_id):
+        return self._json("GET", f"/api/projects/{project_id}/documents/")["documents"]
+
+    def get_project_document(self, document_id):
+        return self._json("GET", f"/api/documents/{document_id}/")["document"]
+
+    def upload_project_document(self, project_id, file_path, relative_path):
+        return self._multipart(f"/api/projects/{project_id}/documents/", {"path": relative_path},
+                               "file", Path(file_path), "application/octet-stream")
+
+    def download_project_document(self, version_id, target_path, sha256):
+        return self.download_revision_file(
+            self._url(f"/api/document-versions/{version_id}/file/"), target_path, sha256)
+
     def get_project(self, project_id):
         return self._json("GET", f"/api/projects/{project_id}/")["project"]
 

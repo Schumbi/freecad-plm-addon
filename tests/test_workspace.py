@@ -192,6 +192,16 @@ class WorkspaceTests(unittest.TestCase):
                     ["Assembly.FCStd", "parts/Box.FCStd", "parts/Vendor.step"],
                 )
 
+    def test_build_project_import_zip_accepts_document_only_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            (root / "Specs").mkdir(parents=True)
+            (root / "Specs" / "brief.pdf").write_bytes(b"%PDF-1.4")
+            target = Path(tmp) / "project.zip"
+            self.assertEqual(build_project_import_zip(root, target), ["Specs/brief.pdf"])
+            with ZipFile(target) as archive:
+                self.assertEqual(archive.read("Specs/brief.pdf"), b"%PDF-1.4")
+
     def test_archived_import_dir_adds_timestamp_server_and_project(self):
         path = archived_import_dir(
             "/tmp/workspace",

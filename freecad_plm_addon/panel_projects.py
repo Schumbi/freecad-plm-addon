@@ -5,7 +5,7 @@ import tempfile
 
 from .project_tags import project_tag_names, install_tag_completer
 from .errors import PLMError
-from .workspace import archive_import_source_dir, build_project_import_zip
+from .workspace import archive_import_source_dir, build_project_import_zip, safe_join
 from .panel_helpers import (
     import_checkout_candidates,
     import_checkout_followup_text,
@@ -20,25 +20,97 @@ from .panel_helpers import (
 
 
 class PanelProjectsMixin:
+    def open_project_documents_dialog(self):
+        project = self.selected_project()
+        if not isinstance(project, dict) or project.get("id") is None:
+            self.set_status("Kein Projekt ausgewählt.")
+            return
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle(f"Projektdateien · {project.get('code', '')}")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        items = self.QtWidgets.QListWidget()
+        layout.addWidget(items)
+        buttons = self.QtWidgets.QHBoxLayout()
+        open_button = self.QtWidgets.QPushButton("Lokal öffnen")
+        upload_button = self.QtWidgets.QPushButton("Hochladen")
+        buttons.addWidget(open_button)
+        buttons.addWidget(upload_button)
+        layout.addLayout(buttons)
+        documents = []
+
+        def refresh():
+            nonlocal documents
+            documents = self.client().get_project_documents(project["id"])
+            items.clear()
+            for document in documents:
+                version = document.get("current_version") or {}
+                label = f"{document['path']} · V{version.get('number', '?')}"
+                if document.get("is_archived"):
+                    label += " (archiviert)"
+                items.addItem(label)
+
+        def open_selected():
+            row = items.currentRow()
+            if row < 0:
+                return
+            document = documents[row]
+            version = document.get("current_version") or {}
+            if not version.get("id"):
+                return
+            try:
+                root = Path(self.workspace_root.text().strip()).expanduser() / "documents" / (project.get("code") or str(project["id"]))
+                target = safe_join(root, document["path"])
+                self.client().download_project_document(version["id"], target, version["sha256"])
+                self.QtGui.QDesktopServices.openUrl(self.QtCore.QUrl.fromLocalFile(str(target)))
+            except Exception as exc:
+                self.set_status(f"Projektdatei konnte nicht geöffnet werden: {exc}")
+
+        def upload_selected():
+            file_path, _kind = self.QtWidgets.QFileDialog.getOpenFileName(dialog, "Projektdatei auswählen")
+            if not file_path:
+                return
+            relative_path, accepted = self.QtWidgets.QInputDialog.getText(dialog, "Projektpfad", "Relativer Pfad", text=Path(file_path).name)
+            if not accepted:
+                return
+            try:
+                self.client().upload_project_document(project["id"], file_path, relative_path)
+                refresh()
+            except PLMError as exc:
+                self.set_status(f"Projektdatei konnte nicht hochgeladen werden: {exc}")
+
+        open_button.clicked.connect(open_selected)
+        upload_button.clicked.connect(upload_selected)
+        try:
+            refresh()
+        except PLMError as exc:
+            self.set_status(f"Projektdateien konnten nicht geladen werden: {exc}")
+            return
+        dialog.exec_()
+
     def clear_project_form(self):
         self.project_code.setText("")
         self.project_name.setText("")
         self.project_tags.setText("")
+        self.project_folder.setCurrentIndex(0)
         self.project_status.setCurrentIndex(0)
         self.project_date.setText("")
         self.project_description.setPlainText("")
         self.save_project_button.setEnabled(False)
+        self.project_documents_button.setEnabled(False)
 
     def set_project_form(self, project):
         self.project_code.setText(project.get("code", "") or "")
         self.project_name.setText(project.get("name", "") or "")
         self.project_tags.setText(", ".join(project_tag_names(project)))
+        folder_index = self.project_folder.findData(project.get("folder_id"))
+        self.project_folder.setCurrentIndex(folder_index if folder_index >= 0 else 0)
         status = project.get("status") or "running"
         index = self.project_status.findData(status)
         self.project_status.setCurrentIndex(index if index >= 0 else 0)
         self.project_date.setText(project.get("project_date", "") or "")
         self.project_description.setPlainText(project.get("description", "") or "")
         self.save_project_button.setEnabled(project.get("id") is not None)
+        self.project_documents_button.setEnabled(project.get("id") is not None)
 
     def project_form_values(self):
         current_data = getattr(self.project_status, "currentData", None)
@@ -49,6 +121,7 @@ class PanelProjectsMixin:
             "code": self.project_code.text(),
             "name": self.project_name.text(),
             "tags": self.project_tags.text(),
+            "folder_id": self.project_folder.itemData(self.project_folder.currentIndex()),
             "status": status or "running",
             "project_date": self.project_date.text(),
             "description": self.project_description.toPlainText(),
@@ -136,6 +209,10 @@ class PanelProjectsMixin:
         try:
             client = self.client()
             projects = client.get_projects()
+            try:
+                folders = client.get_folders()
+            except PLMError:
+                folders = []
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return
@@ -143,9 +220,27 @@ class PanelProjectsMixin:
             self.set_status(f"Verbindung fehlgeschlagen: {exc}")
             return
 
+        self.project_folder.clear()
+        self.project_folder.addItem("Ohne Ordner", None)
+        folder_items = {}
+        folder_paths = {}
+        def add_folder(folder, stack=frozenset()):
+            folder_id = folder["id"]
+            if folder_id in folder_items or folder_id in stack:
+                return folder_items.get(folder_id)
+            parent = next((candidate for candidate in folders if candidate["id"] == folder.get("parent_id")), None)
+            parent_item = add_folder(parent, stack | {folder_id}) if parent else None
+            item = self.add_tree_item(parent_item, "folder", folder, folder["name"])
+            folder_items[folder_id] = item
+            folder_paths[folder_id] = (folder_paths.get(parent["id"], "") + " / " if parent else "") + folder["name"]
+            self.project_folder.addItem(folder_paths[folder_id], folder_id)
+            return item
+        for folder in folders:
+            add_folder(folder)
+        unfiled = self.add_tree_item(None, "folder", {"id": None}, "Ohne Ordner")
         for project in projects:
             item = self.add_tree_item(
-                None,
+                folder_items.get(project.get("folder_id")) or unfiled,
                 "project",
                 project,
                 project_label(project),

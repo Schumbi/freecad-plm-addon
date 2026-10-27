@@ -91,7 +91,18 @@ def collect_project_fcstd_files(source_dir):
 def build_project_import_zip(source_dir, target_path):
     target_path = Path(target_path)
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    files = collect_project_fcstd_files(source_dir)
+    source_dir = Path(source_dir).expanduser().resolve()
+    if not source_dir.is_dir():
+        raise WorkspaceError(f"Projektordner existiert nicht: {source_dir}")
+    files = []
+    for local_path in source_dir.rglob("*"):
+        if local_path.is_symlink() or not local_path.is_file():
+            continue
+        relative_path = safe_zip_path(local_path.relative_to(source_dir).as_posix())
+        files.append((relative_path, local_path))
+    files.sort(key=lambda item: item[0])
+    if not files:
+        raise WorkspaceError("Projektordner enthält keine Dateien.")
     with ZipFile(target_path, "w") as archive:
         for relative_path, local_path in files:
             archive.write(local_path, relative_path)
