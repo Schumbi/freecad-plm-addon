@@ -13,6 +13,7 @@ from .panel_helpers import (
     print_freecad_console,
     project_edit_payload,
     project_import_result_text,
+    project_file_part_label,
     project_label,
     revision_overview_text,
     revision_technical_text,
@@ -304,12 +305,22 @@ class PanelProjectsMixin:
             return
 
         self.clear_tree_children(project_item)
-        for part in parts:
+        main_part = next((part for part in parts if part.get("id") == project.get("main_part_id") and part.get("latest_fcstd_revision")), None)
+        if main_part:
+            item = self.add_tree_item(project_item, "part", main_part, project_file_part_label(main_part, prefer_fcstd=True), lazy=True)
+            item.setToolTip(0, "Aufklappen, um Revisionen zu laden.")
+            remaining = [part for part in parts if part.get("id") != main_part["id"]]
+            other_files_item = self.add_tree_item(project_item, "other_files", {}, f"Weitere Dateien und Teile ({len(remaining)})") if remaining else None
+        else:
+            remaining = parts
+            other_files_item = None
+        for part in remaining:
+            parent = other_files_item or project_item
             item = self.add_tree_item(
-                project_item,
+                parent,
                 "part",
                 part,
-                part_label(part),
+                project_file_part_label(part) if main_part else part_label(part),
                 lazy=True,
             )
             item.setToolTip(0, "Aufklappen, um Revisionen zu laden.")
@@ -319,6 +330,28 @@ class PanelProjectsMixin:
         count = len(parts)
         suffix = "" if count == 1 else "e"
         self.set_status(f"{count} Teil{suffix} geladen.")
+
+    def choose_project_main_file(self):
+        project = self.selected_project() or {}
+        project_id = project.get("id")
+        if project_id is None:
+            return
+        try:
+            candidates = [part for part in self.client().get_parts(project_id) if part.get("latest_fcstd_revision")]
+            labels = ["Keine Hauptdatei"] + [project_file_part_label(part, prefer_fcstd=True) for part in candidates]
+            selected_index = next((i for i, part in enumerate(candidates, 1) if part.get("id") == project.get("main_part_id")), 0)
+            choice, accepted = self.QtWidgets.QInputDialog.getItem(
+                self.widget, "FCStd-Hauptdatei", "Hauptdatei auswählen", labels, selected_index, False,
+            )
+            if not accepted:
+                return
+            index = labels.index(choice)
+            self.client().update_project(project_id, {"main_part_id": candidates[index - 1]["id"] if index else None})
+            self.refresh_projects()
+            self.select_project_by_id(project_id)
+            self.set_status("Hauptdatei gespeichert.")
+        except PLMError as exc:
+            self.set_status(f"Hauptdatei konnte nicht gespeichert werden: {exc}")
 
     def save_selected_project(self):
         project = self.selected_project()

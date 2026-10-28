@@ -147,6 +147,7 @@ class PanelStateMixin:
             label = "Neues Teil"
             callback = self.create_part_dialog
             more = [
+                ("FCStd-Hauptdatei festlegen", self.choose_project_main_file),
                 ("Lokale FCStd hinzufügen", self.add_local_fcstd_part_dialog),
                 ("Projekt importieren", self.import_project_dialog),
                 ("Projekt bearbeiten", self.show_project_dialog),

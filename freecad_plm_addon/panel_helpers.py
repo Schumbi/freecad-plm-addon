@@ -135,6 +135,12 @@ def part_label(part):
     return label
 
 
+def project_file_part_label(part, prefer_fcstd=False):
+    revision = (part.get("latest_fcstd_revision") if prefer_fcstd else part.get("latest_revision")) or part.get("latest_fcstd_revision") or {}
+    filename = revision.get("original_filename")
+    return f"{filename} · {part_label(part)}" if filename else part_label(part)
+
+
 def part_edit_payload(values, include_number=False):
     payload = {}
     fields = ("name", "description", "material", "supplier", "tags", "category")

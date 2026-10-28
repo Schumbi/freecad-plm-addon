@@ -22,6 +22,7 @@ class PanelBrowserMixin:
                 if hasattr(self, "project_search") and item.isHidden():
                     self.reset_project_filters()
                 self.browser_tree.setCurrentItem(item)
+                self.expand_tree_ancestors(item)
                 item.setExpanded(True)
                 return True
         return False
@@ -37,6 +38,7 @@ class PanelBrowserMixin:
                 if hasattr(self, "project_search") and item.isHidden():
                     self.reset_project_filters()
                 self.browser_tree.setCurrentItem(item)
+                self.expand_tree_ancestors(item)
                 item.setExpanded(True)
                 return True
         return False
@@ -59,6 +61,7 @@ class PanelBrowserMixin:
             revision = self.tree_item_payload(item)
             if self.tree_item_kind(item) == "revision" and revision and revision.get("id") == revision_id:
                 self.browser_tree.setCurrentItem(item)
+                self.expand_tree_ancestors(item)
                 return True
         return False
 
@@ -97,6 +100,12 @@ class PanelBrowserMixin:
                 return item
             item = item.parent()
         return None
+
+    def expand_tree_ancestors(self, item):
+        parent = item.parent() if item is not None else None
+        while parent is not None:
+            parent.setExpanded(True)
+            parent = parent.parent()
 
     def iter_tree_items(self):
         pending = [
@@ -150,6 +159,7 @@ class PanelBrowserMixin:
         item = self.find_tree_item(kind, entity_id, parent)
         if item is None:
             return False
+        self.expand_tree_ancestors(item)
         if project_item is not None:
             project_item.setExpanded(True)
         if part_item is not None:
@@ -289,6 +299,7 @@ class PanelBrowserMixin:
                     "Teil des aktiven Checkouts wurde im Projekt nicht gefunden.",
                 )
                 continue
+            self.expand_tree_ancestors(part_item)
             self.load_part_revisions(part_item)
             revision_item = self.find_tree_item("revision", revision_id, part_item)
             if revision_item is None:
@@ -424,6 +435,7 @@ class PanelBrowserMixin:
             self.set_status("Revision aus dem PLM-Link wurde im Teil nicht gefunden.")
             return False
         self.browser_tree.setCurrentItem(revision_item)
+        self.expand_tree_ancestors(revision_item)
         self.browser_tree.scrollToItem(revision_item)
 
         if deep_link.action == "checkout":

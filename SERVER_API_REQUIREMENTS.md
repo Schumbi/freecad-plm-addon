@@ -495,7 +495,7 @@ Anmerkung auswählen
 ## Ziel
 
 Das Addon soll die Projektdaten spiegeln, die im WebUI am Projekt gepflegt
-werden: Code, Name, Status, Datum und Beschreibung.
+werden: Code, Name, Status, Datum, Beschreibung und FCStd-Hauptdatei.
 
 ## Endpunkt
 
@@ -526,9 +526,15 @@ Der Server liefert und akzeptiert folgende Felder:
   "name": "Projekt",
   "status": "running",
   "project_date": "2026-07-08",
-  "description": "Optional"
+  "description": "Optional",
+  "main_part_id": 42
 }
 ```
+
+`main_part_id` ist optional und kann mit `null` gelöscht werden. Der Wert muss
+ein aktives Teil desselben Projekts mit einer FCStd-Revision bezeichnen.
+`GET /api/projects/<project_id>/parts/` liefert je Teil
+`latest_fcstd_revision` und `latest_revision` für die Dateianzeige im Addon.
 
 `status` nutzt dieselben Werte wie das WebUI: `running`, `completed`, `idea`,
 `important`, `order`. `project_date` ist leer oder ein Datum im Format
