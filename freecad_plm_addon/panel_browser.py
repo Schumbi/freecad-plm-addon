@@ -44,6 +44,9 @@ class PanelBrowserMixin:
         return False
 
     def selected_revision(self):
+        override = getattr(self, "_revision_action_override", None)
+        if override is not None:
+            return override
         item = self.browser_tree.currentItem()
         if self.tree_item_kind(item) != "revision":
             return None
@@ -92,6 +95,8 @@ class PanelBrowserMixin:
         return str(item.data(0, self.tree_role(4)) or "")
 
     def selected_tree_checkout(self):
+        if getattr(self, "_revision_action_override", None) is not None:
+            return getattr(self, "_checkout_action_override", None)
         return self.tree_item_checkout(self.browser_tree.currentItem())
 
     def tree_ancestor(self, item, kind):
@@ -118,6 +123,7 @@ class PanelBrowserMixin:
             pending[0:0] = [item.child(index) for index in range(item.childCount())]
 
     def find_tree_item(self, kind, entity_id, parent=None):
+        hidden_match = None
         for item in self.iter_tree_items():
             if self.tree_item_kind(item) != kind:
                 continue
@@ -125,8 +131,10 @@ class PanelBrowserMixin:
             if payload.get("id") != entity_id:
                 continue
             if parent is None or self.tree_ancestor(item, self.tree_item_kind(parent)) is parent:
-                return item
-        return None
+                if not item.isHidden():
+                    return item
+                hidden_match = item
+        return hidden_match
 
     def tree_selection_key(self):
         item = self.browser_tree.currentItem()
@@ -196,6 +204,11 @@ class PanelBrowserMixin:
 
     def reset_checkout_tree_markers(self):
         self.remove_checkout_error_items()
+        for item in list(self.iter_tree_items()):
+            if self.tree_item_kind(item) == "revision" and item.data(0, self.tree_role(6)) == "checkout_row":
+                parent = item.parent()
+                if parent is not None:
+                    parent.takeChild(parent.indexOfChild(item))
         for item in self.iter_tree_items():
             if self.tree_item_kind(item) != "revision":
                 continue
@@ -311,6 +324,16 @@ class PanelBrowserMixin:
                 continue
             error = self.checkout_errors.get(checkout_id, "")
             self.mark_checkout_item(revision_item, checkout, error)
+            if revision_item.isHidden():
+                checkout_row = self.add_tree_item(
+                    part_item,
+                    "revision",
+                    self.tree_item_payload(revision_item),
+                    f"Checkout {checkout_id} · {revision_label(self.tree_item_payload(revision_item) or {})}",
+                )
+                checkout_row.setData(0, self.tree_role(6), "checkout_row")
+                self.mark_checkout_item(checkout_row, checkout, error)
+                revision_item = checkout_row
             project_item.setExpanded(True)
             part_item.setExpanded(True)
             checkout_items[checkout_id] = revision_item
@@ -436,25 +459,35 @@ class PanelBrowserMixin:
         if revision_item is None:
             self.set_status("Revision aus dem PLM-Link wurde im Teil nicht gefunden.")
             return False
-        self.browser_tree.setCurrentItem(revision_item)
-        self.expand_tree_ancestors(revision_item)
-        self.browser_tree.scrollToItem(revision_item)
-
-        if deep_link.action == "checkout":
-            revision = self.selected_revision() or {}
-            answer = self.QtWidgets.QMessageBox.question(
-                self.widget,
-                "Revision auschecken",
-                f"{revision_label(revision)} wirklich zum Bearbeiten auschecken?",
-                self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
-                self.QtWidgets.QMessageBox.No,
-            )
-            if answer != self.QtWidgets.QMessageBox.Yes:
-                self.set_status("Checkout aus PLM-Link abgebrochen.")
-                return False
-            self.checkout_selected_revision()
-        elif deep_link.action == "slicer":
-            self.open_selected_revision_in_slicer()
-        else:
-            self.open_selected_revision_readonly()
+        was_hidden = revision_item.isHidden()
+        self.browser_tree.setCurrentItem(part_item if was_hidden else revision_item)
+        self.expand_tree_ancestors(part_item if was_hidden else revision_item)
+        if not was_hidden:
+            self.browser_tree.scrollToItem(revision_item)
+        if was_hidden:
+            self._revision_action_override = self.tree_item_payload(revision_item)
+            self._checkout_action_override = self.tree_item_checkout(revision_item)
+        try:
+            if deep_link.action == "checkout":
+                revision = self.selected_revision() or {}
+                answer = self.QtWidgets.QMessageBox.question(
+                    self.widget,
+                    "Revision auschecken",
+                    f"{revision_label(revision)} wirklich zum Bearbeiten auschecken?",
+                    self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+                    self.QtWidgets.QMessageBox.No,
+                )
+                if answer != self.QtWidgets.QMessageBox.Yes:
+                    self.set_status("Checkout aus PLM-Link abgebrochen.")
+                    return False
+                self.checkout_selected_revision()
+            elif deep_link.action == "slicer":
+                self.open_selected_revision_in_slicer()
+            else:
+                self.open_selected_revision_readonly()
+        finally:
+            if was_hidden:
+                self._revision_action_override = None
+                self._checkout_action_override = None
+                self.update_context_actions()
         return True

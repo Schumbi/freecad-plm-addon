@@ -156,7 +156,10 @@ class PanelStateMixin:
             summary = part_label(part or {})
             label = "Teil bearbeiten"
             callback = self.show_part_dialog
-            more = [("Revisionen aktualisieren", self.refresh_revisions)]
+            more = [
+                ("Revisionen", self.show_revisions_dialog),
+                ("Revisionen aktualisieren", self.refresh_revisions),
+            ]
             if (part or {}).get("family"):
                 more.append(("Varianten anzeigen", self.show_variants_dialog))
         elif kind == "checkout_error":
@@ -221,6 +224,7 @@ class PanelStateMixin:
                 more.append(("Druckprojekt öffnen/erstellen", self.open_selected_revision_in_slicer))
                 more.append(("3MF neu erzeugen", self.rebuild_selected_revision_in_slicer))
                 more.append(("Zum Druckprojekt hinzufügen", self.add_selected_revision_to_print_project))
+            more.append(("Revisionen", self.show_revisions_dialog))
             more.extend(
                 [
                     (None, None),

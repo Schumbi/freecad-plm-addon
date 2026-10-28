@@ -49,9 +49,128 @@ from freecad_plm_addon.panel import (
     unchanged_checkout_text,
 )
 from freecad_plm_addon.errors import ConflictError
+from freecad_plm_addon.panel_helpers import revision_number_sort_key
 
 
 class PanelTests(unittest.TestCase):
+    def test_revision_number_sort_key_uses_number_before_id(self):
+        revisions = [
+            {"id": 3, "revision_code": "R0001"},
+            {"id": 1, "revision_code": "R0003"},
+            {"id": 2, "revision_code": "R0002"},
+        ]
+        self.assertEqual(
+            [item["revision_code"] for item in sorted(revisions, key=revision_number_sort_key, reverse=True)],
+            ["R0003", "R0002", "R0001"],
+        )
+
+    def test_part_tree_hides_older_revisions(self):
+        panel = object.__new__(PLMPanel)
+        part_item = Mock()
+        part_item.data.return_value = False
+        panel.tree_role = Mock(return_value=32)
+        panel.tree_item_payload = Mock(return_value={"id": 9})
+        panel.set_part_form = Mock()
+        panel.set_status = Mock()
+        panel.client = Mock()
+        panel.client.return_value.get_part.return_value = {
+            "part": {"id": 9},
+            "revisions": [
+                {"id": 1, "revision_code": "R0001", "file_format": "fcstd"},
+                {"id": 2, "revision_code": "R0002", "file_format": "fcstd"},
+            ],
+        }
+        panel.QtCore = Mock()
+        panel.QtCore.Qt.UserRole = 32
+        panel.browser_tree = Mock()
+        panel.tree_ancestor = Mock(return_value=None)
+        panel.clear_tree_children = Mock()
+        current = Mock()
+        older = Mock()
+        panel.add_tree_item = Mock(side_effect=[current, older])
+
+        panel.load_part_revisions(part_item)
+
+        self.assertEqual(panel.add_tree_item.call_args_list[0].args[2]["revision_code"], "R0002")
+        current.setHidden.assert_called_once_with(False)
+        older.setHidden.assert_called_once_with(True)
+
+    def test_older_active_checkout_gets_visible_checkout_row(self):
+        panel = object.__new__(PLMPanel)
+        panel.server_checkouts = [{
+            "id": 220, "project": {"id": 14}, "part": {"id": 43},
+            "base_revision_id": 164,
+        }]
+        panel.checkout_errors = {}
+        panel.reset_checkout_tree_markers = Mock()
+        project_item, part_item, hidden_revision, checkout_row = (Mock() for _ in range(4))
+        hidden_revision.isHidden.return_value = True
+        panel.find_tree_item = Mock(side_effect=[project_item, part_item, hidden_revision])
+        panel.load_project_parts = Mock()
+        panel.load_part_revisions = Mock()
+        panel.expand_tree_ancestors = Mock()
+        panel.tree_item_payload = Mock(return_value={"id": 164, "revision_code": "R0006"})
+        panel.add_tree_item = Mock(return_value=checkout_row)
+        panel.tree_role = Mock(return_value=32)
+        panel.mark_checkout_item = Mock()
+
+        result = panel.reveal_active_checkouts()
+
+        self.assertIs(result[220], checkout_row)
+        self.assertIn("Checkout 220", panel.add_tree_item.call_args.args[3])
+        checkout_row.setData.assert_called_once_with(0, 32, "checkout_row")
+
+    def test_revision_lookup_prefers_visible_checkout_row(self):
+        panel = object.__new__(PLMPanel)
+        hidden_revision, visible_checkout = Mock(), Mock()
+        hidden_revision.isHidden.return_value = True
+        visible_checkout.isHidden.return_value = False
+        panel.iter_tree_items = Mock(return_value=iter([hidden_revision, visible_checkout]))
+        panel.tree_item_kind = Mock(return_value="revision")
+        panel.tree_item_payload = Mock(return_value={"id": 164})
+
+        self.assertIs(panel.find_tree_item("revision", 164), visible_checkout)
+
+    def test_revision_dialog_runs_action_for_hidden_revision(self):
+        panel = object.__new__(PLMPanel)
+        part_item, latest_item, older_item = (Mock() for _ in range(3))
+        part_item.childCount.return_value = 2
+        part_item.child.side_effect = lambda index: [latest_item, older_item][index]
+        latest_item.isHidden.return_value = False
+        older_item.isHidden.return_value = True
+        panel.browser_tree = Mock()
+        panel.browser_tree.currentItem.return_value = part_item
+        panel.tree_ancestor = Mock(return_value=part_item)
+        panel.tree_item_kind = Mock(side_effect=lambda item: "part" if item is part_item else "revision")
+        panel.tree_item_payload = Mock(side_effect=lambda item: (
+            {"id": 9} if item is part_item else
+            {"id": 1, "revision_code": "R0001", "file_format": "fcstd"}
+        ))
+        panel.load_part_revisions = Mock()
+        panel.active_checkout_id = Mock(return_value=None)
+        panel.active_checkout = None
+        panel.server_checkouts = []
+        panel.checkout_selected_revision = Mock(side_effect=lambda: self.assertEqual(
+            panel.selected_revision()["revision_code"], "R0001"
+        ))
+        panel.update_context_actions = Mock()
+        panel.widget = object()
+        panel.QtWidgets = Mock()
+        panel.QtWidgets.QDialog.Accepted = 1
+        panel.QtWidgets.QDialog.return_value.exec_.return_value = 1
+        panel.QtWidgets.QDialogButtonBox.Ok = 1
+        panel.QtWidgets.QDialogButtonBox.Cancel = 2
+        revision_input, action_input = Mock(), Mock()
+        revision_input.currentIndex.return_value = 0
+        action_input.currentIndex.return_value = 0
+        panel.QtWidgets.QComboBox.side_effect = [revision_input, action_input]
+
+        panel.show_revisions_dialog()
+
+        panel.checkout_selected_revision.assert_called_once_with()
+        panel.browser_tree.setCurrentItem.assert_not_called()
+        panel.update_context_actions.assert_called_once_with()
+
     def test_add_checkout_file_shows_server_error(self):
         panel = object.__new__(PLMPanel)
         panel.active_checkout_dir = object()

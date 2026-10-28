@@ -5,6 +5,7 @@ import tempfile
 
 from .errors import PLMError
 from .panel_helpers import (
+    active_checkout_revision_id,
     new_part_filename,
     part_edit_payload,
     part_label,
@@ -12,6 +13,9 @@ from .panel_helpers import (
     project_edit_payload,
     project_label,
     revision_label,
+    revision_file_format,
+    revision_is_checkout_editable,
+    revision_number_sort_key,
     revision_workflow_hint,
     revisions_from_part_detail,
 )
@@ -142,7 +146,11 @@ class PanelPartsMixin:
             self.set_status(f"Verbindung fehlgeschlagen: {exc}")
             return
 
-        revisions = revisions_from_part_detail(part_detail)
+        revisions = sorted(
+            revisions_from_part_detail(part_detail),
+            key=revision_number_sort_key,
+            reverse=True,
+        )
         detail_part = part_detail.get("part") if isinstance(part_detail, dict) else None
         if isinstance(detail_part, dict):
             detail_part["can_create_variant"] = bool(part_detail.get("can_create_variant", False))
@@ -154,7 +162,7 @@ class PanelPartsMixin:
             if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
                 self.set_part_form(detail_part)
         self.clear_tree_children(part_item)
-        for revision in revisions:
+        for index, revision in enumerate(revisions):
             item = self.add_tree_item(
                 part_item,
                 "revision",
@@ -162,12 +170,113 @@ class PanelPartsMixin:
                 revision_label(revision),
             )
             item.setToolTip(0, revision_workflow_hint(revision))
+            item.setHidden(index > 0)
         part_item.setData(0, self.tree_role(2), True)
         part_item.setExpanded(True)
 
         count = len(revisions)
         suffix = "" if count == 1 else "en"
         self.set_status(f"{count} Revision{suffix} geladen.")
+
+    def show_revisions_dialog(self):
+        part_item = self.tree_ancestor(self.browser_tree.currentItem(), "part")
+        if part_item is None:
+            return
+        self.load_part_revisions(part_item)
+        older_items = [
+            part_item.child(index)
+            for index in range(part_item.childCount())
+            if self.tree_item_kind(part_item.child(index)) == "revision"
+            and part_item.child(index).isHidden()
+        ]
+        if not older_items:
+            self.set_status("Keine älteren Revisionen vorhanden.")
+            return
+
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Revisionen")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        layout.addWidget(self.QtWidgets.QLabel("Ältere Revision auswählen:"))
+        revision_input = self.QtWidgets.QComboBox()
+        for item in older_items:
+            revision_input.addItem(revision_label(self.tree_item_payload(item) or {}))
+        layout.addWidget(revision_input)
+        layout.addWidget(self.QtWidgets.QLabel("Aktion:"))
+        action_input = self.QtWidgets.QComboBox()
+        layout.addWidget(action_input)
+        actions = []
+
+        def refresh_actions(_index=None):
+            nonlocal actions
+            revision = self.tree_item_payload(older_items[revision_input.currentIndex()]) or {}
+            actions = []
+            active_id = self.active_checkout_id()
+            checkout = next(
+                (item for item in self.server_checkouts
+                 if item.get("part", {}).get("id") == (self.tree_item_payload(part_item) or {}).get("id")
+                 and active_checkout_revision_id(item) == revision.get("id")),
+                None,
+            )
+            if checkout:
+                actions.append(("Checkout öffnen", self.reopen_selected_checkout))
+            elif revision_is_checkout_editable(revision):
+                actions.append(("Auschecken", self.checkout_selected_revision))
+            actions.append(("Schreibgeschützt öffnen", self.open_selected_revision_readonly))
+            active_part = (self.active_checkout or {}).get("part") or {}
+            if (
+                active_id is not None
+                and active_part.get("id") != (self.tree_item_payload(part_item) or {}).get("id")
+                and revision_is_checkout_editable(revision)
+            ):
+                actions.append(("Zum aktiven Checkout hinzufügen", self.add_selected_file_to_active_checkout))
+            if revision_file_format(revision) in ("fcstd", "step", "stl"):
+                actions.extend((
+                    ("Druckprojekt öffnen/erstellen", self.open_selected_revision_in_slicer),
+                    ("3MF neu erzeugen", self.rebuild_selected_revision_in_slicer),
+                    ("Zum Druckprojekt hinzufügen", self.add_selected_revision_to_print_project),
+                ))
+            actions.extend((
+                ("Details", self.show_revision_details_dialog),
+                ("Notizen", self.show_revision_notes_dialog),
+                ("Anmerkungen", self.show_annotations_dialog),
+            ))
+            part = self.tree_item_payload(part_item) or {}
+            if revision_file_format(revision) == "fcstd" and part.get("can_create_variant", False):
+                actions.append(("Als neue Variante speichern", self.create_variant_dialog))
+            if part.get("family"):
+                actions.append(("Varianten anzeigen", self.show_variants_dialog))
+            action_input.clear()
+            for label, _callback in actions:
+                action_input.addItem(label)
+
+        revision_input.currentIndexChanged.connect(refresh_actions)
+        refresh_actions()
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        buttons.button(self.QtWidgets.QDialogButtonBox.Ok).setText("Ausführen")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            return
+        selected_item = older_items[revision_input.currentIndex()]
+        selected_checkout = next(
+            (checkout for checkout in self.server_checkouts
+             if active_checkout_revision_id(checkout) == (self.tree_item_payload(selected_item) or {}).get("id")),
+            None,
+        )
+        if selected_checkout:
+            selected_item.setData(0, self.tree_role(3), selected_checkout)
+        callback = actions[action_input.currentIndex()][1]
+        self._revision_action_override = self.tree_item_payload(selected_item)
+        self._checkout_action_override = selected_checkout
+        try:
+            callback()
+        finally:
+            self._revision_action_override = None
+            self._checkout_action_override = None
+            self.update_context_actions()
 
     def show_variants_dialog(self):
         part = self.selected_part()

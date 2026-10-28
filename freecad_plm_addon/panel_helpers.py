@@ -176,6 +176,12 @@ def revisions_from_part_detail(part_detail):
     return []
 
 
+def revision_number_sort_key(revision):
+    code = str((revision or {}).get("revision_code") or "")
+    match = re.fullmatch(r"R(\d+)", code)
+    return (int(match.group(1)) if match else -1, int((revision or {}).get("id") or 0))
+
+
 def revision_label(revision):
     number = (
         revision.get("revision")

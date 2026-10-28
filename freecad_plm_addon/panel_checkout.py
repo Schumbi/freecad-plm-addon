@@ -632,9 +632,8 @@ class PanelCheckoutMixin:
             pass
 
         candidates = []
-        for part_index in range(project_item.childCount()):
-            part_item = project_item.child(part_index)
-            if self.tree_item_kind(part_item) != "part":
+        for part_item in self.iter_tree_items():
+            if self.tree_item_kind(part_item) != "part" or self.tree_ancestor(part_item, "project") is not project_item:
                 continue
             self.load_part_revisions(part_item)
             part = self.tree_item_payload(part_item) or {}
@@ -644,6 +643,8 @@ class PanelCheckoutMixin:
                 revision_id = revision.get("id")
                 if (
                     self.tree_item_kind(revision_item) != "revision"
+                    or revision_item.isHidden()
+                    or revision_item.data(0, self.tree_role(6)) == "checkout_row"
                     or not revision_is_checkout_editable(revision)
                     or revision_id in existing_revision_ids
                 ):
