@@ -108,16 +108,20 @@ class PanelStateMixin:
         self.context_primary_label = primary_label or ""
         self.context_more_actions = list(more_actions)
         self.context_primary_button.setEnabled(callable(primary_callback))
-        menu = self.QtWidgets.QMenu(self.context_more_button)
-        for label, callback in more_actions:
-            if label is None:
-                menu.addSeparator()
-                continue
-            action = menu.addAction(label)
-            action.triggered.connect(
-                lambda _checked=False, selected_callback=callback: selected_callback()
-            )
+        old_menu = self.context_more_button.menu()
+        menu = self.QtWidgets.QMenu(self.context_more_button) if more_actions else None
+        if menu is not None:
+            for label, callback in more_actions:
+                if label is None:
+                    menu.addSeparator()
+                    continue
+                action = menu.addAction(label)
+                action.triggered.connect(
+                    lambda _checked=False, selected_callback=callback: selected_callback()
+                )
         self.context_more_button.setMenu(menu)
+        if old_menu is not None:
+            old_menu.deleteLater()
         self.context_more_button.setEnabled(bool(more_actions))
 
     def update_context_actions(self):

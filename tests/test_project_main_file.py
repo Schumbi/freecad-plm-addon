@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from freecad_plm_addon.panel_browser import PanelBrowserMixin
 from freecad_plm_addon.panel_helpers import project_file_part_label
 from freecad_plm_addon.panel_projects import PanelProjectsMixin
+from freecad_plm_addon.panel_state import PanelStateMixin
 
 
 class ProjectMainFileTests(unittest.TestCase):
@@ -68,6 +69,15 @@ class ProjectMainFileTests(unittest.TestCase):
         )
         menu.exec_.assert_not_called()
         menu.aboutToHide.connect.assert_called_once_with(menu.deleteLater)
+
+    def test_replacing_context_actions_releases_previous_menu(self):
+        previous_menu = self.panel.context_more_button.menu.return_value
+
+        PanelStateMixin.set_context_actions(self.panel, "Projekt", "Öffnen", Mock(), [])
+
+        self.panel.context_more_button.setMenu.assert_called_once_with(None)
+        previous_menu.deleteLater.assert_called_once()
+        self.panel.QtWidgets.QMenu.assert_not_called()
 
 
 if __name__ == "__main__":
