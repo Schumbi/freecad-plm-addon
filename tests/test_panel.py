@@ -52,6 +52,30 @@ from freecad_plm_addon.errors import ConflictError
 
 
 class PanelTests(unittest.TestCase):
+    def test_add_checkout_file_shows_server_error(self):
+        panel = object.__new__(PLMPanel)
+        panel.active_checkout_dir = object()
+        panel.active_checkout_id = Mock(return_value=220)
+        panel.selected_revision = Mock(return_value={"id": 165})
+        panel.set_status = Mock()
+        panel.widget = object()
+        panel.QtWidgets = Mock()
+        panel.QtWidgets.QMessageBox.Yes = 1
+        panel.QtWidgets.QMessageBox.No = 2
+        panel.QtWidgets.QMessageBox.question.return_value = 1
+        client = Mock()
+        client.add_checkout_file.side_effect = ConflictError(409, "Teil konnte nicht hinzugefügt werden.")
+        panel.client = Mock(return_value=client)
+
+        panel.add_selected_file_to_active_checkout()
+
+        client.add_checkout_file.assert_called_once_with(220, 165)
+        panel.QtWidgets.QMessageBox.warning.assert_called_once_with(
+            panel.widget,
+            "Teil hinzufügen fehlgeschlagen",
+            "Teil konnte nicht hinzugefügt werden.",
+        )
+
     def test_save_slicer_settings_imports_and_updates_config(self):
         with (
             patch("freecad_plm_addon.config.set_slicer_kind") as set_kind,

@@ -595,9 +595,11 @@ class PanelCheckoutMixin:
             result = self.add_checkout_response_to_workspace(response)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
+            self.QtWidgets.QMessageBox.warning(self.widget, "Teil hinzufügen fehlgeschlagen", str(exc))
             return
         except Exception as exc:
             self.set_status(f"Teil konnte nicht hinzugefügt werden: {exc}")
+            self.QtWidgets.QMessageBox.warning(self.widget, "Teil hinzufügen fehlgeschlagen", str(exc))
             return
 
         self.set_status(
