@@ -51,6 +51,24 @@ class ProjectMainFileTests(unittest.TestCase):
         group.setExpanded.assert_called_once_with(True)
         project.setExpanded.assert_called_once_with(True)
 
+    def test_folder_context_menu_does_not_block_event_loop(self):
+        item = Mock()
+        position = Mock()
+        menu = self.panel.QtWidgets.QMenu.return_value
+        self.panel.browser_tree.itemAt.return_value = item
+        self.panel.tree_item_kind.return_value = "folder"
+        self.panel.context_primary_label = "Projekt importieren"
+        self.panel.context_primary_callback = Mock()
+        self.panel.context_more_actions = []
+
+        PanelBrowserMixin.show_browser_context_menu(self.panel, position)
+
+        menu.popup.assert_called_once_with(
+            self.panel.browser_tree.viewport.return_value.mapToGlobal.return_value
+        )
+        menu.exec_.assert_not_called()
+        menu.aboutToHide.connect.assert_called_once_with(menu.deleteLater)
+
 
 if __name__ == "__main__":
     unittest.main()

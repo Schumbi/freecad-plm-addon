@@ -388,7 +388,9 @@ class PanelBrowserMixin:
                 menu.addSeparator()
             else:
                 menu.addAction(label, callback)
-        menu.exec_(self.browser_tree.viewport().mapToGlobal(position))
+        # A nested menu event loop can freeze FreeCAD on Windows.
+        menu.aboutToHide.connect(menu.deleteLater)
+        menu.popup(self.browser_tree.viewport().mapToGlobal(position))
 
     def handle_revision_deep_link(self, deep_link):
         self.refresh_projects()
