@@ -16,6 +16,7 @@ from freecad_plm_addon.panel_browser import PanelBrowserMixin
 from freecad_plm_addon.panel_projects import PanelProjectsMixin
 from freecad_plm_addon.panel import PLMPanel
 from freecad_plm_addon.panel_state import PanelStateMixin
+from freecad_plm_addon.print_project_dialog import choose_print_project
 from freecad_plm_addon.slicer import SlicerProjectMonitor, write_sync_state
 
 
@@ -122,6 +123,25 @@ class BackgroundWorkQtTests(unittest.TestCase):
         self.assertEqual(client.get_projects(), [])
         panel.begin_network_activity.assert_called_once()
         panel.end_network_activity.assert_called_once()
+
+    def test_print_preview_activity_ends_after_dialog_closes(self):
+        parent = QtWidgets.QWidget()
+        activity = []
+        parent._plm_panel = Mock(
+            begin_network_activity=lambda: activity.append("start"),
+            end_network_activity=lambda: activity.append("end"),
+        )
+        client = Mock()
+        client.get_print_project_preview.side_effect = lambda _url: (time.sleep(.2), b"invalid")[1]
+        projects = [{"id": 1, "code": "DP-1", "plates": [{"number": 1, "preview_url": "https://plm.example/preview"}]}]
+        QtCore.QTimer.singleShot(30, lambda: parent.findChild(QtWidgets.QDialog).reject())
+        self.assertIsNone(choose_print_project(parent, QtCore, None, QtWidgets, projects, client))
+        self.assertEqual(activity, ["start"])
+        deadline = time.monotonic() + 2
+        while len(activity) < 2 and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(.02)
+        self.assertEqual(activity, ["start", "end"])
 
     def test_network_indicator_keeps_its_place_and_disables_project_controls(self):
         widget = QtWidgets.QWidget()

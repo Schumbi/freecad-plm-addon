@@ -2,7 +2,7 @@
 
 ## Unveröffentlicht
 
-- Der Netzwerkpunkt behält seinen Platz und ist im Ruhezustand vollständig transparent. Bei Übertragungen blinkt er alle 300 ms; Projektbaum und Aktionen sind währenddessen gesperrt.
+- Der Netzwerkpunkt behält seinen Platz und ist im Ruhezustand vollständig transparent. Bei Übertragungen einschließlich Druckprojekt-Vorschauen blinkt er alle 300 ms; Projektbaum und Aktionen sind währenddessen gesperrt.
 - Auch ältere PLM-Dialogaktionen führen ihre Serveranfragen auf einem Worker aus, während Qt weiter Ereignisse verarbeitet.
 - Projekt-Refresh über Symbolleiste und Verbindungseinstellungen läuft im Hintergrund. Ein blinkender Kreis im Projektbaum zeigt laufende Netzwerkabfragen und Datenübertragungen an.
 

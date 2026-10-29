@@ -62,6 +62,10 @@ def choose_print_project(parent, QtCore, QtGui, QtWidgets, projects, client):
         listing.addTopLevelItem(item)
         if plate:
             pending[executor.submit(client.get_print_project_preview, plate["preview_url"])] = (item, label, plate)
+    preview_futures = tuple(pending)
+    panel = getattr(parent, "_plm_panel", None)
+    if preview_futures and panel is not None:
+        panel.begin_network_activity()
     if projects:
         listing.setCurrentItem(listing.topLevelItem(0))
     else:
@@ -116,3 +120,16 @@ def choose_print_project(parent, QtCore, QtGui, QtWidgets, projects, client):
         timer.stop()
         executor.shutdown(wait=False, cancel_futures=True)
         dialog.deleteLater()
+        if preview_futures and panel is not None:
+            completion_timer = QtCore.QTimer(parent)
+
+            def release_activity():
+                if not all(future.done() for future in preview_futures):
+                    return
+                completion_timer.stop()
+                completion_timer.deleteLater()
+                panel.end_network_activity()
+
+            completion_timer.timeout.connect(release_activity)
+            completion_timer.start(50)
+            release_activity()
