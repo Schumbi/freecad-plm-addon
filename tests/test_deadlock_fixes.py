@@ -10,6 +10,31 @@ from freecad_plm_addon.panel_state import PanelStateMixin
 
 
 class DeadlockFixTests(unittest.TestCase):
+    def test_manual_refresh_fetches_visible_checkout_data_before_rebuilding_tree(self):
+        panel = Mock()
+        panel._project_refresh_pending = False
+        panel.server_url.text.return_value = "https://plm.example"
+        panel.api_token.text.return_value = "token"
+        panel.tree_selection_key.return_value = ("revision", 3, 1, 2)
+        client = panel.client.return_value
+        client.get_projects.return_value = [{"id": 1}]
+        client.get_folders.return_value = []
+        client.get_active_checkouts.return_value = [
+            {"project": {"id": 1}, "part": {"id": 2}},
+        ]
+        with patch("freecad_plm_addon.background_work.run_gui_work") as run:
+            PanelProjectsMixin.refresh_projects_background(panel)
+            client.get_projects.assert_not_called()
+            work, finished = run.call_args.args[-2:]
+            result = work()
+            self.assertEqual(result["parts"], {1: client.get_parts.return_value})
+            self.assertEqual(result["details"], {2: client.get_part.return_value})
+            finished(result, None)
+        panel.refresh_projects.assert_called_once_with(prefetched=result)
+        self.assertFalse(panel._project_refresh_pending)
+        self.assertEqual(panel._refresh_parts_by_project, {})
+        self.assertEqual(panel._refresh_part_details, {})
+
     def test_deep_links_wait_for_current_modal_workflow(self):
         reset_runtime_state_for_tests()
         events = []

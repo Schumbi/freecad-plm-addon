@@ -1,5 +1,9 @@
 # Changelog
 
+## Unveröffentlicht
+
+- Projekt-Refresh über Symbolleiste und Verbindungseinstellungen läuft im Hintergrund. Ein blinkender Kreis im Projektbaum zeigt laufende Netzwerkabfragen und Datenübertragungen an.
+
 ## 0.1.13 – 2026-10-27
 
 - Beim Projektimport werden STEP- und STL-Dateien einem gewählten FreeCAD-Teil zugeordnet; bei nur einer FCStd-Datei erfolgt die Zuordnung automatisch. Ohne FCStd-Datei kann ein vorhandenes Projekt und FreeCAD-Teil gewählt werden. Benötigt einen Server mit Unterstützung für diese Zuordnung.

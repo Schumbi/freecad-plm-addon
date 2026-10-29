@@ -368,7 +368,7 @@ class PanelStateMixin:
             self.slicer_executable,
             self.slicer_extra_args,
         )
-        self.refresh_projects()
+        self.refresh_projects_background()
 
     def update_annotation_controls(self):
         annotation = self.selected_annotation()
@@ -422,9 +422,10 @@ class PanelStateMixin:
         self.new_annotation_button.setEnabled(False)
         self.update_annotation_controls()
 
-    def refresh_active_checkouts(self, client=None):
+    def refresh_active_checkouts(self, client=None, *, checkouts=None):
         try:
-            checkouts = (client or self.client()).get_active_checkouts()
+            if checkouts is None:
+                checkouts = (client or self.client()).get_active_checkouts()
         except PLMError as exc:
             self.server_checkouts = []
             self.checkout_tree_items = {}

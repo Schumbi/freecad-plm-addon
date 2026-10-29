@@ -7,6 +7,9 @@ _ui_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="plm-ui")
 
 def run_gui_work(qt_core, parent, work, finished):
     """Run pure file/network work off-thread and deliver its result on the Qt thread."""
+    panel = getattr(parent, "_plm_panel", None)
+    if panel is not None:
+        panel.begin_network_activity()
     future = _ui_executor.submit(work)
     timer = qt_core.QTimer(parent)
 
@@ -19,7 +22,11 @@ def run_gui_work(qt_core, parent, work, finished):
             result, error = future.result(), None
         except Exception as exc:
             result, error = None, exc
-        finished(result, error)
+        try:
+            finished(result, error)
+        finally:
+            if panel is not None:
+                panel.end_network_activity()
 
     timer.timeout.connect(poll)
     timer.start(50)
@@ -41,6 +48,9 @@ def run_background_work(qt_core, qt_widgets, parent, message, work):
     bar = qt_widgets.QProgressBar(dialog)
     bar.setRange(0, 0)
     layout.addWidget(bar)
+    panel = getattr(parent, "_plm_panel", None)
+    if panel is not None:
+        panel.begin_network_activity()
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plm-checkin")
     future = executor.submit(work)
     timer = qt_core.QTimer(dialog)
@@ -53,3 +63,5 @@ def run_background_work(qt_core, qt_widgets, parent, message, work):
         timer.stop()
         executor.shutdown(wait=False)
         dialog.deleteLater()
+        if panel is not None:
+            panel.end_network_activity()

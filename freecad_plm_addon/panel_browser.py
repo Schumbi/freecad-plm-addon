@@ -378,7 +378,7 @@ class PanelBrowserMixin:
     def browser_item_double_clicked(self, item, _column=0):
         kind = self.tree_item_kind(item)
         if kind == "checkout_error":
-            self.refresh_projects()
+            self.refresh_projects_background()
             return
         if kind != "revision":
             return

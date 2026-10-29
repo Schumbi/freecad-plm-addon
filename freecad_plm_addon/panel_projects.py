@@ -21,6 +21,69 @@ from .panel_helpers import (
 
 
 class PanelProjectsMixin:
+    def refresh_projects_background(self):
+        """Fetch everything needed to rebuild the visible tree off the Qt thread."""
+        from .background_work import run_gui_work
+
+        if getattr(self, "_project_refresh_pending", False):
+            return
+        server_url = self.server_url.text().strip()
+        api_token = self.api_token.text().strip()
+        if not server_url or not api_token:
+            self.set_status("Server und API-Token eintragen.")
+            return
+        selection = self.tree_selection_key()
+        client = self.client()
+        self._project_refresh_pending = True
+        self.refresh_button.setEnabled(False)
+        self.set_status("Lade Projekte...")
+
+        def work():
+            projects = client.get_projects()
+            try:
+                folders = client.get_folders()
+            except PLMError:
+                folders = []
+            checkouts = client.get_active_checkouts() or []
+            project_ids = set()
+            part_ids = set()
+            for checkout in checkouts or []:
+                project_ids.add((checkout.get("project") or {}).get("id"))
+                part_ids.add((checkout.get("part") or {}).get("id"))
+            if selection:
+                if selection[0] in ("part", "revision"):
+                    project_ids.add(selection[2])
+                if selection[0] == "revision":
+                    part_ids.add(selection[3])
+            project_ids.discard(None)
+            part_ids.discard(None)
+            return {
+                "projects": projects,
+                "folders": folders,
+                "checkouts": checkouts,
+                "selection": selection,
+                "parts": {project_id: client.get_parts(project_id) for project_id in project_ids},
+                "details": {part_id: client.get_part(part_id) for part_id in part_ids},
+            }
+
+        def finished(result, error):
+            self._project_refresh_pending = False
+            self.refresh_button.setEnabled(True)
+            if server_url != self.server_url.text().strip() or api_token != self.api_token.text().strip():
+                return
+            if error is not None:
+                self.set_status(f"Projekte konnten nicht geladen werden: {error}")
+                return
+            self._refresh_parts_by_project = result["parts"]
+            self._refresh_part_details = result["details"]
+            try:
+                self.refresh_projects(prefetched=result)
+            finally:
+                self._refresh_parts_by_project = {}
+                self._refresh_part_details = {}
+
+        run_gui_work(self.QtCore, self.widget, work, finished)
+
     def open_project_documents_dialog(self):
         project = self.selected_project()
         if not isinstance(project, dict) or project.get("id") is None:
@@ -179,7 +242,7 @@ class PanelProjectsMixin:
         self.new_annotation_button.setEnabled(True)
         self.refresh_annotations(revision)
 
-    def refresh_projects(self):
+    def refresh_projects(self, *, prefetched=None):
         from . import config
 
         server_url = self.server_url.text().strip()
@@ -200,7 +263,7 @@ class PanelProjectsMixin:
             return
 
         self.set_status("Lade Projekte...")
-        previous_selection = self.tree_selection_key()
+        previous_selection = prefetched["selection"] if prefetched is not None else self.tree_selection_key()
         self.browser_tree.clear()
         self.server_checkouts = []
         self.clear_revision_context()
@@ -209,11 +272,15 @@ class PanelProjectsMixin:
 
         try:
             client = self.client()
-            projects = client.get_projects()
-            try:
-                folders = client.get_folders()
-            except PLMError:
-                folders = []
+            if prefetched is None:
+                projects = client.get_projects()
+                try:
+                    folders = client.get_folders()
+                except PLMError:
+                    folders = []
+            else:
+                projects = prefetched["projects"]
+                folders = prefetched["folders"]
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return
@@ -250,7 +317,9 @@ class PanelProjectsMixin:
             item.setToolTip(0, "Aufklappen, um Teile und Baugruppen zu laden.")
 
         count = len(projects)
-        checkout_count = self.refresh_active_checkouts(client)
+        checkout_count = self.refresh_active_checkouts(
+            client, checkouts=prefetched["checkouts"] if prefetched is not None else None,
+        )
         restored = self.restore_tree_selection(previous_selection)
         if not restored:
             target_checkout_id = self.active_checkout_id()
@@ -321,7 +390,8 @@ class PanelProjectsMixin:
 
         try:
             if parts is None:
-                parts = self.client().get_parts(project_id)
+                cache = getattr(self, "_refresh_parts_by_project", {})
+                parts = cache[project_id] if isinstance(cache, dict) and project_id in cache else self.client().get_parts(project_id)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return

@@ -172,6 +172,17 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         tree_header = self.QtWidgets.QHBoxLayout()
         tree_header.addWidget(self.QtWidgets.QLabel("Projekte · Teile · Revisionen"))
         tree_header.addStretch(1)
+        self.network_indicator = self.QtWidgets.QLabel("●")
+        self.network_indicator.setFixedWidth(16)
+        self.network_indicator.setAlignment(self.QtCore.Qt.AlignCenter)
+        self.network_indicator.setToolTip("Warte auf Netzwerkverbindung oder Datenübertragung")
+        self.network_indicator.hide()
+        tree_header.addWidget(self.network_indicator)
+        self._network_activity_count = 0
+        self._network_indicator_lit = False
+        self.network_indicator_timer = self.QtCore.QTimer(self.widget)
+        self.network_indicator_timer.setInterval(400)
+        self.network_indicator_timer.timeout.connect(self._blink_network_indicator)
         browser_layout.addLayout(tree_header)
 
         self.build_project_filters(browser_layout)
@@ -349,7 +360,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
 
-        self.refresh_button.clicked.connect(self.refresh_projects)
+        self.refresh_button.clicked.connect(self.refresh_projects_background)
         self.project_documents_button.clicked.connect(self.open_project_documents_dialog)
         self.settings_button.clicked.connect(self.show_connection_settings_dialog)
         self.browser_tree.itemSelectionChanged.connect(self.browser_selection_changed)
@@ -379,6 +390,25 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         )
         self.checkout_state_timer.start()
         self.update_context_actions()
+
+    def _blink_network_indicator(self):
+        self._network_indicator_lit = not self._network_indicator_lit
+        color = "#1684c5" if self._network_indicator_lit else "transparent"
+        self.network_indicator.setStyleSheet(f"color: {color}; font-size: 15px;")
+
+    def begin_network_activity(self):
+        self._network_activity_count += 1
+        if self._network_activity_count == 1:
+            self.network_indicator.show()
+            self._network_indicator_lit = False
+            self._blink_network_indicator()
+            self.network_indicator_timer.start()
+
+    def end_network_activity(self):
+        self._network_activity_count = max(0, self._network_activity_count - 1)
+        if self._network_activity_count == 0:
+            self.network_indicator_timer.stop()
+            self.network_indicator.hide()
 
 
 def _find_dock(main_window, QtWidgets):
@@ -410,7 +440,7 @@ def show_panel():
 def refresh_panel():
     show_panel()
     if _active_panel is not None:
-        _active_panel.refresh_projects()
+        _active_panel.refresh_projects_background()
 
 
 def checkout_selected_revision():

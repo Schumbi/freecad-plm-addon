@@ -163,7 +163,8 @@ class PanelPartsMixin:
 
         try:
             if part_detail is None:
-                part_detail = self.client().get_part(part_id)
+                cache = getattr(self, "_refresh_part_details", {})
+                part_detail = cache[part_id] if isinstance(cache, dict) and part_id in cache else self.client().get_part(part_id)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return
