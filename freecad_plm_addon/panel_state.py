@@ -141,7 +141,8 @@ class PanelStateMixin:
             self.refresh_active_checkout_primary_button()
 
         run_gui_work(self.QtCore, self.widget,
-                     lambda: checkout_has_changes(manifest, metadata, directory), finished)
+                     lambda: checkout_has_changes(manifest, metadata, directory), finished,
+                     track_network=False)
         return True
 
     def set_context_actions(self, summary, primary_label, primary_callback, more_actions):
@@ -287,7 +288,11 @@ class PanelStateMixin:
         self.set_context_actions(summary, label, callback, more)
 
     def client(self):
-        return PLMClient(self.server_url.text().strip(), self.api_token.text().strip())
+        client = PLMClient(self.server_url.text().strip(), self.api_token.text().strip())
+        if getattr(self.widget, "_plm_panel", None) is self:
+            from .background_work import GuiNetworkClient
+            return GuiNetworkClient(client, self.QtCore, self.widget)
+        return client
 
     def show_connection_settings_dialog(self):
         dialog = self.QtWidgets.QDialog(self.widget)

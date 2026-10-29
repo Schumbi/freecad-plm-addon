@@ -487,6 +487,7 @@ class PanelCheckoutMixin:
                 lambda: technically_changed_manifest_files(
                     manifest, checkout_metadata, self.active_checkout_dir,
                 ),
+                track_network=False,
             )
             has_structural_changes = bool(
                 manifest.get("removed_paths") or manifest.get("added_paths")

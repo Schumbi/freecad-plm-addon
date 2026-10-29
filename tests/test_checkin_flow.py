@@ -45,9 +45,9 @@ class CheckinFlowTests(unittest.TestCase):
                 reset_active_checkout=Mock(), refresh_revisions=Mock(), refresh_active_checkouts=Mock(),
                 select_revision_by_id=Mock(), offer_cancel_unchanged_checkout=Mock(),
             )
-            def background(*args):
+            def background(*args, **_kwargs):
                 with ThreadPoolExecutor(max_workers=1) as executor:
-                    return executor.submit(args[-1]).result()
+                    return executor.submit(args[4]).result()
             with patch('freecad_plm_addon.panel_checkout.run_background_work', side_effect=background), patch('freecad_plm_addon.panel_checkout.technically_changed_manifest_files', wraps=technically_changed_manifest_files) as compare, patch('freecad_plm_addon.fcstd.document_names_in_directory', return_value=['Part']), patch('freecad_plm_addon.fcstd.save_documents', return_value=(['Part'], [])), patch('freecad_plm_addon.fcstd.close_documents', return_value=(['Part'], [])) as close:
                 PanelCheckoutMixin.checkin_active_checkout(panel)
             compare.assert_called_once()

@@ -34,6 +34,7 @@ class PanelProjectTagsMixin:
         self.project_tag_mode.addItem("Ohne Tags", "untagged")
         self.project_tag_mode.setToolTip("UND: alle ausgewählten Tags; ODER: mindestens eines")
         reset = widgets.QPushButton("Alle")
+        self.project_filter_reset = reset
         reset.setToolTip("Alle Projekte anzeigen und Filter zurücksetzen")
         row.addWidget(self.project_tag_button)
         row.addWidget(self.project_tag_mode)

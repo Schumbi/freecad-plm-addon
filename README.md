@@ -19,7 +19,8 @@ Aktuell umgesetzt:
 - Server verbinden und Projekte, Teile/Baugruppen, Revisionen und aktive
   Checkouts laden.
 - Der vollständige Projekt-Refresh lädt benötigte Serverdaten im Hintergrund;
-  ein blinkender Punkt im Projektbaum zeigt laufende Netzwerkabfragen an.
+  ein fest platzierter Punkt im Projektbaum blinkt bei Netzwerkabfragen alle
+  300 ms. Währenddessen ist die Projektübersicht nicht bedienbar.
 - Projekte, Teile/Baugruppen und Revisionen platzsparend in einem lazy
   geladenen Baum mit Kontextmenüs durchsuchen. Aktive Checkouts werden direkt
   an ihrer Revision markiert und automatisch aufgeklappt.

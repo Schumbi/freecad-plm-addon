@@ -176,12 +176,12 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         self.network_indicator.setFixedWidth(16)
         self.network_indicator.setAlignment(self.QtCore.Qt.AlignCenter)
         self.network_indicator.setToolTip("Warte auf Netzwerkverbindung oder Datenübertragung")
-        self.network_indicator.hide()
+        self.network_indicator.setStyleSheet("color: rgba(22, 132, 197, 0); font-size: 15px;")
         tree_header.addWidget(self.network_indicator)
         self._network_activity_count = 0
         self._network_indicator_lit = False
         self.network_indicator_timer = self.QtCore.QTimer(self.widget)
-        self.network_indicator_timer.setInterval(400)
+        self.network_indicator_timer.setInterval(300)
         self.network_indicator_timer.timeout.connect(self._blink_network_indicator)
         browser_layout.addLayout(tree_header)
 
@@ -195,6 +195,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         browser_layout.addWidget(self.browser_tree, 1)
 
         details_widget = self.QtWidgets.QWidget()
+        self.action_bar_widget = details_widget
         details_widget.setObjectName("PLMActionBar")
         details_widget.setStyleSheet(
             "#PLMActionBar {"
@@ -393,13 +394,19 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
 
     def _blink_network_indicator(self):
         self._network_indicator_lit = not self._network_indicator_lit
-        color = "#1684c5" if self._network_indicator_lit else "transparent"
+        color = "rgba(22, 132, 197, 255)" if self._network_indicator_lit else "rgba(22, 132, 197, 0)"
         self.network_indicator.setStyleSheet(f"color: {color}; font-size: 15px;")
 
     def begin_network_activity(self):
         self._network_activity_count += 1
         if self._network_activity_count == 1:
-            self.network_indicator.show()
+            self.browser_tree.setEnabled(False)
+            self.project_search.setEnabled(False)
+            self.project_tag_button.setEnabled(False)
+            self.project_tag_mode.setEnabled(False)
+            self.project_filter_reset.setEnabled(False)
+            self.action_bar_widget.setEnabled(False)
+            self.settings_button.setEnabled(False)
             self._network_indicator_lit = False
             self._blink_network_indicator()
             self.network_indicator_timer.start()
@@ -408,7 +415,16 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         self._network_activity_count = max(0, self._network_activity_count - 1)
         if self._network_activity_count == 0:
             self.network_indicator_timer.stop()
-            self.network_indicator.hide()
+            self._network_indicator_lit = False
+            self.network_indicator.setStyleSheet("color: rgba(22, 132, 197, 0); font-size: 15px;")
+            self.browser_tree.setEnabled(True)
+            self.project_search.setEnabled(True)
+            self.project_tag_button.setEnabled(True)
+            self.project_tag_mode.setEnabled(True)
+            self.project_filter_reset.setEnabled(True)
+            self.action_bar_widget.setEnabled(True)
+            self.settings_button.setEnabled(True)
+            self.update_context_actions()
 
 
 def _find_dock(main_window, QtWidgets):
