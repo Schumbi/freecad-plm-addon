@@ -42,6 +42,7 @@ class PanelStateMixin:
     def invalidate_checkout_change_state(self):
         self.checkout_change_signature = None
         self.checkout_change_state = True
+        self._checkout_check_generation = getattr(self, "_checkout_check_generation", 0) + 1
 
     def active_checkout_has_changes(self):
         from . import fcstd
@@ -93,13 +94,55 @@ class PanelStateMixin:
         state = checkout_visual_state(checkout, self.active_checkout_id())
         if self.tree_item_kind(item) != "revision" or state != "local":
             return
-        action = checkout_primary_button_action(self.active_checkout_has_changes())
+        action = checkout_primary_button_action(self.poll_checkout_change_state())
         label = "Einchecken" if action == "checkin" else "Abbrechen"
         if self.context_primary_label == label:
             return
         self.context_primary_button.setText(label)
         self.context_primary_label = label
         self.context_primary_callback = self.run_active_checkout_primary_action
+
+    def poll_checkout_change_state(self):
+        """Keep the periodic technical file comparison off the GUI thread."""
+        from . import fcstd
+        from .background_work import run_gui_work
+
+        if getattr(self, "checkin_busy", False) or self.active_checkout_dir is None:
+            return True
+        directory = self.active_checkout_dir
+        try:
+            manifest = read_manifest(directory)
+            metadata = ensure_checkout_metadata(manifest, directory)
+            names = fcstd.document_names_in_directory(directory / "files")
+            if fcstd.modified_document_names(names or self.checkout_document_names):
+                return True
+            signature = checkout_files_signature(manifest, directory)
+        except Exception:
+            return True
+        if signature == self.checkout_change_signature:
+            return self.checkout_change_state
+        if getattr(self, "_checkout_check_pending", False):
+            return True
+        self._checkout_check_pending = True
+        generation = getattr(self, "_checkout_check_generation", 0)
+
+        def finished(result, error):
+            self._checkout_check_pending = False
+            if (self.active_checkout_dir != directory
+                    or getattr(self, "_checkout_check_generation", 0) != generation):
+                return
+            try:
+                if checkout_files_signature(manifest, directory) != signature:
+                    return
+            except Exception:
+                return
+            self.checkout_change_signature = signature
+            self.checkout_change_state = True if error is not None else bool(result)
+            self.refresh_active_checkout_primary_button()
+
+        run_gui_work(self.QtCore, self.widget,
+                     lambda: checkout_has_changes(manifest, metadata, directory), finished)
+        return True
 
     def set_context_actions(self, summary, primary_label, primary_callback, more_actions):
         self.context_summary.setText(summary)
@@ -197,7 +240,7 @@ class PanelStateMixin:
             }
             if primary == "checkin":
                 checkout_action = checkout_primary_button_action(
-                    self.active_checkout_has_changes()
+                    self.poll_checkout_change_state()
                 )
                 label = "Einchecken" if checkout_action == "checkin" else "Abbrechen"
                 callback = self.run_active_checkout_primary_action

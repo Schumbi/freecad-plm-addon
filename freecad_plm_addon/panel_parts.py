@@ -122,7 +122,7 @@ class PanelPartsMixin:
         self.restore_tree_selection(selection)
         self.update_context_actions()
 
-    def load_part_revisions(self, part_item, force=False):
+    def load_part_revisions(self, part_item, force=False, *, background=False, part_detail=None):
         if part_item is None:
             return
         if bool(part_item.data(0, self.tree_role(2))) and not force:
@@ -137,8 +137,33 @@ class PanelPartsMixin:
 
         self.set_status("Lade Revisionen...")
 
+        if background:
+            from .background_work import run_gui_work
+            generation = getattr(self, "_tree_load_generation", 0) + 1
+            self._tree_load_generation = generation
+            part_item.setData(0, self.tree_role(8), generation)
+            client = self.client()
+
+            def finished(result, error):
+                try:
+                    current = (part_item.treeWidget() is self.browser_tree
+                               and part_item.data(0, self.tree_role(8)) == generation)
+                except RuntimeError:
+                    current = False
+                if not current:
+                    return
+                if error is not None:
+                    self.set_status(f"Revisionen konnten nicht geladen werden: {error}")
+                    return
+                self.load_part_revisions(part_item, force=True, part_detail=result)
+
+            run_gui_work(self.QtCore, self.widget,
+                         lambda: client.get_part(part_id), finished)
+            return
+
         try:
-            part_detail = self.client().get_part(part_id)
+            if part_detail is None:
+                part_detail = self.client().get_part(part_id)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return

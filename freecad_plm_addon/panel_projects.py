@@ -282,7 +282,7 @@ class PanelProjectsMixin:
         self.restore_tree_selection(selection)
         self.update_context_actions()
 
-    def load_project_parts(self, project_item, force=False):
+    def load_project_parts(self, project_item, force=False, *, background=False, parts=None):
         if project_item is None:
             return
         if bool(project_item.data(0, self.tree_role(2))) and not force:
@@ -295,8 +295,33 @@ class PanelProjectsMixin:
             return
         self.set_status("Lade Teile...")
 
+        if background:
+            from .background_work import run_gui_work
+            generation = getattr(self, "_tree_load_generation", 0) + 1
+            self._tree_load_generation = generation
+            project_item.setData(0, self.tree_role(8), generation)
+            client = self.client()
+
+            def finished(result, error):
+                try:
+                    current = (project_item.treeWidget() is self.browser_tree
+                               and project_item.data(0, self.tree_role(8)) == generation)
+                except RuntimeError:
+                    current = False
+                if not current:
+                    return
+                if error is not None:
+                    self.set_status(f"Teile konnten nicht geladen werden: {error}")
+                    return
+                self.load_project_parts(project_item, force=True, parts=result)
+
+            run_gui_work(self.QtCore, self.widget,
+                         lambda: client.get_parts(project_id), finished)
+            return
+
         try:
-            parts = self.client().get_parts(project_id)
+            if parts is None:
+                parts = self.client().get_parts(project_id)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return

@@ -371,9 +371,9 @@ class PanelBrowserMixin:
             return
         kind = self.tree_item_kind(item)
         if kind == "project":
-            self.load_project_parts(item)
+            self.load_project_parts(item, background=True)
         elif kind == "part":
-            self.load_part_revisions(item)
+            self.load_part_revisions(item, background=True)
 
     def browser_item_double_clicked(self, item, _column=0):
         kind = self.tree_item_kind(item)

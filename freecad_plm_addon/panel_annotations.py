@@ -215,28 +215,34 @@ class PanelAnnotationsMixin:
         self.set_status("Revisionsnotizen zurückgesetzt.")
 
     def refresh_annotations(self, revision):
+        from .background_work import run_gui_work
+
         self.current_annotations = []
         self.annotations.clear()
         self.update_annotation_controls()
+        generation = getattr(self, "_annotation_generation", 0) + 1
+        self._annotation_generation = generation
         part = self.selected_part()
         part_id = part.get("id") if isinstance(part, dict) else None
         if part_id is None:
             return
+        revision_id = revision.get("id")
+        client = self.client()
 
-        try:
-            annotations = annotations_for_revision(
-                self.client().get_annotations(part_id),
-                revision.get("id"),
-            )
-        except PLMError as exc:
-            self.annotations.addItem(f"PLM-Fehler: {exc}")
-            return
-        except Exception as exc:
-            self.annotations.addItem(f"Anmerkungen konnten nicht geladen werden: {exc}")
-            return
+        def finished(result, error):
+            if generation != self._annotation_generation:
+                return
+            selected = self.selected_revision() or {}
+            if selected.get("id") != revision_id:
+                return
+            if error is not None:
+                self.annotations.addItem(f"Anmerkungen konnten nicht geladen werden: {error}")
+                return
+            self.current_annotations = annotations_for_revision(result, revision_id)
+            self.apply_current_annotation_filter()
 
-        self.current_annotations = annotations
-        self.apply_current_annotation_filter()
+        run_gui_work(self.QtCore, self.widget,
+                     lambda: client.get_annotations(part_id), finished)
 
     def apply_current_annotation_filter(self, *_args):
         self.annotations.clear()

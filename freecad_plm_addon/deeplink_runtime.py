@@ -1,5 +1,6 @@
 import sys
 import time
+from collections import deque
 
 from .deeplink import DEEPLINK_SCHEME, deep_link_from_argv, parse_revision_deep_link
 
@@ -7,9 +8,12 @@ from .deeplink import DEEPLINK_SCHEME, deep_link_from_argv, parse_revision_deep_
 DUPLICATE_WINDOW_SECONDS = 2.0
 _event_filter = None
 _recent_links = {}
+_pending_links = deque()
+_dispatching = False
 
 
 def dispatch_deep_link(value, *, opener=None, now=None):
+    global _dispatching
     raw_value = str(value or "").strip()
     deep_link = parse_revision_deep_link(raw_value)
     timestamp = time.monotonic() if now is None else float(now)
@@ -27,7 +31,16 @@ def dispatch_deep_link(value, *, opener=None, now=None):
         from .panel import open_revision_deep_link
 
         opener = open_revision_deep_link
-    opener(deep_link)
+    _pending_links.append((deep_link, opener))
+    if _dispatching:
+        return True
+    _dispatching = True
+    try:
+        while _pending_links:
+            pending_link, pending_opener = _pending_links.popleft()
+            pending_opener(pending_link)
+    finally:
+        _dispatching = False
     return True
 
 
@@ -111,6 +124,8 @@ def install_deep_link_runtime(arguments=None):
 
 
 def reset_runtime_state_for_tests():
-    global _event_filter
+    global _event_filter, _dispatching
     _event_filter = None
+    _dispatching = False
     _recent_links.clear()
+    _pending_links.clear()

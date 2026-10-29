@@ -25,7 +25,7 @@ class PanelSlicerMixin:
         else:
             self.set_status("Keine Revision ausgewählt.")
 
-    def _sync_slicer_project_path(self, project_path, revision, state=None):
+    def _sync_slicer_project_path(self, project_path, revision, state=None, *, client=None, report=True):
         from .slicer import read_sync_state, validate_3mf, write_sync_state
         from .workspace import sha256_file
 
@@ -39,13 +39,13 @@ class PanelSlicerMixin:
         if local_sha256 == state.get("server_sha256"):
             return False
         if state.get("print_project_id"):
-            result = self.client().sync_print_project(
+            result = (client or self.client()).sync_print_project(
                 state["print_project_id"], project_path,
                 base_sha256=state.get("server_sha256", ""),
             )
             server_project = result["slicer_project"]
         else:
-            result = self.client().sync_slicer_project(
+            result = (client or self.client()).sync_slicer_project(
                 revision["id"], project_path,
                 base_sha256=state.get("server_sha256", ""),
                 label="Slicer-Projekt", slicer_name=state.get("slicer_name", ""),
@@ -61,20 +61,64 @@ class PanelSlicerMixin:
             }
         )
         write_sync_state(project_path, state)
-        self.set_status(f"Slicer-Projekt synchronisiert: {project_path.name}")
+        if report:
+            self.set_status(f"Slicer-Projekt synchronisiert: {project_path.name}")
         return True
 
-    def _slicer_file_changed(self, project_path, revision):
+    def _slicer_file_changed(self, project_path, revision, *, background=False):
         from .slicer import read_sync_state, write_sync_state
+
+        if background:
+            from .background_work import run_gui_work
+            key = str(project_path)
+            busy = getattr(self, "_slicer_sync_busy", set())
+            if key in busy:
+                return
+            self._slicer_sync_busy = busy
+            busy.add(key)
+            client = self.client()
+            try:
+                initial_stat = Path(project_path).stat()
+                initial_state = (initial_stat.st_size, initial_stat.st_mtime_ns)
+            except OSError:
+                initial_state = None
+
+            def finished(result, error):
+                busy.discard(key)
+                if error is not None:
+                    PanelSlicerMixin._handle_slicer_sync_error(self, project_path, error)
+                elif result:
+                    self.set_status(f"Slicer-Projekt synchronisiert: {Path(project_path).name}")
+                if error is None:
+                    try:
+                        current_stat = Path(project_path).stat()
+                        current_state = (current_stat.st_size, current_stat.st_mtime_ns)
+                    except OSError:
+                        current_state = None
+                    if current_state != initial_state:
+                        self._slicer_file_changed(project_path, revision, background=True)
+
+            run_gui_work(self.QtCore, self.widget,
+                         lambda: self._sync_slicer_project_path(
+                             project_path, revision, client=client, report=False), finished)
+            return
 
         try:
             self._sync_slicer_project_path(project_path, revision)
-        except ConflictError as exc:
+        except Exception as exc:
+            PanelSlicerMixin._handle_slicer_sync_error(self, project_path, exc)
+
+    def _handle_slicer_sync_error(self, project_path, exc):
+        from .slicer import read_sync_state, write_sync_state
+        if isinstance(exc, ConflictError):
             state = read_sync_state(project_path)
             state["sync_status"] = "conflict"
             write_sync_state(project_path, state)
+            monitor = self.slicer_monitors.get(str(project_path)) if hasattr(self, "slicer_monitors") else None
+            if monitor is not None:
+                monitor.pause()
             self.set_status(f"Slicer-Synchronisationskonflikt: {exc}")
-        except Exception as exc:
+        else:
             self.set_status(f"Slicer-Projekt noch nicht synchronisiert: {exc}")
 
     def rebuild_selected_revision_in_slicer(self):
@@ -311,12 +355,15 @@ class PanelSlicerMixin:
                 self.QtCore,
                 target_path,
                 lambda changed_path, item=dict(revision): self._slicer_file_changed(
-                    changed_path, item
+                    changed_path, item, background=True
                 ),
             )
             self.slicer_monitors[str(target_path)] = monitor
             launch_slicer(target_path, command)
         except ConflictError as exc:
+            if previous_monitor is not None:
+                previous_monitor.pause()
+                previous_monitor = None
             self.set_status(f"Slicer-Projekt-Konflikt: {exc}")
             return
         except PLMError as exc:

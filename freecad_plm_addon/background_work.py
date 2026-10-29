@@ -2,6 +2,30 @@
 from concurrent.futures import ThreadPoolExecutor
 
 
+_ui_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="plm-ui")
+
+
+def run_gui_work(qt_core, parent, work, finished):
+    """Run pure file/network work off-thread and deliver its result on the Qt thread."""
+    future = _ui_executor.submit(work)
+    timer = qt_core.QTimer(parent)
+
+    def poll():
+        if not future.done():
+            return
+        timer.stop()
+        timer.deleteLater()
+        try:
+            result, error = future.result(), None
+        except Exception as exc:
+            result, error = None, exc
+        finished(result, error)
+
+    timer.timeout.connect(poll)
+    timer.start(50)
+    return future
+
+
 def run_background_work(qt_core, qt_widgets, parent, message, work):
     class WorkDialog(qt_widgets.QDialog):
         def reject(self):

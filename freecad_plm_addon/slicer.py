@@ -547,6 +547,7 @@ class SlicerProjectMonitor:
         self.project_path = Path(project_path)
         self.callback = callback
         self.paused = False
+        self._last_file_state = self._file_state()
         self.watcher = qt_core.QFileSystemWatcher()
         self.timer = qt_core.QTimer()
         self.timer.setSingleShot(True)
@@ -569,7 +570,18 @@ class SlicerProjectMonitor:
         if self.paused:
             return
         self._restore_paths()
+        current = self._file_state()
+        if current == self._last_file_state:
+            return
+        self._last_file_state = current
         self.timer.start()
+
+    def _file_state(self):
+        try:
+            stat = self.project_path.stat()
+            return stat.st_size, stat.st_mtime_ns
+        except OSError:
+            return None
 
     def flush(self):
         if self.paused:
@@ -584,6 +596,7 @@ class SlicerProjectMonitor:
     def resume(self):
         self.paused = False
         self._restore_paths()
+        self._last_file_state = self._file_state()
         self.timer.start()
 
     def stop(self):
