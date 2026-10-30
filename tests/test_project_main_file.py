@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from freecad_plm_addon.panel_browser import PanelBrowserMixin
 from freecad_plm_addon.panel_helpers import project_file_part_label
 from freecad_plm_addon.panel_projects import PanelProjectsMixin
+from freecad_plm_addon.panel_parts import PanelPartsMixin
 from freecad_plm_addon.panel_state import PanelStateMixin
 
 
@@ -73,6 +74,23 @@ class ProjectMainFileTests(unittest.TestCase):
         PanelProjectsMixin.choose_project_main_file(self.panel)
         self.panel.client.return_value.update_project.assert_called_once_with(7, {"main_part_id": 2})
         self.panel.refresh_projects.assert_called_once()
+
+    def test_loading_part_detail_preserves_main_file_row_label(self):
+        part_item = Mock()
+        self.panel.QtCore.Qt.UserRole = 32
+        self.panel.tree_role.side_effect = lambda offset: 32 + offset
+        part_item.data.side_effect = lambda column, role: "Hauptdatei · P-004 - Druck" if role == 37 else False
+        self.panel.tree_item_payload.return_value = {"id": 4}
+        self.panel.tree_ancestor.return_value = None
+        self.panel.client.return_value.get_part.return_value = {
+            "part": {"id": 4, "number": "P-004", "name": "Druck"},
+            "revisions": [{"id": 9, "revision_code": "R0002"}],
+        }
+
+        PanelPartsMixin.load_part_revisions(self.panel, part_item)
+
+        part_item.setText.assert_called_with(0, "Hauptdatei · P-004 - Druck · R0002")
+        part_item.setData.assert_any_call(0, 37, "Hauptdatei · P-004 - Druck")
 
     def test_group_ancestors_expand_for_navigation(self):
         item = Mock()

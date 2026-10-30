@@ -184,8 +184,9 @@ class PanelPartsMixin:
             detail_part["can_create_variant"] = bool(part_detail.get("can_create_variant", False))
             detail_part["variants"] = part_detail.get("variants", [])
             part_item.setData(0, int(self.QtCore.Qt.UserRole), detail_part)
-            label = part_label(detail_part)
-            part_item.setText(0, label)
+            # Keep the project-tree context (main file or variant name) when
+            # refreshing the part payload after selecting its row.
+            label = part_item.data(0, self.tree_role(5)) or part_label(detail_part)
             part_item.setData(0, self.tree_role(5), label)
             if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
                 self.set_part_form(detail_part)
