@@ -420,11 +420,17 @@ class PanelProjectsMixin:
         if isinstance(variant_view, dict) and variant_view.get("rows") and hasattr(self, "variant_role"):
             by_id = {part.get("id"): part for part in parts}
             role = self.variant_role.currentData() or "assembly_part_id"
+            main_part = by_id.get(project.get("main_part_id"))
+            shown_ids = set()
+            if main_part and main_part.get("latest_fcstd_revision"):
+                add_part_row(project_item, main_part, f"Hauptdatei · {part_label(main_part)}")
+                shown_ids.add(main_part["id"])
             for row in variant_view["rows"]:
                 part = by_id.get(row.get(role))
-                if part is not None:
+                if part is not None and part["id"] not in shown_ids:
                     add_part_row(project_item, part, f"{row['name']} · {part_label(part)}")
-            remaining = [part for part in parts if part.get("id") not in {row.get(role) for row in variant_view["rows"]}]
+                    shown_ids.add(part["id"])
+            remaining = [part for part in parts if part.get("id") not in shown_ids]
             if remaining:
                 other = self.add_tree_item(project_item, "other_files", {}, f"Weitere Dateien und Teile ({len(remaining)})")
                 for part in remaining:
