@@ -406,6 +406,7 @@ class PanelProjectsMixin:
             return
 
         variant_view = parts.get("variant_view") if isinstance(parts, dict) else None
+        first_variant_load = not isinstance(project_item.data(0, self.tree_role(9)), dict)
         parts = parts.get("parts", []) if isinstance(parts, dict) else parts
         self.clear_tree_children(project_item)
         project_item.setData(0, self.tree_role(9), variant_view)
@@ -419,6 +420,16 @@ class PanelProjectsMixin:
 
         if isinstance(variant_view, dict) and variant_view.get("rows") and hasattr(self, "variant_role"):
             by_id = {part.get("id"): part for part in parts}
+            if first_variant_load:
+                main_id = project.get("main_part_id")
+                preferred_role = next((role for role in ("print_part_id", "assembly_part_id")
+                                       if any(row.get(role) == main_id for row in variant_view["rows"])), None)
+                if preferred_role:
+                    index = self.variant_role.findData(preferred_role)
+                    if index >= 0:
+                        previous = self.variant_role.blockSignals(True)
+                        self.variant_role.setCurrentIndex(index)
+                        self.variant_role.blockSignals(previous)
             role = self.variant_role.currentData() or "assembly_part_id"
             main_part = by_id.get(project.get("main_part_id"))
             shown_ids = set()

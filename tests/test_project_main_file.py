@@ -40,6 +40,7 @@ class ProjectMainFileTests(unittest.TestCase):
         print_part = {"id": 4, "number": "P-004", "name": "Druck 12", "latest_revision": {"revision_code": "R0002"},
                       "latest_fcstd_revision": {"revision_code": "R0002"}}
         self.panel.variant_role.currentData.return_value = "assembly_part_id"
+        self.panel.variant_role.findData.side_effect = lambda role: {"assembly_part_id": 0, "print_part_id": 1}[role]
         self.panel.client.return_value.get_parts.return_value = {
             "parts": [self.main, print_part, self.other],
             "variant_view": {"rows": [{"id": 1, "name": "Normal", "assembly_part_id": 2, "print_part_id": 4}]},
@@ -63,10 +64,13 @@ class ProjectMainFileTests(unittest.TestCase):
         self.panel.add_tree_item.reset_mock()
         self.panel.tree_item_payload.return_value = {"id": 7, "main_part_id": 4}
         self.panel.variant_role.currentData.return_value = "assembly_part_id"
+        self.panel.variant_role.setCurrentIndex.side_effect = lambda index: setattr(
+            self.panel.variant_role.currentData, "return_value", "print_part_id" if index == 1 else "assembly_part_id")
         PanelProjectsMixin.load_project_parts(self.panel, self.project_item, force=True)
         created = self.panel.add_tree_item.call_args_list
         self.assertEqual(created[0].args[:4], (self.project_item, "part", print_part, "Hauptdatei · P-004 - Druck 12"))
-        self.assertEqual(created[1].args[:4], (self.project_item, "part", self.main, "Normal · A - Assembly"))
+        self.panel.variant_role.setCurrentIndex.assert_called_with(1)
+        self.assertEqual([call.args[2]["id"] for call in created if call.args[1] == "part"], [4, 2, 3])
 
     def test_selection_saves_project_part_id(self):
         self.panel.selected_project.return_value = {"id": 7, "main_part_id": 2}
@@ -91,6 +95,28 @@ class ProjectMainFileTests(unittest.TestCase):
 
         part_item.setText.assert_called_with(0, "Hauptdatei · P-004 - Druck · R0002")
         part_item.setData.assert_any_call(0, 37, "Hauptdatei · P-004 - Druck")
+
+    def test_print_main_file_selects_print_parts_for_other_variants(self):
+        self.panel.tree_item_payload.return_value = {"id": 7, "main_part_id": 4}
+        self.panel.variant_role.currentData.return_value = "assembly_part_id"
+        self.panel.variant_role.findData.return_value = 1
+        self.panel.variant_role.setCurrentIndex.side_effect = lambda index: setattr(
+            self.panel.variant_role.currentData, "return_value", "print_part_id")
+        print_main = {"id": 4, "number": "P-004", "name": "Druck", "latest_fcstd_revision": {"revision_code": "R0001"}}
+        print_other = {"id": 5, "number": "P-005", "name": "Druck 20", "latest_fcstd_revision": {"revision_code": "R0001"}}
+        self.panel.client.return_value.get_parts.return_value = {
+            "parts": [self.main, self.other, print_main, print_other],
+            "variant_view": {"rows": [
+                {"name": "Normal", "assembly_part_id": 2, "print_part_id": 4},
+                {"name": "20 Chips", "assembly_part_id": 3, "print_part_id": 5},
+            ]},
+        }
+
+        PanelProjectsMixin.load_project_parts(self.panel, self.project_item)
+
+        rows = [call.args for call in self.panel.add_tree_item.call_args_list if call.args[1] == "part"]
+        self.assertEqual([row[2]["id"] for row in rows], [4, 5, 2, 3])
+        self.assertEqual(rows[1][3], "20 Chips · P-005 - Druck 20")
 
     def test_group_ancestors_expand_for_navigation(self):
         item = Mock()
