@@ -644,7 +644,7 @@ class PanelCheckoutMixin:
                 revision_id = revision.get("id")
                 if (
                     self.tree_item_kind(revision_item) != "revision"
-                    or revision_item.isHidden()
+                    or revision_index != 0
                     or revision_item.data(0, self.tree_role(6)) == "checkout_row"
                     or not revision_is_checkout_editable(revision)
                     or revision_id in existing_revision_ids
@@ -677,9 +677,14 @@ class PanelCheckoutMixin:
         if selected_item is None:
             self.set_status("Ausgewählte Revision wurde nicht gefunden.")
             return
-        self.browser_tree.setCurrentItem(selected_item)
-        self.browser_tree.scrollToItem(selected_item)
-        self.add_selected_file_to_active_checkout()
+        self.browser_tree.setCurrentItem(selected_item.parent())
+        self.browser_tree.scrollToItem(selected_item.parent())
+        self._revision_action_override = self.tree_item_payload(selected_item)
+        try:
+            self.add_selected_file_to_active_checkout()
+        finally:
+            self._revision_action_override = None
+            self.update_context_actions()
 
     def remove_file_from_active_checkout(self):
         from . import fcstd

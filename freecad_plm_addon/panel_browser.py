@@ -39,7 +39,6 @@ class PanelBrowserMixin:
                     self.reset_project_filters()
                 self.browser_tree.setCurrentItem(item)
                 self.expand_tree_ancestors(item)
-                item.setExpanded(True)
                 return True
         return False
 
@@ -48,6 +47,9 @@ class PanelBrowserMixin:
         if override is not None:
             return override
         item = self.browser_tree.currentItem()
+        if self.tree_item_kind(item) == "part":
+            revision = item.data(0, self.tree_role(7))
+            return revision if isinstance(revision, dict) else None
         if self.tree_item_kind(item) != "revision":
             return None
         return self.tree_item_payload(item)
@@ -63,8 +65,14 @@ class PanelBrowserMixin:
         for item in self.iter_tree_items():
             revision = self.tree_item_payload(item)
             if self.tree_item_kind(item) == "revision" and revision and revision.get("id") == revision_id:
-                self.browser_tree.setCurrentItem(item)
-                self.expand_tree_ancestors(item)
+                target = item
+                if item.isHidden() and item.parent() is not None:
+                    parent = item.parent()
+                    if (parent.data(0, self.tree_role(7)) or {}).get("id") != revision_id:
+                        continue
+                    target = parent
+                self.browser_tree.setCurrentItem(target)
+                self.expand_tree_ancestors(target)
                 return True
         return False
 
@@ -82,6 +90,24 @@ class PanelBrowserMixin:
             return None
         payload = item.data(0, int(self.QtCore.Qt.UserRole))
         return payload if isinstance(payload, dict) else None
+
+    def update_tree_revision(self, revision):
+        revision_id = revision.get("id")
+        if revision_id is None:
+            return
+        for item in self.iter_tree_items():
+            kind = self.tree_item_kind(item)
+            if kind == "part":
+                current = item.data(0, self.tree_role(7))
+                if isinstance(current, dict) and current.get("id") == revision_id:
+                    item.setData(0, self.tree_role(7), revision)
+            elif kind == "revision" and (self.tree_item_payload(item) or {}).get("id") == revision_id:
+                item.setData(0, int(self.QtCore.Qt.UserRole), revision)
+                if item.data(0, self.tree_role(6)) != "checkout_row":
+                    label = revision_label(revision)
+                    item.setText(0, label)
+                    item.setData(0, self.tree_role(5), label)
+        self.update_checkout_controls()
 
     def tree_item_checkout(self, item):
         if item is None:
@@ -109,7 +135,8 @@ class PanelBrowserMixin:
     def expand_tree_ancestors(self, item):
         parent = item.parent() if item is not None else None
         while parent is not None:
-            parent.setExpanded(True)
+            if self.tree_item_kind(parent) != "part":
+                parent.setExpanded(True)
             parent = parent.parent()
 
     def iter_tree_items(self):
@@ -170,8 +197,8 @@ class PanelBrowserMixin:
         self.expand_tree_ancestors(item)
         if project_item is not None:
             project_item.setExpanded(True)
-        if part_item is not None:
-            part_item.setExpanded(True)
+        if kind == "revision" and item.isHidden() and part_item is not None:
+            item = part_item
         self.browser_tree.setCurrentItem(item)
         self.browser_tree.scrollToItem(item)
         return True
@@ -210,11 +237,19 @@ class PanelBrowserMixin:
                 if parent is not None:
                     parent.takeChild(parent.indexOfChild(item))
         for item in self.iter_tree_items():
-            if self.tree_item_kind(item) != "revision":
+            if self.tree_item_kind(item) not in ("revision", "part"):
                 continue
-            base_label = item.data(0, self.tree_role(5)) or revision_label(
-                self.tree_item_payload(item) or {}
-            )
+            if self.tree_item_kind(item) == "part":
+                revision = item.data(0, self.tree_role(7))
+                if not bool(item.data(0, self.tree_role(2))) and not isinstance(revision, dict):
+                    continue
+                base_label = item.data(0, self.tree_role(5)) or item.text(0)
+                if isinstance(revision, dict):
+                    base_label = f"{base_label} · {revision_label(revision).split(' · ')[0]}"
+            else:
+                base_label = item.data(0, self.tree_role(5)) or revision_label(
+                    self.tree_item_payload(item) or {}
+                )
             item.setText(0, base_label)
             item.setData(0, self.tree_role(3), None)
             item.setData(0, self.tree_role(4), "")
@@ -224,7 +259,15 @@ class PanelBrowserMixin:
             item.setFont(0, font)
             item.setForeground(0, self.QtGui.QBrush())
             item.setIcon(0, self.QtGui.QIcon())
-            item.setToolTip(0, revision_workflow_hint(self.tree_item_payload(item) or {}))
+            if self.tree_item_kind(item) == "part":
+                revision = item.data(0, self.tree_role(7))
+                item.setToolTip(0, revision_workflow_hint(revision) if isinstance(revision, dict) else "Keine Revision vorhanden.")
+                item.setChildIndicatorPolicy(
+                    self.QtWidgets.QTreeWidgetItem.DontShowIndicator
+                )
+                item.setExpanded(False)
+            else:
+                item.setToolTip(0, revision_workflow_hint(self.tree_item_payload(item) or {}))
 
     def checkout_icon(self, state):
         filename = {
@@ -253,6 +296,10 @@ class PanelBrowserMixin:
             "error": "#c62828",
         }
         base_label = item.data(0, self.tree_role(5)) or item.text(0)
+        if self.tree_item_kind(item) == "part":
+            revision = item.data(0, self.tree_role(7))
+            if isinstance(revision, dict):
+                base_label = f"{base_label} · {revision_label(revision).split(' · ')[0]}"
         item.setText(0, f"{base_label} · {labels[state]}")
         item.setData(0, self.tree_role(3), checkout)
         item.setData(0, self.tree_role(4), error)
@@ -325,17 +372,24 @@ class PanelBrowserMixin:
             error = self.checkout_errors.get(checkout_id, "")
             self.mark_checkout_item(revision_item, checkout, error)
             if revision_item.isHidden():
-                checkout_row = self.add_tree_item(
-                    part_item,
-                    "revision",
-                    self.tree_item_payload(revision_item),
-                    f"Checkout {checkout_id} · {revision_label(self.tree_item_payload(revision_item) or {})}",
-                )
-                checkout_row.setData(0, self.tree_role(6), "checkout_row")
-                self.mark_checkout_item(checkout_row, checkout, error)
-                revision_item = checkout_row
+                if (part_item.data(0, self.tree_role(7)) or {}).get("id") == revision_id:
+                    self.mark_checkout_item(part_item, checkout, error)
+                    revision_item = part_item
+                else:
+                    checkout_row = self.add_tree_item(
+                        part_item,
+                        "revision",
+                        self.tree_item_payload(revision_item),
+                        f"Checkout {checkout_id} · {revision_label(self.tree_item_payload(revision_item) or {})}",
+                    )
+                    checkout_row.setData(0, self.tree_role(6), "checkout_row")
+                    self.mark_checkout_item(checkout_row, checkout, error)
+                    part_item.setChildIndicatorPolicy(
+                        self.QtWidgets.QTreeWidgetItem.ShowIndicator
+                    )
+                    part_item.setExpanded(True)
+                    revision_item = checkout_row
             project_item.setExpanded(True)
-            part_item.setExpanded(True)
             checkout_items[checkout_id] = revision_item
         self.checkout_tree_items = checkout_items
         return checkout_items
@@ -361,10 +415,12 @@ class PanelBrowserMixin:
         if revision:
             self.set_revision_context(revision)
         self.update_context_actions()
+        if kind == "part" and revision is None and not bool(item.data(0, self.tree_role(2))):
+            self.load_part_revisions(item, background=True)
         if kind == "project":
             self.set_status("Projekt ausgewählt. Zum Laden der Teile aufklappen.")
-        elif kind == "part":
-            self.set_status("Teil ausgewählt. Zum Laden der Revisionen aufklappen.")
+        elif kind == "part" and revision is None:
+            self.set_status("Lade aktuelle Revision...")
 
     def browser_item_expanded(self, item):
         if bool(item.data(0, self.tree_role(2))):
@@ -380,9 +436,12 @@ class PanelBrowserMixin:
         if kind == "checkout_error":
             self.refresh_projects_background()
             return
-        if kind != "revision":
+        if kind == "part" and self.selected_revision() is None:
+            self.load_part_revisions(item, background=True)
             return
-        checkout = self.tree_item_checkout(item)
+        if kind not in ("revision", "part"):
+            return
+        checkout = self.selected_tree_checkout()
         state = checkout_visual_state(
             checkout,
             self.active_checkout_id(),
@@ -400,6 +459,8 @@ class PanelBrowserMixin:
         if item is None or self.tree_item_kind(item) == "placeholder":
             return
         self.browser_tree.setCurrentItem(item)
+        if self.tree_item_kind(item) == "part" and self.selected_revision() is None:
+            self.load_part_revisions(item, background=True)
         self.update_context_actions()
         menu = self.QtWidgets.QMenu(self.browser_tree)
         if self.context_primary_label and callable(self.context_primary_callback):

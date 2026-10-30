@@ -133,9 +133,11 @@ class PanelPartsMixin:
         if part_id is None:
             self.set_status("Teil hat keine ID.")
             return
-        self.set_part_form(part)
+        if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
+            self.set_part_form(part)
 
-        self.set_status("Lade Revisionen...")
+        if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
+            self.set_status("Lade Revisionen...")
 
         if background:
             from .background_work import run_gui_work
@@ -188,7 +190,7 @@ class PanelPartsMixin:
             if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
                 self.set_part_form(detail_part)
         self.clear_tree_children(part_item)
-        for index, revision in enumerate(revisions):
+        for revision in revisions:
             item = self.add_tree_item(
                 part_item,
                 "revision",
@@ -196,13 +198,25 @@ class PanelPartsMixin:
                 revision_label(revision),
             )
             item.setToolTip(0, revision_workflow_hint(revision))
-            item.setHidden(index > 0)
+            item.setHidden(True)
+        part_item.setData(0, self.tree_role(7), revisions[0] if revisions else None)
+        base_label = part_item.data(0, self.tree_role(5)) or part_item.text(0)
+        if revisions:
+            part_item.setText(0, f"{base_label} · {revision_label(revisions[0]).split(' · ')[0]}")
+            part_item.setToolTip(0, revision_workflow_hint(revisions[0]))
+        else:
+            part_item.setText(0, base_label)
+            part_item.setToolTip(0, "Keine Revision vorhanden.")
         part_item.setData(0, self.tree_role(2), True)
-        part_item.setExpanded(True)
+        part_item.setChildIndicatorPolicy(self.QtWidgets.QTreeWidgetItem.DontShowIndicator)
+        part_item.setExpanded(False)
+        if self.browser_tree.currentItem() is part_item:
+            self.browser_selection_changed()
 
         count = len(revisions)
         suffix = "" if count == 1 else "en"
-        self.set_status(f"{count} Revision{suffix} geladen.")
+        if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
+            self.set_status(f"{count} Revision{suffix} geladen.")
 
     def show_revisions_dialog(self):
         part_item = self.tree_ancestor(self.browser_tree.currentItem(), "part")
@@ -211,9 +225,9 @@ class PanelPartsMixin:
         self.load_part_revisions(part_item)
         older_items = [
             part_item.child(index)
-            for index in range(part_item.childCount())
+            for index in range(1, part_item.childCount())
             if self.tree_item_kind(part_item.child(index)) == "revision"
-            and part_item.child(index).isHidden()
+            and part_item.child(index).data(0, self.tree_role(6)) != "checkout_row"
         ]
         if not older_items:
             self.set_status("Keine älteren Revisionen vorhanden.")

@@ -15,6 +15,7 @@ from .panel_helpers import (
     project_import_result_text,
     project_file_part_label,
     project_label,
+    revision_label,
     revision_overview_text,
     revision_technical_text,
 )
@@ -400,10 +401,17 @@ class PanelProjectsMixin:
             return
 
         self.clear_tree_children(project_item)
+        def add_part_row(parent, part, label):
+            item = self.add_tree_item(parent, "part", part, label)
+            item.setData(0, self.tree_role(2), False)
+            revision = part.get("latest_revision") or part.get("latest_fcstd_revision")
+            if isinstance(revision, dict):
+                item.setText(0, f"{label} · {revision_label(revision).split(' · ')[0]}")
+            return item
+
         main_part = next((part for part in parts if part.get("id") == project.get("main_part_id") and part.get("latest_fcstd_revision")), None)
         if main_part:
-            item = self.add_tree_item(project_item, "part", main_part, project_file_part_label(main_part, prefer_fcstd=True), lazy=True)
-            item.setToolTip(0, "Aufklappen, um Revisionen zu laden.")
+            add_part_row(project_item, main_part, project_file_part_label(main_part, prefer_fcstd=True))
             remaining = [part for part in parts if part.get("id") != main_part["id"]]
             other_files_item = self.add_tree_item(project_item, "other_files", {}, f"Weitere Dateien und Teile ({len(remaining)})") if remaining else None
         else:
@@ -411,14 +419,11 @@ class PanelProjectsMixin:
             other_files_item = None
         for part in remaining:
             parent = other_files_item or project_item
-            item = self.add_tree_item(
+            add_part_row(
                 parent,
-                "part",
                 part,
                 project_file_part_label(part) if main_part else part_label(part),
-                lazy=True,
             )
-            item.setToolTip(0, "Aufklappen, um Revisionen zu laden.")
         project_item.setData(0, self.tree_role(2), True)
         project_item.setExpanded(True)
 

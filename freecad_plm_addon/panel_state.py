@@ -92,7 +92,7 @@ class PanelStateMixin:
         item = self.browser_tree.currentItem()
         checkout = self.selected_tree_checkout()
         state = checkout_visual_state(checkout, self.active_checkout_id())
-        if self.tree_item_kind(item) != "revision" or state != "local":
+        if self.tree_item_kind(item) not in ("revision", "part") or state != "local":
             return
         action = checkout_primary_button_action(self.poll_checkout_change_state())
         label = "Einchecken" if action == "checkin" else "Abbrechen"
@@ -175,8 +175,9 @@ class PanelStateMixin:
         part = self.selected_part()
         revision = self.selected_revision()
         checkout = self.selected_tree_checkout()
+        action_kind = "revision" if kind == "part" and revision else kind
         primary = context_primary_action(
-            kind,
+            action_kind,
             revision,
             checkout,
             self.active_checkout_id(),
@@ -200,7 +201,7 @@ class PanelStateMixin:
                 ("Projekt importieren", self.import_project_dialog),
                 ("Projekt bearbeiten", self.show_project_dialog),
             ]
-        elif kind == "part":
+        elif kind == "part" and not revision:
             summary = part_label(part or {})
             label = "Teil bearbeiten"
             callback = self.show_part_dialog
@@ -216,7 +217,7 @@ class PanelStateMixin:
             callback = self.refresh_projects
             if checkout_can_cancel(checkout):
                 more = [("Checkout abbrechen", self.cancel_selected_checkout)]
-        elif kind == "revision":
+        elif action_kind == "revision":
             summary = compact_revision_summary(revision)
             state = checkout_visual_state(
                 checkout,
@@ -273,6 +274,11 @@ class PanelStateMixin:
                 more.append(("3MF neu erzeugen", self.rebuild_selected_revision_in_slicer))
                 more.append(("Zum Druckprojekt hinzufügen", self.add_selected_revision_to_print_project))
             more.append(("Revisionen", self.show_revisions_dialog))
+            if kind == "part":
+                more.extend((
+                    ("Teil bearbeiten", self.show_part_dialog),
+                    ("Revisionen aktualisieren", self.refresh_revisions),
+                ))
             more.extend(
                 [
                     (None, None),

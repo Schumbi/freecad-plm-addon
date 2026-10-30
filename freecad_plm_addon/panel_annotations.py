@@ -7,7 +7,6 @@ from .panel_helpers import (
     annotation_matches_filter,
     annotation_update_payload,
     annotations_for_revision,
-    revision_label,
     revision_notes_payload,
     revision_overview_text,
     revision_technical_text,
@@ -66,13 +65,7 @@ class PanelAnnotationsMixin:
         except Exception as exc:
             self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
             return
-        item = self.browser_tree.currentItem()
-        if self.tree_item_kind(item) == "revision":
-            item.setData(0, int(self.QtCore.Qt.UserRole), updated_revision)
-            label = revision_label(updated_revision)
-            item.setText(0, label)
-            item.setData(0, self.tree_role(5), label)
-            self.update_checkout_controls()
+        self.update_tree_revision(updated_revision)
         self.set_revision_context(updated_revision)
         self.set_status("Revisionsnotizen gespeichert.")
 
@@ -196,13 +189,7 @@ class PanelAnnotationsMixin:
             self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
             return
 
-        item = self.browser_tree.currentItem()
-        if self.tree_item_kind(item) == "revision":
-            item.setData(0, int(self.QtCore.Qt.UserRole), updated_revision)
-            label = revision_label(updated_revision)
-            item.setText(0, label)
-            item.setData(0, self.tree_role(5), label)
-            self.update_checkout_controls()
+        self.update_tree_revision(updated_revision)
         self.set_revision_context(updated_revision)
         self.set_status("Revisionsnotizen gespeichert.")
 
