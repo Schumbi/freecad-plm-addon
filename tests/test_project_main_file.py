@@ -25,7 +25,8 @@ class ProjectMainFileTests(unittest.TestCase):
         self.assertEqual(created[1].args[:2], (self.project_item, "other_files"))
         self.assertEqual(created[2].args[1:3], ("part", self.other))
         self.assertIs(created[2].args[0], self.panel.add_tree_item.return_value)
-        self.assertIn("Assembly.FCStd", created[0].args[3])
+        self.assertEqual(created[0].args[3], "A - Assembly")
+        self.panel.add_tree_item.return_value.setText.assert_any_call(0, "A - Assembly · R0002")
         self.panel.add_tree_item.return_value.setExpanded.assert_not_called()
 
     def test_without_main_keeps_flat_project_tree(self):
