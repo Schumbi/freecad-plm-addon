@@ -35,6 +35,28 @@ class ProjectMainFileTests(unittest.TestCase):
         self.assertEqual([c.args[1] for c in self.panel.add_tree_item.call_args_list], ["part", "part"])
         self.assertEqual(project_file_part_label(self.other), "B - Other")
 
+    def test_variant_view_shows_selected_role_and_keeps_other_parts_accessible(self):
+        print_part = {"id": 4, "number": "P-004", "name": "Druck 12", "latest_revision": {"revision_code": "R0002"}}
+        self.panel.variant_role.currentData.return_value = "assembly_part_id"
+        self.panel.client.return_value.get_parts.return_value = {
+            "parts": [self.main, print_part, self.other],
+            "variant_view": {"rows": [{"id": 1, "name": "Normal", "assembly_part_id": 2, "print_part_id": 4}]},
+        }
+
+        PanelProjectsMixin.load_project_parts(self.panel, self.project_item)
+
+        created = self.panel.add_tree_item.call_args_list
+        self.assertEqual(created[0].args[:4], (self.project_item, "part", self.main, "Normal · A - Assembly"))
+        self.assertEqual(created[1].args[1], "other_files")
+        self.assertEqual([call.args[2]["id"] for call in created[2:]], [4, 3])
+
+        self.panel.add_tree_item.reset_mock()
+        self.panel.variant_role.currentData.return_value = "print_part_id"
+        PanelProjectsMixin.load_project_parts(self.panel, self.project_item, force=True)
+        created = self.panel.add_tree_item.call_args_list
+        self.assertEqual(created[0].args[:4], (self.project_item, "part", print_part, "Normal · P-004 - Druck 12"))
+        self.assertEqual([call.args[2]["id"] for call in created[2:]], [2, 3])
+
     def test_selection_saves_project_part_id(self):
         self.panel.selected_project.return_value = {"id": 7, "main_part_id": 2}
         self.panel.QtWidgets.QInputDialog.getItem.return_value = (project_file_part_label(self.main), True)

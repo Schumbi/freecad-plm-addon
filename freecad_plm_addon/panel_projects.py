@@ -63,7 +63,7 @@ class PanelProjectsMixin:
                 "folders": folders,
                 "checkouts": checkouts,
                 "selection": selection,
-                "parts": {project_id: client.get_parts(project_id) for project_id in project_ids},
+                "parts": {project_id: client.get_parts(project_id, include_view=True) for project_id in project_ids},
                 "details": {part_id: client.get_part(part_id) for part_id in part_ids},
             }
 
@@ -352,6 +352,11 @@ class PanelProjectsMixin:
         self.restore_tree_selection(selection)
         self.update_context_actions()
 
+    def variant_role_changed(self, _index=None):
+        project_item = self.tree_ancestor(self.browser_tree.currentItem(), "project")
+        if project_item is not None and isinstance(project_item.data(0, self.tree_role(9)), dict):
+            self.refresh_parts()
+
     def load_project_parts(self, project_item, force=False, *, background=False, parts=None):
         if project_item is None:
             return
@@ -386,13 +391,13 @@ class PanelProjectsMixin:
                 self.load_project_parts(project_item, force=True, parts=result)
 
             run_gui_work(self.QtCore, self.widget,
-                         lambda: client.get_parts(project_id), finished)
+                         lambda: client.get_parts(project_id, include_view=True), finished)
             return
 
         try:
             if parts is None:
                 cache = getattr(self, "_refresh_parts_by_project", {})
-                parts = cache[project_id] if isinstance(cache, dict) and project_id in cache else self.client().get_parts(project_id)
+                parts = cache[project_id] if isinstance(cache, dict) and project_id in cache else self.client().get_parts(project_id, include_view=True)
         except PLMError as exc:
             self.set_status(f"PLM-Fehler: {exc}")
             return
@@ -400,7 +405,10 @@ class PanelProjectsMixin:
             self.set_status(f"Verbindung fehlgeschlagen: {exc}")
             return
 
+        variant_view = parts.get("variant_view") if isinstance(parts, dict) else None
+        parts = parts.get("parts", []) if isinstance(parts, dict) else parts
         self.clear_tree_children(project_item)
+        project_item.setData(0, self.tree_role(9), variant_view)
         def add_part_row(parent, part, label):
             item = self.add_tree_item(parent, "part", part, label)
             item.setData(0, self.tree_role(2), False)
@@ -408,6 +416,24 @@ class PanelProjectsMixin:
             if isinstance(revision, dict):
                 item.setText(0, f"{label} · {revision_label(revision).split(' · ')[0]}")
             return item
+
+        if isinstance(variant_view, dict) and variant_view.get("rows") and hasattr(self, "variant_role"):
+            by_id = {part.get("id"): part for part in parts}
+            role = self.variant_role.currentData() or "assembly_part_id"
+            for row in variant_view["rows"]:
+                part = by_id.get(row.get(role))
+                if part is not None:
+                    add_part_row(project_item, part, f"{row['name']} · {part_label(part)}")
+            remaining = [part for part in parts if part.get("id") not in {row.get(role) for row in variant_view["rows"]}]
+            if remaining:
+                other = self.add_tree_item(project_item, "other_files", {}, f"Weitere Dateien und Teile ({len(remaining)})")
+                for part in remaining:
+                    add_part_row(other, part, part_label(part))
+            project_item.setData(0, self.tree_role(2), True)
+            project_item.setExpanded(True)
+            if self.tree_ancestor(self.browser_tree.currentItem(), "project") is project_item:
+                self.variant_role.setVisible(True)
+            return
 
         main_part = next((part for part in parts if part.get("id") == project.get("main_part_id") and part.get("latest_fcstd_revision")), None)
         if main_part:

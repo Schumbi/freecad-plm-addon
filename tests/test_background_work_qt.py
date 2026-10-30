@@ -159,6 +159,7 @@ class BackgroundWorkQtTests(unittest.TestCase):
         panel._network_activity_count = 0
         panel._network_indicator_lit = False
         panel.browser_tree = QtWidgets.QTreeWidget()
+        panel.variant_role = QtWidgets.QComboBox()
         panel.project_search = QtWidgets.QLineEdit()
         panel.project_tag_button = QtWidgets.QToolButton()
         panel.project_tag_mode = QtWidgets.QComboBox()
@@ -173,6 +174,7 @@ class BackgroundWorkQtTests(unittest.TestCase):
         panel.begin_network_activity()
         self.assertEqual(panel.network_indicator_timer.interval(), 300)
         self.assertFalse(panel.browser_tree.isEnabled())
+        self.assertFalse(panel.variant_role.isEnabled())
         self.assertFalse(panel.action_bar_widget.isEnabled())
         self.assertIn("255", panel.network_indicator.styleSheet())
         panel._blink_network_indicator()
@@ -196,7 +198,7 @@ class BackgroundWorkQtTests(unittest.TestCase):
                 self.browser_tree.itemExpanded.connect(self.browser_item_expanded)
                 self.set_status = Mock()
                 self.api = Mock()
-                self.api.get_parts.side_effect = lambda _id: (time.sleep(.2), [])[1]
+                self.api.get_parts.side_effect = lambda _id, **_kwargs: (time.sleep(.2), [])[1]
                 self.client = lambda: self.api
 
         panel = Panel()

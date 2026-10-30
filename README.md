@@ -70,6 +70,12 @@ Für jede Variante ein eigenes Druckprojekt anlegen und dessen 3MF speichern.
 Beim nächsten Druck dieses bestehende Projekt öffnen oder den zugehörigen
 bewährten Druckstand über Bambuddy wiederholen.
 
+Wenn ein Projekt Ausführungen mit Zusammenbau und Druckmodell konfiguriert hat,
+zeigt der Projektbaum jede Ausführung als direkte Zeile. Über der Liste lässt
+sich zwischen **Zusammenbau** und **Druckmodell** wechseln. Alle anderen Teile
+und Dateien bleiben unter **Weitere Dateien und Teile** erreichbar. Für RODELN
+werden Normal, 12 Chips und 20 Chips durch die Servermigration zugeordnet.
+
 Erforderlich sind Editor-/Adminrechte, die Token-Scopes `read`, `write` und
 `checkout` sowie ein Server mit Migration 0027. Bei älteren Servern wird die
 Aktion nicht angeboten. Nach einem Add-on-Update FreeCAD neu starten.

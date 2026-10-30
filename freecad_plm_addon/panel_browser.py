@@ -402,6 +402,9 @@ class PanelBrowserMixin:
         item = self.browser_tree.currentItem()
         kind = self.tree_item_kind(item)
         project = self.selected_project()
+        if hasattr(self, "variant_role"):
+            project_item = self.tree_ancestor(item, "project")
+            self.variant_role.setVisible(project_item is not None and isinstance(project_item.data(0, self.tree_role(9)), dict))
         part = self.selected_part()
         revision = self.selected_revision()
 

@@ -187,6 +187,12 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
 
         self.build_project_filters(browser_layout)
 
+        self.variant_role = self.QtWidgets.QComboBox()
+        self.variant_role.addItem("Zusammenbau", "assembly_part_id")
+        self.variant_role.addItem("Druckmodell", "print_part_id")
+        self.variant_role.setVisible(False)
+        browser_layout.addWidget(self.variant_role)
+
         self.browser_tree = self.QtWidgets.QTreeWidget()
         self.browser_tree.setHeaderHidden(True)
         self.browser_tree.setUniformRowHeights(True)
@@ -365,6 +371,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         self.project_documents_button.clicked.connect(self.open_project_documents_dialog)
         self.settings_button.clicked.connect(self.show_connection_settings_dialog)
         self.browser_tree.itemSelectionChanged.connect(self.browser_selection_changed)
+        self.variant_role.currentIndexChanged.connect(self.variant_role_changed)
         self.browser_tree.itemExpanded.connect(self.browser_item_expanded)
         self.browser_tree.itemDoubleClicked.connect(self.browser_item_double_clicked)
         self.browser_tree.customContextMenuRequested.connect(self.show_browser_context_menu)
@@ -401,6 +408,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         self._network_activity_count += 1
         if self._network_activity_count == 1:
             self.browser_tree.setEnabled(False)
+            self.variant_role.setEnabled(False)
             self.project_search.setEnabled(False)
             self.project_tag_button.setEnabled(False)
             self.project_tag_mode.setEnabled(False)
@@ -418,6 +426,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
             self._network_indicator_lit = False
             self.network_indicator.setStyleSheet("color: rgba(22, 132, 197, 0); font-size: 15px;")
             self.browser_tree.setEnabled(True)
+            self.variant_role.setEnabled(True)
             self.project_search.setEnabled(True)
             self.project_tag_button.setEnabled(True)
             self.project_tag_mode.setEnabled(True)

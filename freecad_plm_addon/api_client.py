@@ -95,8 +95,9 @@ class PLMClient:
             "application/zip",
         )
 
-    def get_parts(self, project_id):
-        return self._json("GET", f"/api/projects/{project_id}/parts/")["parts"]
+    def get_parts(self, project_id, *, include_view=False):
+        response = self._json("GET", f"/api/projects/{project_id}/parts/")
+        return response if include_view else response["parts"]
 
     def create_part(self, project_id, data):
         return self._json("POST", f"/api/projects/{project_id}/parts/", data)["part"]
