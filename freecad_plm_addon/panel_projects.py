@@ -93,7 +93,8 @@ class PanelProjectsMixin:
         dialog = self.QtWidgets.QDialog(self.widget)
         dialog.setWindowTitle(f"Projektdateien · {project.get('code', '')}")
         layout = self.QtWidgets.QVBoxLayout(dialog)
-        items = self.QtWidgets.QListWidget()
+        items = self.QtWidgets.QTreeWidget()
+        items.setHeaderLabels(["Projektdateien"])
         layout.addWidget(items)
         buttons = self.QtWidgets.QHBoxLayout()
         open_button = self.QtWidgets.QPushButton("Lokal öffnen")
@@ -101,50 +102,84 @@ class PanelProjectsMixin:
         buttons.addWidget(open_button)
         buttons.addWidget(upload_button)
         layout.addLayout(buttons)
-        documents = []
-
         def refresh():
-            nonlocal documents
-            documents = self.client().get_project_documents(project["id"])
             items.clear()
+            folders = {}
+            documents = self.client().get_project_documents(project["id"])
             for document in documents:
+                path = document["path"]
+                folder = str(Path(path).parent)
+                if folder not in folders:
+                    folders[folder] = self.QtWidgets.QTreeWidgetItem(items, [folder if folder != "." else "Ohne Ordner"])
                 version = document.get("current_version") or {}
-                label = f"{document['path']} · V{version.get('number', '?')}"
+                label = f"{Path(path).name} · V{version.get('number', '?')}"
                 if document.get("is_archived"):
                     label += " (archiviert)"
-                items.addItem(label)
+                item = self.QtWidgets.QTreeWidgetItem(folders[folder], [label])
+                item.setData(0, self.QtCore.Qt.UserRole, {"path": path, "version": version})
+                if version.get("number", 0) > 1:
+                    history = self.QtWidgets.QTreeWidgetItem(item, ["Ältere Versionen öffnen"])
+                    history.setData(0, self.QtCore.Qt.UserRole, {"document_id": document["id"]})
+                    self.QtWidgets.QTreeWidgetItem(history, ["Laden …"])
+
+        def expand_history(item):
+            data = item.data(0, self.QtCore.Qt.UserRole) or {}
+            if "document_id" not in data:
+                return
+            try:
+                document = self.client().get_project_document(data["document_id"])
+                item.takeChildren()
+                for version in document.get("versions", [])[1:]:
+                    child = self.QtWidgets.QTreeWidgetItem(item, [f"V{version['number']}"])
+                    child.setData(0, self.QtCore.Qt.UserRole,
+                                  {"path": document["path"], "version": version, "historical": True})
+            except PLMError as exc:
+                self.set_status(f"Versionen konnten nicht geladen werden: {exc}")
 
         def open_selected():
-            row = items.currentRow()
-            if row < 0:
+            item = items.currentItem()
+            if item is None:
                 return
-            document = documents[row]
-            version = document.get("current_version") or {}
+            data = item.data(0, self.QtCore.Qt.UserRole) or {}
+            version = data.get("version") or {}
             if not version.get("id"):
                 return
             try:
                 root = Path(self.workspace_root.text().strip()).expanduser() / "documents" / (project.get("code") or str(project["id"]))
-                target = safe_join(root, document["path"])
+                if data.get("historical"):
+                    root = root / ".versions" / str(version["id"])
+                target = safe_join(root, data["path"])
                 self.client().download_project_document(version["id"], target, version["sha256"])
                 self.QtGui.QDesktopServices.openUrl(self.QtCore.QUrl.fromLocalFile(str(target)))
             except Exception as exc:
                 self.set_status(f"Projektdatei konnte nicht geöffnet werden: {exc}")
 
         def upload_selected():
-            file_path, _kind = self.QtWidgets.QFileDialog.getOpenFileName(dialog, "Projektdatei auswählen")
-            if not file_path:
+            file_paths, _kind = self.QtWidgets.QFileDialog.getOpenFileNames(dialog, "Projektdateien auswählen")
+            if not file_paths:
                 return
-            relative_path, accepted = self.QtWidgets.QInputDialog.getText(dialog, "Projektpfad", "Relativer Pfad", text=Path(file_path).name)
+            folder, accepted = self.QtWidgets.QInputDialog.getText(dialog, "Zielordner", "Zielordner (optional)")
             if not accepted:
                 return
+            raw_folder = folder.strip()
+            folder = raw_folder.rstrip("/")
+            paths = [(folder + "/" if folder else "") + Path(file_path).name for file_path in file_paths]
+            if raw_folder.startswith(("/", "\\")) or ".." in Path(folder).parts or len(paths) != len(set(paths)):
+                self.set_status("Ungültiger Zielordner oder doppelte Dateinamen.")
+                return
+            preview = "\n".join(paths)
+            if self.QtWidgets.QMessageBox.question(dialog, "Zielpfade prüfen", preview + "\n\nDateien hochladen?") != self.QtWidgets.QMessageBox.Yes:
+                return
             try:
-                self.client().upload_project_document(project["id"], file_path, relative_path)
+                for file_path, relative_path in zip(file_paths, paths):
+                    self.client().upload_project_document(project["id"], file_path, relative_path)
                 refresh()
             except PLMError as exc:
                 self.set_status(f"Projektdatei konnte nicht hochgeladen werden: {exc}")
 
         open_button.clicked.connect(open_selected)
         upload_button.clicked.connect(upload_selected)
+        items.itemExpanded.connect(expand_history)
         try:
             refresh()
         except PLMError as exc:
