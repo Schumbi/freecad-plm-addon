@@ -21,7 +21,7 @@
   <pythonmin>3.10</pythonmin>
   <content>
     <workbench>
-      <name>PLM Connector</name>
+      <name>FreeCAD-PLM</name>
       <description>Verbindet CAD-Projekte mit einem PLM-Server und bündelt den täglichen Revisions- und Checkout-Workflow.</description>
       <classname>FreeCADPLMWorkbench</classname>
       <subdirectory>./</subdirectory>

@@ -1,9 +1,11 @@
-# PLM Connector
+# FreeCAD-PLM
 
-PLM Connector bringt Projekte, Teile, Revisionen und kontrollierte Dateiabläufe
-direkt in die CAD-Oberfläche.
+FreeCAD-PLM bringt Projekte, Teile, Revisionen und kontrollierte Dateiabläufe
+direkt in die CAD-Oberfläche. (Im Add-on Manager wird das Paket derzeit unter
+dem Namen „PLM Connector“ geführt; die Workbench in FreeCAD heißt
+**FreeCAD-PLM**.)
 
-![PLM Connector mit Projektbrowser und Revisionsdetails](https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/Resources/Media/plm-workbench-overview.png)
+![FreeCAD-PLM mit Projektbrowser und Revisionsdetails](https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/Resources/Media/plm-workbench-overview.png)
 
 ## Alles Wichtige an einem Ort
 
