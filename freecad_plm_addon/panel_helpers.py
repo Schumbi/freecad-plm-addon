@@ -131,7 +131,7 @@ def part_label(part):
     if isinstance(family, dict) and family.get("name"):
         label = f"{label} · Familie: {family['name']}"
     if status:
-        return f"{label} [{status}]"
+        return f"{label} [{revision_status_label(status)}]"
     return label
 
 
@@ -393,13 +393,13 @@ def revision_overview_text(revision):
     rows = [
         ("ID", revision.get("id")),
         ("Revision", revision.get("revision_code") or revision.get("revision") or revision.get("version")),
-        ("Status", revision.get("status") or revision.get("release_status")),
+        ("Status", revision_status_label(revision.get("status") or revision.get("release_status"))),
         ("Datei", revision.get("original_filename") or revision.get("filename") or revision.get("file_name")),
         ("Format", revision.get("file_format")),
         ("Groesse", format_bytes(revision.get("size_bytes"))),
         ("SHA-256", revision.get("sha256")),
-        ("Erstellt", revision.get("created_at") or revision.get("created") or revision.get("uploaded_at")),
-        ("Freigegeben", revision.get("released_at")),
+        ("Erstellt", format_timestamp(revision.get("created_at") or revision.get("created") or revision.get("uploaded_at"))),
+        ("Freigegeben", format_timestamp(revision.get("released_at"))),
         ("Download-URL", revision.get("download_url")),
     ]
     lines = [f"{label}: {value}" for label, value in rows if value not in ("", None)]
@@ -421,6 +421,28 @@ def revision_technical_text(revision):
     return json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=False)
 
 
+def annotation_status_label(status):
+    labels = {
+        "open": "Offen",
+        "resolved": "Erledigt",
+    }
+    value = str(status or "").strip()
+    return labels.get(value.lower(), value)
+
+
+def format_timestamp(value, date_only=False):
+    from datetime import datetime
+
+    if not value:
+        return ""
+    text = str(value).replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return str(value)[:10] if date_only else str(value)
+    return parsed.strftime("%d.%m.%Y" if date_only else "%d.%m.%Y %H:%M")
+
+
 def annotation_label(annotation):
     parts = []
     target = annotation.get("object_name") or ""
@@ -432,18 +454,18 @@ def annotation_label(annotation):
 
     status = annotation.get("status") or ""
     if status:
-        parts.append(f"[{status}]")
+        parts.append(f"[{annotation_status_label(status)}]")
 
     author = annotation.get("created_by") or ""
     created = annotation.get("created_at") or ""
     if author or created:
-        parts.append(" ".join(value for value in (author, created[:10]) if value))
+        parts.append(" ".join(value for value in (author, format_timestamp(created, date_only=True)) if value))
 
     text = annotation.get("text") or ""
     if text:
         parts.append(text)
 
-    return " - ".join(parts) or f"Anmerkung {annotation.get('id', '')}".strip()
+    return " · ".join(parts) or f"Anmerkung {annotation.get('id', '')}".strip()
 
 
 def annotation_update_payload(text=None, status=None):

@@ -666,13 +666,13 @@ class PanelTests(unittest.TestCase):
     def test_part_label_uses_number_name_and_status(self):
         self.assertEqual(
             part_label({"number": "P-100", "name": "Bracket", "status": "draft"}),
-            "P-100 · Bracket [draft]",
+            "P-100 · Bracket [Entwurf]",
         )
 
     def test_part_label_accepts_alternate_api_fields(self):
         self.assertEqual(
             part_label({"part_number": "P-200", "title": "Housing", "release_status": "released"}),
-            "P-200 · Housing [released]",
+            "P-200 · Housing [Freigegeben]",
         )
 
     def test_part_label_falls_back_to_id(self):
@@ -824,7 +824,7 @@ class PanelTests(unittest.TestCase):
                     "text": "Kante prüfen",
                 }
             ),
-            "Body.Face1 - [open] - ralf 2026-07-06 - Kante prüfen",
+            "Body.Face1 · [Offen] · ralf 06.07.2026 · Kante prüfen",
         )
 
     def test_annotation_update_payload_trims_text_and_sets_status(self):
