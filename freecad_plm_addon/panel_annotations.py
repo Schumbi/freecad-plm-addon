@@ -296,6 +296,35 @@ class PanelAnnotationsMixin:
             self.annotations.addItem(item)
         self.update_annotation_controls()
 
+    def _annotation_text_dialog(self, title, intro, initial=""):
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle(title)
+        dialog.setMinimumWidth(380)
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        context = self.QtWidgets.QLabel(intro)
+        context.setWordWrap(True)
+        layout.addWidget(context)
+        text = self.QtWidgets.QPlainTextEdit(initial)
+        text.setPlaceholderText("Was soll hier geprüft oder geändert werden?")
+        text.setMinimumHeight(120)
+        layout.addWidget(text)
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Save | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        save = buttons.button(self.QtWidgets.QDialogButtonBox.Save)
+        save.setText("Speichern")
+        save.setEnabled(bool(initial.strip()))
+        text.textChanged.connect(
+            lambda: save.setEnabled(bool(text.toPlainText().strip()))
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        text.setFocus()
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            return None
+        return text.toPlainText().strip() or None
+
     def create_annotation_for_current_revision(self, object_name="", subelement=""):
         part = self.selected_part()
         revision = self.selected_revision()
@@ -305,19 +334,16 @@ class PanelAnnotationsMixin:
             self.set_status("Teil und Revision auswählen.")
             return
 
-        text, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
-            self.widget,
-            "Anmerkung",
-            "Text",
-            "",
+        target = (
+            f"{object_name}.{subelement}" if object_name and subelement
+            else object_name or "gesamte Revision"
         )
-        if not accepted:
+        text = self._annotation_text_dialog(
+            "Anmerkung erstellen",
+            f"Ziel: {target} · Revision {revision.get('revision_code', '')}",
+        )
+        if text is None:
             self.set_status("Anmerkung abgebrochen.")
-            return
-
-        text = text.strip()
-        if not text:
-            self.set_status("Anmerkungstext ist erforderlich.")
             return
 
         payload = annotation_create_payload(revision_id, text, object_name, subelement)
@@ -331,7 +357,7 @@ class PanelAnnotationsMixin:
             return
 
         self.refresh_annotations(revision)
-        self.set_status(f"Anmerkung angelegt: {annotation_label(annotation)}")
+        self.set_status(f"Anmerkung angelegt: {annotation_label(annotation)}", level="success")
 
     def edit_selected_annotation(self):
         annotation = self.selected_annotation()
@@ -343,20 +369,19 @@ class PanelAnnotationsMixin:
             self.set_status("Keine Anmerkung ausgewählt.")
             return
 
-        text, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
-            self.widget,
+        target = annotation.get("object_name") or "gesamte Revision"
+        if annotation.get("subelement"):
+            target = f"{target}.{annotation['subelement']}"
+        text = self._annotation_text_dialog(
             "Anmerkung bearbeiten",
-            "Text",
+            f"Ziel: {target}",
             annotation.get("text", ""),
         )
-        if not accepted:
+        if text is None:
             self.set_status("Bearbeiten abgebrochen.")
             return
 
         payload = annotation_update_payload(text=text)
-        if not payload.get("text"):
-            self.set_status("Anmerkungstext ist erforderlich.")
-            return
         self._update_annotation(annotation, payload, "Anmerkung gespeichert")
 
     def update_selected_annotation_status(self, status):
@@ -385,7 +410,7 @@ class PanelAnnotationsMixin:
         revision = self.selected_revision()
         if isinstance(revision, dict):
             self.refresh_annotations(revision)
-        self.set_status(f"{success_prefix}: {annotation_label(updated)}")
+        self.set_status(f"{success_prefix}: {annotation_label(updated)}", level="success")
 
     def delete_selected_annotation(self):
         annotation = self.selected_annotation()
