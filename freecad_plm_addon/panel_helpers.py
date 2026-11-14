@@ -251,8 +251,8 @@ def revision_is_checkout_editable(revision):
 def revision_primary_action(revision):
     if not isinstance(revision, dict) or revision.get("id") is None:
         return "missing_revision"
-    if revision_is_checkout_editable(revision):
-        return "checkout"
+    # Ansehen ist die Primaeraktion; der Checkout ist eine bewusste
+    # Zusatzaktion (Menue/Toolbar).
     return "open_readonly"
 
 

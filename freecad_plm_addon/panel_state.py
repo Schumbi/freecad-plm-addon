@@ -351,7 +351,7 @@ class PanelStateMixin:
             action_map = {
                 "checkout": ("Auschecken", self.checkout_selected_revision),
                 "open_readonly": (
-                    "Schreibgeschützt öffnen",
+                    "Öffnen (schreibgeschützt)",
                     self.open_selected_revision_readonly,
                 ),
                 "reopen_checkout": ("Checkout öffnen", self.reopen_selected_checkout),
@@ -375,7 +375,7 @@ class PanelStateMixin:
                 if state in ("server", "error") and checkout_can_cancel(checkout):
                     more.append(("Checkout verwerfen", self.cancel_selected_checkout))
                 if revision_is_checkout_editable(revision or {}):
-                    more.append(("Schreibgeschützt öffnen", self.open_selected_revision_readonly))
+                    more.append(("Auschecken", self.checkout_selected_revision))
                     if (
                         self.active_checkout_id() is not None
                         and revision.get("id") != active_checkout_revision_id(self.active_checkout)

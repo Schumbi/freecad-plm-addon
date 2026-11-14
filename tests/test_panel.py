@@ -505,7 +505,7 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(context_primary_action("checkout_error"), "refresh")
         self.assertEqual(
             context_primary_action("revision", fcstd_revision),
-            "checkout",
+            "open_readonly",
         )
         self.assertEqual(
             context_primary_action("revision", stl_revision),
@@ -733,10 +733,10 @@ class PanelTests(unittest.TestCase):
         self.assertFalse(revision_is_checkout_editable({"file_format": "step"}))
         self.assertFalse(revision_is_checkout_editable({"file_format": "stl"}))
 
-    def test_revision_primary_action_matches_file_format(self):
+    def test_revision_primary_action_is_read_only_for_all_formats(self):
         self.assertEqual(
             revision_primary_action({"id": 1, "file_format": "fcstd"}),
-            "checkout",
+            "open_readonly",
         )
         self.assertEqual(
             revision_primary_action({"id": 2, "file_format": "step"}),
