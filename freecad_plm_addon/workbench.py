@@ -2,8 +2,8 @@ from pathlib import Path
 
 
 class FreeCADPLMWorkbenchMixin:
-    MenuText = "FreeCAD-PLM"
-    ToolTip = "FreeCAD-PLM Workbench"
+    MenuText = "FreeCAD-PLM Connector"
+    ToolTip = "FreeCAD-PLM Connector Workbench"
     Icon = str(Path(__file__).resolve().parent / "icons" / "activate-connection.svg")
 
     def Initialize(self):
@@ -36,8 +36,8 @@ class FreeCADPLMWorkbenchMixin:
             "Separator",
             "FreeCADPLM_SetupProtocolHandler",
         ]
-        self.appendToolbar("FreeCAD-PLM", toolbar_commands)
-        self.appendMenu("FreeCAD-PLM", menu_commands)
+        self.appendToolbar("FreeCAD-PLM Connector", toolbar_commands)
+        self.appendMenu("FreeCAD-PLM Connector", menu_commands)
 
     def Activated(self):
         pass

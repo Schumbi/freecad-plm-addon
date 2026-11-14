@@ -1,11 +1,10 @@
-# FreeCAD-PLM
+# FreeCAD-PLM Connector
 
-FreeCAD-PLM bringt Projekte, Teile, Revisionen und kontrollierte Dateiabläufe
-direkt in die CAD-Oberfläche. (Im Add-on Manager wird das Paket derzeit unter
-dem Namen „PLM Connector“ geführt; die Workbench in FreeCAD heißt
-**FreeCAD-PLM**.)
+FreeCAD-PLM Connector bringt Projekte, Teile, Revisionen und kontrollierte Dateiabläufe
+direkt in die CAD-Oberfläche. (Workbench und Paket heißen **FreeCAD-PLM Connector**; der Server
+bleibt **FreeCAD-PLM**.)
 
-![FreeCAD-PLM mit Projektbrowser und Revisionsdetails](https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/Resources/Media/plm-workbench-overview.png)
+![FreeCAD-PLM Connector mit Projektbrowser und Revisionsdetails](https://git.home.schumbi.de/ralf/freecad-plm-addon/raw/branch/main/Resources/Media/plm-workbench-overview.png)
 
 ## Alles Wichtige an einem Ort
 
@@ -31,7 +30,7 @@ keine unnötigen Revisionen.
 
 ## Schnellstart
 
-1. Die Workbench **FreeCAD-PLM** auswählen.
+1. Die Workbench **FreeCAD-PLM Connector** auswählen.
 2. **PLM-Verbindung aktivieren** öffnen.
 3. Unter **Verbindungseinstellungen** Server-URL, API-Token und lokalen
    Workspace eintragen.
@@ -40,7 +39,7 @@ keine unnötigen Revisionen.
 
 Beim FreeCAD-Start registriert das Addon den Web-Link-Handler automatisch für
 den aktuellen Linux- oder Windows-Benutzer. Falls ein Browserlink nicht mehr
-reagiert, kann die Zuordnung über `FreeCAD-PLM -> Web-Link-Handler einrichten`
+reagiert, kann die Zuordnung über `FreeCAD-PLM Connector -> Web-Link-Handler einrichten`
 erneuert werden.
 
 Für ein neues FreeCAD-Modell genügt **Neues Teil**: Name, optionale

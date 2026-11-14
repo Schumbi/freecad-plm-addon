@@ -1,4 +1,4 @@
-# FreeCAD-PLM Addon
+# FreeCAD-PLM Connector
 
 FreeCAD Workbench für das Django-basierte FreeCAD-PLM.
 
@@ -137,7 +137,7 @@ Der Befehl `PLM-Link öffnen` akzeptiert Revisionslinks aus dem Web-UI. Beim
 FreeCAD-Start richtet das Addon das Schema `freecad-plm://` automatisch für den
 aktuellen Benutzer ein: unter Linux als XDG-MIME-Handler (auch aus dem
 FreeCAD-Flatpak heraus), unter Windows unter `HKCU\Software\Classes`, also ohne
-Administratorrechte. Der Menüpunkt `FreeCAD-PLM -> Web-Link-Handler
+Administratorrechte. Der Menüpunkt `FreeCAD-PLM Connector -> Web-Link-Handler
 einrichten` repariert die Zuordnung bei Bedarf.
 
 Der Handler funktioniert sowohl bei geschlossenem als auch bei bereits
@@ -290,7 +290,7 @@ Branch:
 main
 ```
 
-Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM` aktivieren. Beim
+Danach FreeCAD neu starten und die Workbench `FreeCAD-PLM Connector` aktivieren. Beim
 Start wird zugleich der Web-Link-Handler für Linux oder Windows eingerichtet.
 Für die Nutzung muss anschließend im Addon unter `Verbindungseinstellungen`
 die Server-URL, ein API-Token und der lokale Workspace gesetzt werden.

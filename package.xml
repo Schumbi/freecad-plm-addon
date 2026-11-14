@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
-  <name>PLM Connector</name>
+  <name>FreeCAD-PLM Connector</name>
   <description>Verbindet CAD-Projekte mit einem PLM-Server. Projekte, Teile und Revisionen durchsuchen, schreibgeschützte Stände öffnen, Dateien aus- und einchecken sowie Metadaten, Notizen und Anmerkungen verwalten.</description>
-  <version>0.1.13</version>
-  <date>2026-10-27</date>
+  <version>0.1.14</version>
+  <date>2026-11-14</date>
   <author email="freecad-plm@schumbi.de">Ralf Warmuth</author>
   <maintainer email="freecad-plm@schumbi.de">Ralf Warmuth</maintainer>
   <license file="LICENSE">MIT</license>
@@ -21,7 +21,7 @@
   <pythonmin>3.10</pythonmin>
   <content>
     <workbench>
-      <name>FreeCAD-PLM</name>
+      <name>FreeCAD-PLM Connector</name>
       <description>Verbindet CAD-Projekte mit einem PLM-Server und bündelt den täglichen Revisions- und Checkout-Workflow.</description>
       <classname>FreeCADPLMWorkbench</classname>
       <subdirectory>./</subdirectory>

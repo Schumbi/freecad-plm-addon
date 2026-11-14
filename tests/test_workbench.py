@@ -44,8 +44,8 @@ class WorkbenchTests(unittest.TestCase):
             "FreeCADPLM_OpenInSlicer",
             "FreeCADPLM_OpenDeepLink",
         ]
-        self.assertEqual(workbench.toolbar, ("FreeCAD-PLM", expected_toolbar))
-        self.assertEqual(workbench.menu[0], "FreeCAD-PLM")
+        self.assertEqual(workbench.toolbar, ("FreeCAD-PLM Connector", expected_toolbar))
+        self.assertEqual(workbench.menu[0], "FreeCAD-PLM Connector")
         self.assertIn("Separator", workbench.menu[1])
         self.assertIn("FreeCADPLM_SetupProtocolHandler", workbench.menu[1])
         self.assertNotIn("FreeCADPLM_SetupProtocolHandler", workbench.toolbar[1])

@@ -474,7 +474,7 @@ def show_panel():
     main_window = FreeCADGui.getMainWindow()
     dock = _find_dock(main_window, QtWidgets)
     if dock is None:
-        dock = QtWidgets.QDockWidget("FreeCAD-PLM", main_window)
+        dock = QtWidgets.QDockWidget("FreeCAD-PLM Connector", main_window)
         dock.setObjectName(PANEL_OBJECT_NAME)
         _active_panel = PLMPanel()
         _active_panel.widget._plm_panel = _active_panel

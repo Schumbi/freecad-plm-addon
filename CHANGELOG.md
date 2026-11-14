@@ -1,7 +1,15 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.1.14 – 2026-11-14
 
+- Das Add-on heißt jetzt **FreeCAD-PLM Connector** (Paket-, Workbench-, Menü-
+  und Dock-Name). Der Server bleibt **FreeCAD-PLM**. Git-Installationen
+  behalten die Add-on-ID `freecad-plm-addon`; falls der Add-on Manager nach
+  dem Update zwei Einträge zeigt, die alte Installation entfernen.
+- UX-Überarbeitung: sichtbare Statuszeile mit Folgeaktionen, Revisionen im
+  Baum, Öffnen als Primäraktion, Check-in-Review, bedienbares Panel während
+  Netzwerkaktionen, kontextabhängige Kommandos, gruppierte Einstellungen,
+  sichere Bestätigungen und Theme-Palette (Details im UX-Audit).
 - Teile-Tags sind mit Servern mit abgeschlossenem AP-E2 kompatibel (Migrationen `0036`–`0038`): Beim Bearbeiten sendet das Addon `tags` als Namensliste, der Server liefert weiterhin den kommagetrennten String `tags` und zusätzlich `tag_items`. Ältere Server bleiben lesend nutzbar; das Bearbeiten von Teile-Tags setzt den neuen Server-Vertrag voraus.
 - Der Netzwerkpunkt behält seinen Platz und ist im Ruhezustand vollständig transparent. Bei Übertragungen einschließlich Druckprojekt-Vorschauen blinkt er alle 300 ms; Projektbaum und Aktionen sind währenddessen gesperrt.
 - Auch ältere PLM-Dialogaktionen führen ihre Serveranfragen auf einem Worker aus, während Qt weiter Ereignisse verarbeitet.
