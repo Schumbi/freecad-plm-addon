@@ -19,6 +19,7 @@ class PanelProjectTagsMixin:
     def build_project_filters(self, layout):
         widgets = self.QtWidgets
         self.project_search = widgets.QLineEdit()
+        self.project_search.setAccessibleName("Projekte suchen")
         self.project_search.setPlaceholderText("Projekte suchen: Name, Code oder Tag …")
         layout.addWidget(self.project_search)
         row = widgets.QHBoxLayout()

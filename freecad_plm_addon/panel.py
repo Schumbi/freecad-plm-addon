@@ -119,6 +119,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         header.setFixedHeight(header_height)
 
         self.connection_summary = self.QtWidgets.QLabel("Nicht verbunden.")
+        self.connection_summary.setAccessibleName("Verbindungsstatus")
         self.connection_summary.setWordWrap(False)
         self.connection_summary.setSizePolicy(
             self.QtWidgets.QSizePolicy.Ignored,
@@ -185,6 +186,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         tree_header.addWidget(self.QtWidgets.QLabel("Projekte · Teile · Revisionen"))
         tree_header.addStretch(1)
         self.network_indicator = self.QtWidgets.QLabel("●")
+        self.network_indicator.setAccessibleName("Netzwerkaktivität")
         self.network_indicator.setFixedWidth(16)
         self.network_indicator.setAlignment(self.QtCore.Qt.AlignCenter)
         self.network_indicator.setToolTip("Warte auf Netzwerkverbindung oder Datenübertragung")
@@ -206,6 +208,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         browser_layout.addWidget(self.variant_role)
 
         self.browser_tree = self.QtWidgets.QTreeWidget()
+        self.browser_tree.setAccessibleName("Projekte, Teile und Revisionen")
         self.browser_tree.setHeaderHidden(True)
         self.browser_tree.setUniformRowHeights(True)
         self.browser_tree.setAnimated(False)
@@ -373,6 +376,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         self.status_icon.setVisible(False)
         status_row.addWidget(self.status_icon)
         self.status = self.QtWidgets.QLabel("")
+        self.status.setAccessibleName("Statusmeldung")
         self.status.setWordWrap(False)
         self.status.setTextInteractionFlags(
             self.QtCore.Qt.TextSelectableByMouse
