@@ -359,8 +359,35 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         context_row.addWidget(self.context_more_button)
         details_layout.addLayout(context_row)
 
+        status_row = self.QtWidgets.QHBoxLayout()
+        status_row.setContentsMargins(2, 0, 2, 0)
+        status_row.setSpacing(6)
+        self.status_icon = self.QtWidgets.QLabel("")
+        self.status_icon.setFixedWidth(14)
+        self.status_icon.setVisible(False)
+        status_row.addWidget(self.status_icon)
         self.status = self.QtWidgets.QLabel("")
+        self.status.setWordWrap(False)
+        self.status.setTextInteractionFlags(
+            self.QtCore.Qt.TextSelectableByMouse
+        )
+        self.status.setSizePolicy(
+            self.QtWidgets.QSizePolicy.Ignored,
+            self.QtWidgets.QSizePolicy.Preferred,
+        )
         self.status.setVisible(False)
+        status_row.addWidget(self.status, 1)
+        self.status_action = self.QtWidgets.QPushButton("")
+        self.status_action.setVisible(False)
+        self.status_action.setFlat(True)
+        status_row.addWidget(self.status_action)
+        self._status_action_callback = None
+        self._status_generation = 0
+        self.status_timer = self.QtCore.QTimer(self.widget)
+        self.status_timer.setSingleShot(True)
+        self.status_timer.timeout.connect(self._clear_status)
+        self.status_action.clicked.connect(self._run_status_action)
+        layout.addLayout(status_row)
 
         splitter.addWidget(browser_widget)
         splitter.addWidget(details_widget)

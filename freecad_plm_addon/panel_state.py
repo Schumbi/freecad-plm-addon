@@ -26,8 +26,63 @@ class PanelStateMixin:
     def connection_summary_height(self):
         return self.widget.fontMetrics().lineSpacing() + 8
 
-    def set_status(self, message):
+    STATUS_ICONS = {
+        "info": "•",
+        "progress": "…",
+        "success": "✓",
+        "error": "!",
+    }
+
+    def set_status(self, message, level="info", action_label=None, action=None):
+        """Zeigt eine Meldung in der Panel-Statuszeile und im Report-View.
+
+        Fehler bleiben stehen, Erfolgsmeldungen verschwinden nach einigen
+        Sekunden. ``action`` wird als Schaltflaeche angeboten (z. B. Retry).
+        """
         print_freecad_console(message)
+        label = getattr(self, "status", None)
+        if label is None:
+            return
+        self._status_generation = getattr(self, "_status_generation", 0) + 1
+        generation = self._status_generation
+        icon = getattr(self, "status_icon", None)
+        if icon is not None:
+            icon.setText(self.STATUS_ICONS.get(level, "•"))
+            icon.setVisible(True)
+        label.setText(message)
+        label.setToolTip(message)
+        label.setVisible(True)
+        label.setStyleSheet("font-weight: 600;" if level == "error" else "")
+        button = getattr(self, "status_action", None)
+        if button is not None:
+            self._status_action_callback = action if action_label and action else None
+            button.setText(action_label or "")
+            button.setVisible(bool(action_label and action))
+        timer = getattr(self, "status_timer", None)
+        if timer is not None:
+            timer.stop()
+            if level in ("info", "success"):
+                timer.start(6000)
+        if generation != self._status_generation:
+            return
+
+    def _clear_status(self):
+        label = getattr(self, "status", None)
+        icon = getattr(self, "status_icon", None)
+        button = getattr(self, "status_action", None)
+        if label is not None:
+            label.setVisible(False)
+            label.setText("")
+        if icon is not None:
+            icon.setVisible(False)
+        if button is not None:
+            button.setVisible(False)
+        self._status_action_callback = None
+
+    def _run_status_action(self):
+        callback = getattr(self, "_status_action_callback", None)
+        if callable(callback):
+            callback()
 
     def set_connected(self, server_url):
         self.connection_summary.setText(connection_label(server_url))
