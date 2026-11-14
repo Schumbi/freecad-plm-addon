@@ -464,7 +464,8 @@ class PanelStateMixin:
         connection_form.addRow(
             "",
             self.QtWidgets.QLabel(
-                "Scopes: read, write, checkout · admin für Projektmetadaten"
+                "Scopes: read, write, checkout · admin für Projektmetadaten\n"
+                "Der Token wird in den FreeCAD-Benutzereinstellungen gespeichert."
             ),
         )
         test_button = self.QtWidgets.QPushButton("Verbindung testen")
