@@ -26,15 +26,15 @@ class ProjectMainFileTests(unittest.TestCase):
         self.assertEqual(created[1].args[:2], (self.project_item, "other_files"))
         self.assertEqual(created[2].args[1:3], ("part", self.other))
         self.assertIs(created[2].args[0], self.panel.add_tree_item.return_value)
-        self.assertEqual(created[0].args[3], "A - Assembly")
-        self.panel.add_tree_item.return_value.setText.assert_any_call(0, "A - Assembly · R0002")
+        self.assertEqual(created[0].args[3], "A · Assembly")
+        self.panel.add_tree_item.return_value.setText.assert_any_call(0, "A · Assembly · R0002")
         self.panel.add_tree_item.return_value.setExpanded.assert_not_called()
 
     def test_without_main_keeps_flat_project_tree(self):
         self.panel.tree_item_payload.return_value = {"id": 7, "main_part_id": None}
         PanelProjectsMixin.load_project_parts(self.panel, self.project_item)
         self.assertEqual([c.args[1] for c in self.panel.add_tree_item.call_args_list], ["part", "part"])
-        self.assertEqual(project_file_part_label(self.other), "B - Other")
+        self.assertEqual(project_file_part_label(self.other), "B · Other")
 
     def test_variant_view_shows_selected_role_and_keeps_other_parts_accessible(self):
         print_part = {"id": 4, "number": "P-004", "name": "Druck 12", "latest_revision": {"revision_code": "R0002"},
@@ -49,7 +49,7 @@ class ProjectMainFileTests(unittest.TestCase):
         PanelProjectsMixin.load_project_parts(self.panel, self.project_item)
 
         created = self.panel.add_tree_item.call_args_list
-        self.assertEqual(created[0].args[:4], (self.project_item, "part", self.main, "Hauptdatei · A - Assembly"))
+        self.assertEqual(created[0].args[:4], (self.project_item, "part", self.main, "Hauptdatei · A · Assembly"))
         self.assertEqual(created[1].args[1], "other_files")
         self.assertEqual([call.args[2]["id"] for call in created[2:]], [4, 3])
 
@@ -57,8 +57,8 @@ class ProjectMainFileTests(unittest.TestCase):
         self.panel.variant_role.currentData.return_value = "print_part_id"
         PanelProjectsMixin.load_project_parts(self.panel, self.project_item, force=True)
         created = self.panel.add_tree_item.call_args_list
-        self.assertEqual(created[0].args[:4], (self.project_item, "part", self.main, "Hauptdatei · A - Assembly"))
-        self.assertEqual(created[1].args[:4], (self.project_item, "part", print_part, "Normal · P-004 - Druck 12"))
+        self.assertEqual(created[0].args[:4], (self.project_item, "part", self.main, "Hauptdatei · A · Assembly"))
+        self.assertEqual(created[1].args[:4], (self.project_item, "part", print_part, "Normal · P-004 · Druck 12"))
         self.assertEqual([call.args[2]["id"] for call in created[3:]], [3])
 
         self.panel.add_tree_item.reset_mock()
@@ -68,7 +68,7 @@ class ProjectMainFileTests(unittest.TestCase):
             self.panel.variant_role.currentData, "return_value", "print_part_id" if index == 1 else "assembly_part_id")
         PanelProjectsMixin.load_project_parts(self.panel, self.project_item, force=True)
         created = self.panel.add_tree_item.call_args_list
-        self.assertEqual(created[0].args[:4], (self.project_item, "part", print_part, "Hauptdatei · P-004 - Druck 12"))
+        self.assertEqual(created[0].args[:4], (self.project_item, "part", print_part, "Hauptdatei · P-004 · Druck 12"))
         self.panel.variant_role.setCurrentIndex.assert_called_with(1)
         self.assertEqual([call.args[2]["id"] for call in created if call.args[1] == "part"], [4, 2, 3])
 
@@ -116,7 +116,7 @@ class ProjectMainFileTests(unittest.TestCase):
 
         rows = [call.args for call in self.panel.add_tree_item.call_args_list if call.args[1] == "part"]
         self.assertEqual([row[2]["id"] for row in rows], [4, 5, 2, 3])
-        self.assertEqual(rows[1][3], "20 Chips · P-005 - Druck 20")
+        self.assertEqual(rows[1][3], "20 Chips · P-005 · Druck 20")
 
     def test_group_ancestors_expand_for_navigation(self):
         item = Mock()

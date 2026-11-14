@@ -277,7 +277,7 @@ class PanelTests(unittest.TestCase):
     def test_project_label_prefers_code_and_name(self):
         self.assertEqual(
             project_label({"code": "PRJ", "name": "Demo Project"}),
-            "PRJ - Demo Project",
+            "PRJ · Demo Project",
         )
 
     def test_project_label_falls_back_to_id(self):
@@ -666,13 +666,13 @@ class PanelTests(unittest.TestCase):
     def test_part_label_uses_number_name_and_status(self):
         self.assertEqual(
             part_label({"number": "P-100", "name": "Bracket", "status": "draft"}),
-            "P-100 - Bracket [draft]",
+            "P-100 · Bracket [draft]",
         )
 
     def test_part_label_accepts_alternate_api_fields(self):
         self.assertEqual(
             part_label({"part_number": "P-200", "title": "Housing", "release_status": "released"}),
-            "P-200 - Housing [released]",
+            "P-200 · Housing [released]",
         )
 
     def test_part_label_falls_back_to_id(self):

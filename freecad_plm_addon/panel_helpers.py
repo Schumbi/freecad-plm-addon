@@ -11,7 +11,7 @@ def project_label(project):
     code = project.get("code") or project.get("project_code") or ""
     name = project.get("name") or project.get("title") or ""
     if code and name:
-        return f"{code} - {name}"
+        return f"{code} · {name}"
     return code or name or f"Projekt {project.get('id', '')}".strip()
 
 
@@ -124,7 +124,7 @@ def part_label(part):
     number = part.get("number") or part.get("part_number") or part.get("code") or ""
     name = part.get("name") or part.get("title") or ""
     status = part.get("status") or part.get("release_status") or ""
-    label = " - ".join(value for value in (number, name) if value)
+    label = " · ".join(value for value in (number, name) if value)
     if not label:
         label = f"Teil {part.get('id', '')}".strip()
     family = part.get("family")
