@@ -5,7 +5,6 @@ from freecad_plm_addon.commands import (
     CancelCheckoutCommand,
     CheckoutCommand,
     CheckinCommand,
-    ConnectCommand,
     CreateAnnotationCommand,
     OpenDeepLinkCommand,
     OpenInSlicerCommand,
@@ -20,7 +19,6 @@ class CommandResourceTests(unittest.TestCase):
     def test_toolbar_commands_have_pixmaps(self):
         commands = [
             ActivateConnectionCommand(),
-            ConnectCommand(),
             RefreshCommand(),
             CheckoutCommand(),
             CheckinCommand(),
@@ -42,7 +40,6 @@ class CommandResourceTests(unittest.TestCase):
     def test_commands_with_packaged_icons_reference_existing_files(self):
         commands = [
             ActivateConnectionCommand(),
-            ConnectCommand(),
             OpenInSlicerCommand(),
             OpenDeepLinkCommand(),
             SetupProtocolHandlerCommand(),

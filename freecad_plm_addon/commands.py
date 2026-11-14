@@ -10,7 +10,6 @@ def icon_path(filename):
 
 COMMAND_NAMES = [
     "FreeCADPLM_ActivateConnection",
-    "FreeCADPLM_Connect",
     "FreeCADPLM_Refresh",
     "FreeCADPLM_Checkout",
     "FreeCADPLM_Checkin",
@@ -38,16 +37,6 @@ class BaseCommand:
 
     def IsActive(self):
         return True
-
-
-class ConnectCommand(BaseCommand):
-    menu_text = "Verbinden"
-    pixmap = icon_path("connect.svg")
-
-    def Activated(self):
-        from .panel import show_panel
-
-        show_panel()
 
 
 class ActivateConnectionCommand(BaseCommand):
@@ -161,7 +150,6 @@ def register_commands():
 
     commands = {
         "FreeCADPLM_ActivateConnection": ActivateConnectionCommand(),
-        "FreeCADPLM_Connect": ConnectCommand(),
         "FreeCADPLM_Refresh": RefreshCommand(),
         "FreeCADPLM_Checkout": CheckoutCommand(),
         "FreeCADPLM_Checkin": CheckinCommand(),

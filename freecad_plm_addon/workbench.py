@@ -11,12 +11,33 @@ class FreeCADPLMWorkbenchMixin:
 
         commands = register_commands()
         toolbar_commands = [
-            command
-            for command in commands
-            if command != "FreeCADPLM_SetupProtocolHandler"
+            "FreeCADPLM_ActivateConnection",
+            "FreeCADPLM_Refresh",
+            "Separator",
+            "FreeCADPLM_Checkout",
+            "FreeCADPLM_Checkin",
+            "FreeCADPLM_CancelCheckout",
+            "Separator",
+            "FreeCADPLM_CreateAnnotation",
+            "FreeCADPLM_OpenInSlicer",
+            "FreeCADPLM_OpenDeepLink",
+        ]
+        menu_commands = [
+            "FreeCADPLM_ActivateConnection",
+            "FreeCADPLM_Refresh",
+            "Separator",
+            "FreeCADPLM_Checkout",
+            "FreeCADPLM_Checkin",
+            "FreeCADPLM_CancelCheckout",
+            "Separator",
+            "FreeCADPLM_CreateAnnotation",
+            "FreeCADPLM_OpenInSlicer",
+            "FreeCADPLM_OpenDeepLink",
+            "Separator",
+            "FreeCADPLM_SetupProtocolHandler",
         ]
         self.appendToolbar("FreeCAD-PLM", toolbar_commands)
-        self.appendMenu("FreeCAD-PLM", commands)
+        self.appendMenu("FreeCAD-PLM", menu_commands)
 
     def Activated(self):
         pass

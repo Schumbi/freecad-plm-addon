@@ -25,40 +25,27 @@ class WorkbenchTests(unittest.TestCase):
 
         self.assertTrue(Path(workbench.Icon).is_file())
 
-    def test_initialize_adds_activate_connection_to_toolbar(self):
+    def test_initialize_builds_grouped_toolbar_and_menu(self):
         workbench = create_workbench(BaseWorkbench)
-        commands = [
+        commands = ["FreeCADPLM_ActivateConnection"]
+
+        with patch("freecad_plm_addon.commands.register_commands", return_value=commands):
+            workbench.Initialize()
+
+        expected_toolbar = [
             "FreeCADPLM_ActivateConnection",
-            "FreeCADPLM_Connect",
             "FreeCADPLM_Refresh",
+            "Separator",
             "FreeCADPLM_Checkout",
             "FreeCADPLM_Checkin",
             "FreeCADPLM_CancelCheckout",
+            "Separator",
             "FreeCADPLM_CreateAnnotation",
+            "FreeCADPLM_OpenInSlicer",
+            "FreeCADPLM_OpenDeepLink",
         ]
-
-        with patch("freecad_plm_addon.commands.register_commands", return_value=commands):
-            workbench.Initialize()
-
-        self.assertEqual(workbench.toolbar, ("FreeCAD-PLM", commands))
-        self.assertEqual(workbench.menu, ("FreeCAD-PLM", commands))
-
-    def test_initialize_keeps_protocol_setup_out_of_toolbar(self):
-        workbench = create_workbench(BaseWorkbench)
-        commands = [
-            "FreeCADPLM_ActivateConnection",
-            "FreeCADPLM_SetupProtocolHandler",
-        ]
-
-        with patch("freecad_plm_addon.commands.register_commands", return_value=commands):
-            workbench.Initialize()
-
-        self.assertEqual(
-            workbench.toolbar,
-            ("FreeCAD-PLM", ["FreeCADPLM_ActivateConnection"]),
-        )
-        self.assertEqual(workbench.menu, ("FreeCAD-PLM", commands))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(workbench.toolbar, ("FreeCAD-PLM", expected_toolbar))
+        self.assertEqual(workbench.menu[0], "FreeCAD-PLM")
+        self.assertIn("Separator", workbench.menu[1])
+        self.assertIn("FreeCADPLM_SetupProtocolHandler", workbench.menu[1])
+        self.assertNotIn("FreeCADPLM_SetupProtocolHandler", workbench.toolbar[1])
