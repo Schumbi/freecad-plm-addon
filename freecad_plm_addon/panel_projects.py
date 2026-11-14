@@ -367,10 +367,13 @@ class PanelProjectsMixin:
                 self.browser_tree.scrollToItem(target_item)
         self.update_context_actions()
         suffix = "" if count == 1 else "e"
-        message = f"{count} Projekt{suffix} geladen."
+        import time
+
+        message = f"{count} Projekt{suffix} geladen"
         if checkout_count is not None:
-            message = f"{message} Aktive Checkouts: {checkout_count}."
-        self.set_status(message)
+            message = f"{message} · {checkout_count} aktive Checkout(s)"
+        message = f"{message} · {time.strftime('%H:%M')}"
+        self.set_status(message, level="success")
         self.set_connected(server_url)
         self.update_project_tag_options()
         if hasattr(self, "project_tags"):

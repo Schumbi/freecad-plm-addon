@@ -836,7 +836,7 @@ class PanelCheckoutMixin:
             self.set_status(f"Checkout-Abbruch fehlgeschlagen: {exc}")
             return
 
-        message = "Checkout abgebrochen."
+        message = "Checkout verworfen."
         if closed:
             message = f"{message} Geschlossen: {len(closed)}."
         if failed:

@@ -132,9 +132,14 @@ class PanelStateMixin:
         )
 
     def set_connected(self, server_url):
+        import time
+
         label = connection_label(server_url)
+        stamp = time.strftime("%H:%M")
+        self._last_refresh_at = stamp
         self.connection_summary.setText(label)
-        self.connection_summary.setToolTip(label)
+        self.connection_summary.setToolTip(f"{label} · zuletzt aktualisiert {stamp}")
+        self.refresh_button.setToolTip(f"Projekte und Teile aktualisieren (zuletzt {stamp})")
         self.refresh_button.setVisible(True)
         self.update_context_actions()
 

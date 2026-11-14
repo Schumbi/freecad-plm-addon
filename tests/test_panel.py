@@ -489,7 +489,7 @@ class PanelTests(unittest.TestCase):
         client.cancel_checkout.assert_called_once_with(92)
         panel.refresh_active_checkouts.assert_called_once_with()
         self.assertNotIn(92, panel.checkout_errors)
-        panel.set_status.assert_called_with("Checkout abgebrochen.")
+        panel.set_status.assert_called_with("Checkout verworfen.")
 
     def test_context_primary_action_matches_tree_context(self):
         fcstd_revision = {"id": 10, "file_format": "fcstd"}
