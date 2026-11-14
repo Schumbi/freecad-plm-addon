@@ -430,6 +430,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
             self.refresh_active_checkout_primary_button
         )
         self.checkout_state_timer.start()
+        self.install_shortcuts()
         self.update_context_actions()
 
     def _blink_network_indicator(self):

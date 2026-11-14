@@ -131,6 +131,26 @@ class PanelStateMixin:
             action=action,
         )
 
+    def install_shortcuts(self):
+        shortcut_class = getattr(self.QtGui, "QShortcut", None) or self.QtWidgets.QShortcut
+        bindings = (
+            ("F5", self.refresh_projects_background),
+            ("Ctrl+F", self.focus_project_search),
+            ("Ctrl+Shift+O", self.open_selected_revision_readonly),
+            ("Ctrl+Shift+C", self.checkout_selected_revision),
+            ("Ctrl+Shift+I", self.checkin_active_checkout),
+        )
+        self._shortcuts = []
+        for sequence, callback in bindings:
+            shortcut = shortcut_class(self.QtGui.QKeySequence(sequence), self.widget)
+            shortcut.setContext(self.QtCore.Qt.ApplicationShortcut)
+            shortcut.activated.connect(callback)
+            self._shortcuts.append(shortcut)
+
+    def focus_project_search(self):
+        self.project_search.setFocus()
+        self.project_search.selectAll()
+
     def make_project_date_edit(self, value):
         editor = self.QtWidgets.QDateEdit()
         editor.setCalendarPopup(True)
