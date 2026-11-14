@@ -756,10 +756,26 @@ class PanelPartsMixin:
         project_date = self.make_project_date_edit(project.get("project_date", ""))
         description = self.QtWidgets.QPlainTextEdit(project.get("description", "") or "")
         description.setMaximumHeight(120)
+        tags = self.QtWidgets.QLineEdit(
+            ", ".join(tag.get("name", "") for tag in (project.get("tags") or []))
+        )
+        tags.setPlaceholderText("Tags durch Kommas trennen")
+        folder = self.QtWidgets.QComboBox()
+        folder.addItem("Ohne Ordner", None)
+        for index in range(self.project_folder.count()):
+            folder.addItem(
+                self.project_folder.itemText(index),
+                self.project_folder.itemData(index),
+            )
+        current_folder = project.get("folder_id")
+        folder_index = folder.findData(current_folder)
+        folder.setCurrentIndex(folder_index if folder_index >= 0 else 0)
         form.addRow("Code", code)
         form.addRow("Name", name)
         form.addRow("Status", status)
         form.addRow("Datum", project_date)
+        form.addRow("Tags", tags)
+        form.addRow("Ordner", folder)
         form.addRow("Beschreibung", description)
         layout.addLayout(form)
         buttons = self.QtWidgets.QDialogButtonBox(
@@ -780,6 +796,8 @@ class PanelPartsMixin:
                 "status": status.itemData(status.currentIndex()) or "running",
                 "project_date": project_date.date().toString("yyyy-MM-dd"),
                 "description": description.toPlainText(),
+                "tags": tags.text(),
+                "folder_id": folder.itemData(folder.currentIndex()),
             }
         )
         try:
