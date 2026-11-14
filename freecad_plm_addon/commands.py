@@ -21,6 +21,45 @@ COMMAND_NAMES = [
 ]
 
 
+def active_panel():
+    from .panel import _active_panel
+
+    return _active_panel
+
+
+def has_revision_selection():
+    panel = active_panel()
+    if panel is None:
+        return False
+    try:
+        return panel.selected_revision() is not None
+    except Exception:
+        return False
+
+
+def selected_revision_is_editable():
+    from .panel_helpers import revision_is_checkout_editable
+
+    panel = active_panel()
+    if panel is None:
+        return False
+    try:
+        revision = panel.selected_revision()
+        return revision_is_checkout_editable(revision or {})
+    except Exception:
+        return False
+
+
+def has_active_checkout():
+    panel = active_panel()
+    if panel is None:
+        return False
+    try:
+        return panel.active_checkout_id() is not None
+    except Exception:
+        return False
+
+
 class BaseCommand:
     menu_text = ""
     tooltip = ""
@@ -54,6 +93,12 @@ class RefreshCommand(BaseCommand):
     menu_text = "Aktualisieren"
     pixmap = "view-refresh"
 
+    def IsActive(self):
+        panel = active_panel()
+        if panel is None:
+            return False
+        return bool(panel.server_url.text().strip() and panel.api_token.text().strip())
+
     def Activated(self):
         from .panel import refresh_panel
 
@@ -63,6 +108,9 @@ class RefreshCommand(BaseCommand):
 class CheckoutCommand(BaseCommand):
     menu_text = "Auschecken"
     pixmap = "document-open"
+
+    def IsActive(self):
+        return selected_revision_is_editable()
 
     def Activated(self):
         from .panel import checkout_selected_revision
@@ -74,6 +122,9 @@ class CheckinCommand(BaseCommand):
     menu_text = "Einchecken"
     pixmap = "document-save"
 
+    def IsActive(self):
+        return has_active_checkout()
+
     def Activated(self):
         from .panel import checkin_active_checkout
 
@@ -81,8 +132,11 @@ class CheckinCommand(BaseCommand):
 
 
 class CancelCheckoutCommand(BaseCommand):
-    menu_text = "Checkout abbrechen"
+    menu_text = "Checkout verwerfen"
     pixmap = "edit-delete"
+
+    def IsActive(self):
+        return has_active_checkout()
 
     def Activated(self):
         from .panel import cancel_active_checkout
@@ -94,6 +148,9 @@ class CreateAnnotationCommand(BaseCommand):
     menu_text = "Anmerkung erstellen"
     pixmap = "list-add"
 
+    def IsActive(self):
+        return has_revision_selection()
+
     def Activated(self):
         from .panel import create_annotation_for_selection
 
@@ -104,6 +161,18 @@ class OpenInSlicerCommand(BaseCommand):
     menu_text = "Druckprojekt öffnen/erstellen"
     tooltip = "Ausgewählte Revision als Druckprojekt im Slicer öffnen oder anlegen"
     pixmap = icon_path("open-slicer.svg")
+
+    def IsActive(self):
+        from .panel_helpers import revision_file_format
+
+        panel = active_panel()
+        if panel is None:
+            return False
+        try:
+            revision = panel.selected_revision() or {}
+        except Exception:
+            return False
+        return revision_file_format(revision) in ("fcstd", "step", "stl")
 
     def Activated(self):
         from .panel import open_selected_revision_in_slicer
