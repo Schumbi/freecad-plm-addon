@@ -44,13 +44,21 @@ class PanelAnnotationsMixin:
         dialog = self.QtWidgets.QDialog(self.widget)
         dialog.setWindowTitle("Revisionsnotizen")
         layout = self.QtWidgets.QVBoxLayout(dialog)
+        context = self.QtWidgets.QLabel(
+            f"Notizen zu {revision.get('revision_code', '')} · "
+            f"{revision.get('original_filename', '')}"
+        )
+        context.setWordWrap(True)
+        layout.addWidget(context)
         notes = self.QtWidgets.QPlainTextEdit(revision.get("notes") or "")
+        notes.setPlaceholderText("Änderungen, Entscheidungen oder offene Punkte …")
         notes.setMinimumHeight(160)
         layout.addWidget(notes)
         buttons = self.QtWidgets.QDialogButtonBox(
             self.QtWidgets.QDialogButtonBox.Save | self.QtWidgets.QDialogButtonBox.Cancel
         )
         layout.addWidget(buttons)
+        buttons.button(self.QtWidgets.QDialogButtonBox.Save).setDefault(True)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
@@ -77,6 +85,14 @@ class PanelAnnotationsMixin:
         dialog = self.QtWidgets.QDialog(self.widget)
         dialog.setWindowTitle("Anmerkungen")
         layout = self.QtWidgets.QVBoxLayout(dialog)
+        intro = self.QtWidgets.QLabel(
+            f"Anmerkungen zu {revision.get('revision_code', '')} · "
+            f"{revision.get('original_filename', '')}"
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        filter_row = self.QtWidgets.QHBoxLayout()
+        filter_row.addWidget(self.QtWidgets.QLabel("Filter"))
         filter_box = self.QtWidgets.QComboBox()
         for label, value in (
             ("Alle", "all"),
@@ -86,17 +102,28 @@ class PanelAnnotationsMixin:
             ("Teil allgemein", "part"),
         ):
             filter_box.addItem(label, value)
+        filter_row.addWidget(filter_box, 1)
+        layout.addLayout(filter_row)
         annotation_list = self.QtWidgets.QListWidget()
-        layout.addWidget(filter_box)
-        layout.addWidget(annotation_list)
+        layout.addWidget(annotation_list, 1)
+        empty_label = self.QtWidgets.QLabel(
+            "Noch keine Anmerkungen für diese Auswahl.\n"
+            "Lege mit „Neu“ eine Anmerkung zur ausgewählten Revision an."
+        )
+        empty_label.setWordWrap(True)
+        empty_label.setAlignment(self.QtCore.Qt.AlignCenter)
+        layout.addWidget(empty_label)
         action_row = self.QtWidgets.QHBoxLayout()
         new_button = self.QtWidgets.QPushButton("Neu")
+        new_button.setDefault(True)
         edit_button = self.QtWidgets.QPushButton("Bearbeiten")
         resolve_button = self.QtWidgets.QPushButton("Erledigt")
         reopen_button = self.QtWidgets.QPushButton("Wieder öffnen")
         delete_button = self.QtWidgets.QPushButton("Löschen")
-        for button in (new_button, edit_button, resolve_button, reopen_button, delete_button):
+        for button in (new_button, edit_button, resolve_button, reopen_button):
             action_row.addWidget(button)
+        action_row.addStretch(1)
+        action_row.addWidget(delete_button)
         layout.addLayout(action_row)
         close_buttons = self.QtWidgets.QDialogButtonBox(self.QtWidgets.QDialogButtonBox.Close)
         layout.addWidget(close_buttons)
@@ -107,6 +134,11 @@ class PanelAnnotationsMixin:
                 return None
             annotation = items[0].data(self.QtCore.Qt.UserRole)
             return annotation if isinstance(annotation, dict) else None
+
+        def update_buttons():
+            has_selection = selected_dialog_annotation() is not None
+            for button in (edit_button, resolve_button, reopen_button, delete_button):
+                button.setEnabled(has_selection)
 
         def refill():
             annotation_list.clear()
@@ -121,6 +153,9 @@ class PanelAnnotationsMixin:
                 item = self.QtWidgets.QListWidgetItem(annotation_label(annotation))
                 item.setData(self.QtCore.Qt.UserRole, annotation)
                 annotation_list.addItem(item)
+            empty_label.setVisible(not annotations)
+            annotation_list.setVisible(bool(annotations))
+            update_buttons()
 
         def reload_annotations():
             self.refresh_annotations(revision)
@@ -156,6 +191,7 @@ class PanelAnnotationsMixin:
 
         reload_annotations()
         filter_box.currentIndexChanged.connect(refill)
+        annotation_list.itemSelectionChanged.connect(update_buttons)
         new_button.clicked.connect(create)
         edit_button.clicked.connect(edit)
         resolve_button.clicked.connect(lambda: set_status("resolved"))
