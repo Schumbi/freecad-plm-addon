@@ -430,13 +430,43 @@ class PanelBrowserMixin:
         menu = self.QtWidgets.QMenu(self.browser_tree)
         if self.context_primary_label and callable(self.context_primary_callback):
             menu.addAction(self.context_primary_label, self.context_primary_callback)
-        if self.context_more_actions:
+        priority = [
+            "Checkout öffnen",
+            "Auschecken",
+            "Teil hinzufügen",
+            "Notizen",
+            "Anmerkungen",
+            "Revisionen",
+            "Teil bearbeiten",
+            "Druckprojekt öffnen/erstellen",
+            "Lokale FCStd hinzufügen",
+            "FCStd-Hauptdatei festlegen",
+            "Projekt bearbeiten",
+            "Projekt importieren",
+            "Aktualisieren",
+            "Checkouts aktualisieren",
+            "Teil entfernen",
+            "Checkout verwerfen",
+        ]
+        available = {
+            label: callback
+            for label, callback in self.context_more_actions
+            if label and callable(callback)
+        }
+        destructive = {"Teil entfernen", "Checkout verwerfen"}
+        shown = 0
+        if available:
             menu.addSeparator()
-        for label, callback in self.context_more_actions:
-            if label is None:
+        for label in priority:
+            callback = available.get(label)
+            if callback is None:
+                continue
+            if label in destructive and shown:
                 menu.addSeparator()
-            else:
-                menu.addAction(label, callback)
+            menu.addAction(label, callback)
+            shown += 1
+            if shown >= 8 and label not in destructive:
+                break
         # A nested menu event loop can freeze FreeCAD on Windows.
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(self.browser_tree.viewport().mapToGlobal(position))
