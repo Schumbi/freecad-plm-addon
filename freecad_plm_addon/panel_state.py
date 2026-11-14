@@ -124,6 +124,10 @@ class PanelStateMixin:
             message = f"{prefix}{text}"
         else:
             message = f"{prefix}{text}" if prefix else text
+        summary = getattr(self, "connection_summary", None)
+        if level == "error" and summary is not None and summary.text().startswith("Verbunden"):
+            self.connection_summary.setText("Verbindung gestört")
+            self.connection_summary.setToolTip(message)
         self.set_status(
             message,
             level=level,

@@ -453,9 +453,7 @@ class PanelProjectsMixin:
         def add_part_row(parent, part, label):
             item = self.add_tree_item(parent, "part", part, label)
             item.setData(0, self.tree_role(2), False)
-            revision = part.get("latest_revision") or part.get("latest_fcstd_revision")
-            if isinstance(revision, dict):
-                item.setText(0, f"{label} · {revision_label(revision).split(' · ')[0]}")
+            item.setToolTip(0, "Aufklappen, um die Revisionen zu laden.")
             return item
 
         if isinstance(variant_view, dict) and variant_view.get("rows") and hasattr(self, "variant_role"):
