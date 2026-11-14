@@ -616,8 +616,14 @@ class PanelProjectsMixin:
         form.addRow("Datum", project_date)
         form.addRow("Beschreibung", description)
         form.addRow("Projektstand", snapshot_name)
-        form.addRow("Ordner", source_widget)
+        form.addRow("Quellordner", source_widget)
         layout.addLayout(form)
+        status_label = self.QtWidgets.QLabel("")
+        status_label.setWordWrap(True)
+        layout.addWidget(status_label)
+        preview_label = self.QtWidgets.QLabel("Noch kein Quellordner gewählt.")
+        preview_label.setWordWrap(True)
+        layout.addWidget(preview_label)
 
         buttons = self.QtWidgets.QDialogButtonBox(
             self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
@@ -642,14 +648,64 @@ class PanelProjectsMixin:
             if chosen:
                 source_dir.setText(chosen)
 
+        def supported_file_count(directory):
+            import os
+
+            count = 0
+            for root, _dirs, files in os.walk(directory):
+                for name in files:
+                    if Path(name).suffix.lower() in (".fcstd", ".step", ".stp", ".stl"):
+                        count += 1
+            return count
+
+        def update_preview(*_args):
+            directory = source_dir.text().strip()
+            if not directory:
+                preview_label.setText("Noch kein Quellordner gewählt.")
+                return
+            if not Path(directory).is_dir():
+                preview_label.setText("Der Quellordner existiert nicht.")
+                return
+            count = supported_file_count(directory)
+            preview_label.setText(
+                f"{count} unterstützte CAD-Datei(en) im Quellordner."
+                if count
+                else "Keine FCStd-, STEP- oder STL-Dateien im Quellordner gefunden."
+            )
+
+        def validate_and_accept():
+            status_label.setText("")
+            if new_project_radio.isChecked():
+                if not code.text().strip():
+                    status_label.setText("Projektcode ist erforderlich.")
+                    return
+                if not name.text().strip():
+                    status_label.setText("Projektname ist erforderlich.")
+                    return
+            directory = source_dir.text().strip()
+            if not directory:
+                status_label.setText("Bitte einen Quellordner wählen.")
+                return
+            if not Path(directory).is_dir():
+                status_label.setText("Der Quellordner existiert nicht.")
+                return
+            if supported_file_count(directory) == 0:
+                status_label.setText(
+                    "Im Quellordner wurden keine FCStd-, STEP- oder STL-Dateien gefunden."
+                )
+                return
+            dialog.accept()
+
         if selected_project is None:
             new_project_radio.setChecked(True)
         else:
             existing_project_radio.setChecked(True)
         update_mode()
+        update_preview()
         new_project_radio.toggled.connect(update_mode)
+        source_dir.textChanged.connect(update_preview)
         browse_button.clicked.connect(browse)
-        buttons.accepted.connect(dialog.accept)
+        buttons.accepted.connect(validate_and_accept)
         buttons.rejected.connect(dialog.reject)
 
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
@@ -657,9 +713,6 @@ class PanelProjectsMixin:
             return
 
         source = source_dir.text().strip()
-        if not source:
-            self.set_status("Projektordner ist erforderlich.")
-            return
         snapshot = snapshot_name.text().strip() or "Initial"
 
         try:
