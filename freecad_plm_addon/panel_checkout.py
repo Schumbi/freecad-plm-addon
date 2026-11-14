@@ -31,6 +31,7 @@ from .panel_helpers import (
     checkout_guard_action,
     checkout_label,
     checkout_project_code,
+    format_bytes,
     compact_revision_summary,
     part_label,
     print_freecad_console,
@@ -497,19 +498,9 @@ class PanelCheckoutMixin:
                 self.offer_cancel_unchanged_checkout(saved_count=len(saved))
                 return
 
-            summary, accepted = self.QtWidgets.QInputDialog.getMultiLineText(
-                self.widget,
-                "Einchecken",
-                "Änderungskommentar",
-                "",
-            )
-            if not accepted:
+            change_summary = self.ask_checkin_review(changed_files, manifest)
+            if change_summary is None:
                 self.set_status("Einchecken abgebrochen.")
-                return
-
-            change_summary = summary.strip()
-            if not change_summary:
-                self.set_status("Änderungskommentar ist erforderlich.")
                 return
 
             self.set_status("Sende Check-in...")
@@ -566,6 +557,67 @@ class PanelCheckoutMixin:
         if close_failed:
             message = f"{message} Schließen fehlgeschlagen: {', '.join(close_failed)}."
         self.set_status(message)
+
+    def ask_checkin_review(self, changed_files, manifest):
+        """Zeigt vor dem Upload die betroffenen Dateien und den Kommentar."""
+        dialog = self.QtWidgets.QDialog(self.widget)
+        dialog.setWindowTitle("Revision einchecken")
+        layout = self.QtWidgets.QVBoxLayout(dialog)
+        intro = self.QtWidgets.QLabel(
+            f"{compact_revision_summary(self.active_checkout or {})}\n"
+            "Diese Dateien werden als neue Revision übertragen:"
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        listing = self.QtWidgets.QListWidget()
+        for item in changed_files:
+            size = ""
+            local_path = item.get("local_path")
+            try:
+                size = format_bytes(local_path.stat().st_size)
+            except Exception:
+                size = ""
+            role = "Hauptdatei" if item.get("is_root") else "Referenz"
+            text = f"{item.get('path', '')} · {role}"
+            if size:
+                text = f"{text} · {size}"
+            listing.addItem(text)
+        added = list(manifest.get("added_paths") or [])
+        removed = list(manifest.get("removed_paths") or [])
+        for path in added:
+            listing.addItem(f"{path} · Neu")
+        for path in removed:
+            listing.addItem(f"{path} · Entfernt")
+        listing.setMinimumHeight(140)
+        layout.addWidget(listing, 1)
+
+        layout.addWidget(self.QtWidgets.QLabel("Änderungskommentar"))
+        comment = self.QtWidgets.QPlainTextEdit()
+        comment.setPlaceholderText("Was hat sich geändert und warum?")
+        comment.setMaximumHeight(90)
+        layout.addWidget(comment)
+
+        buttons = self.QtWidgets.QDialogButtonBox(
+            self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
+        )
+        ok_button = buttons.button(self.QtWidgets.QDialogButtonBox.Ok)
+        ok_button.setText("Revision einchecken")
+        ok_button.setEnabled(False)
+        comment.textChanged.connect(
+            lambda: ok_button.setEnabled(bool(comment.toPlainText().strip()))
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        comment.setFocus()
+        if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
+            return None
+        summary = comment.toPlainText().strip()
+        if not summary:
+            self.set_status("Änderungskommentar ist erforderlich.", level="error")
+            return None
+        return summary
 
     def add_selected_file_to_active_checkout(self):
         checkout_id = self.active_checkout_id()

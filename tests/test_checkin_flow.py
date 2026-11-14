@@ -40,7 +40,8 @@ class CheckinFlowTests(unittest.TestCase):
             panel = SimpleNamespace(
                 active_checkout_id=lambda: 7, active_checkout_dir=root, active_checkout_root_path=path,
                 checkout_document_names=['Part'], widget=None, QtCore=None,
-                QtWidgets=SimpleNamespace(QInputDialog=SimpleNamespace(getMultiLineText=Mock(return_value=('Neue Farbe', accepted)))),
+                QtWidgets=SimpleNamespace(),
+                ask_checkin_review=Mock(return_value='Neue Farbe' if accepted else None),
                 checkout_state_timer=Mock(), client=lambda: client, set_status=Mock(),
                 reset_active_checkout=Mock(), refresh_revisions=Mock(), refresh_active_checkouts=Mock(),
                 select_revision_by_id=Mock(), offer_cancel_unchanged_checkout=Mock(),
