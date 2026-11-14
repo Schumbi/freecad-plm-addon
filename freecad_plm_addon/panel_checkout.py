@@ -29,6 +29,7 @@ from .panel_helpers import (
     checkin_result_text,
     checkout_file_label,
     checkout_guard_action,
+    checkout_label,
     checkout_project_code,
     compact_revision_summary,
     part_label,
@@ -799,20 +800,24 @@ class PanelCheckoutMixin:
             return
 
         if confirm:
+            summary = checkout_label(checkout) if isinstance(checkout, dict) else f"Checkout {checkout_id}"
             answer = self.QtWidgets.QMessageBox.question(
                 self.widget,
-                "Checkout abbrechen",
-                f"Checkout {checkout_id} wirklich abbrechen?",
+                "Checkout verwerfen",
+                f"Checkout für {summary} wirklich verwerfen?\n\n"
+                "Der Server-Checkout wird freigegeben. Lokale Dateien bleiben im Workspace erhalten.",
+                self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+                self.QtWidgets.QMessageBox.No,
             )
             if answer != self.QtWidgets.QMessageBox.Yes:
-                self.set_status("Checkout-Abbruch abgebrochen.")
+                self.set_status("Checkout-Verwerfen abgebrochen.")
                 return
 
         is_local_checkout = checkout_id == self.active_checkout_id()
         closed = []
         failed = []
         try:
-            self.set_status("Breche Checkout ab...")
+            self.set_status("Verwerfe Checkout…", level="progress")
             self.client().cancel_checkout(checkout_id)
             if is_local_checkout:
                 closed, failed = fcstd.close_documents(self.checkout_document_names)

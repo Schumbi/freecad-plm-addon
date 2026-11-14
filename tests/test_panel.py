@@ -457,11 +457,11 @@ class PanelTests(unittest.TestCase):
         self.assertFalse(checkout_can_cancel({}))
         self.assertFalse(checkout_can_cancel(None))
 
-    def test_checkout_primary_button_switches_between_checkin_and_cancel(self):
+    def test_checkout_primary_button_is_always_checkin(self):
         self.assertEqual(checkout_primary_button_action(True), "checkin")
-        self.assertEqual(checkout_primary_button_action(False), "cancel")
+        self.assertEqual(checkout_primary_button_action(False), "checkin")
 
-    def test_active_checkout_primary_action_rechecks_state_before_running(self):
+    def test_active_checkout_primary_action_always_checks_in(self):
         panel = object.__new__(PLMPanel)
         panel.active_checkout_has_changes = Mock(return_value=False)
         panel.checkin_active_checkout = Mock()
@@ -469,13 +469,8 @@ class PanelTests(unittest.TestCase):
 
         panel.run_active_checkout_primary_action()
 
-        panel.cancel_active_checkout.assert_called_once_with()
-        panel.checkin_active_checkout.assert_not_called()
-
-        panel.active_checkout_has_changes.return_value = True
-        panel.run_active_checkout_primary_action()
-
         panel.checkin_active_checkout.assert_called_once_with()
+        panel.cancel_active_checkout.assert_not_called()
 
     def test_cancel_server_checkout_does_not_require_local_metadata(self):
         panel = object.__new__(PLMPanel)

@@ -586,7 +586,8 @@ def unchanged_checkout_text(saved_count=0):
 
 
 def checkout_primary_button_action(has_changes):
-    return "checkin" if has_changes else "cancel"
+    # Kompatibilitaetshelfer: Die Primaeraktion ist immer der Check-in.
+    return "checkin"
 
 
 def checkout_files_signature(manifest, checkout_path):

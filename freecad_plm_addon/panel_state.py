@@ -138,10 +138,9 @@ class PanelStateMixin:
             return True
 
     def run_active_checkout_primary_action(self):
-        if self.active_checkout_has_changes():
-            self.checkin_active_checkout()
-        else:
-            self.cancel_active_checkout()
+        # "Einchecken" ist die Primaeraktion. Ein unveraenderter Checkout wird
+        # im Check-in-Ablauf erkannt und dort zum Verwerfen angeboten.
+        self.checkin_active_checkout()
 
     def refresh_active_checkout_primary_button(self):
         item = self.browser_tree.currentItem()
@@ -149,8 +148,7 @@ class PanelStateMixin:
         state = checkout_visual_state(checkout, self.active_checkout_id())
         if self.tree_item_kind(item) not in ("revision", "part") or state != "local":
             return
-        action = checkout_primary_button_action(self.poll_checkout_change_state())
-        label = "Einchecken" if action == "checkin" else "Abbrechen"
+        label = "Einchecken"
         if self.context_primary_label == label:
             return
         self.context_primary_button.setText(label)
@@ -271,7 +269,7 @@ class PanelStateMixin:
             label = "Aktualisieren"
             callback = self.refresh_projects
             if checkout_can_cancel(checkout):
-                more = [("Checkout abbrechen", self.cancel_selected_checkout)]
+                more = [("Checkout verwerfen", self.cancel_selected_checkout)]
         elif action_kind == "revision":
             summary = compact_revision_summary(revision)
             state = checkout_visual_state(
@@ -296,10 +294,7 @@ class PanelStateMixin:
                 "refresh": ("Aktualisieren", self.refresh_projects),
             }
             if primary == "checkin":
-                checkout_action = checkout_primary_button_action(
-                    self.poll_checkout_change_state()
-                )
-                label = "Einchecken" if checkout_action == "checkin" else "Abbrechen"
+                label = "Einchecken"
                 callback = self.run_active_checkout_primary_action
             else:
                 label, callback = action_map.get(primary, ("Keine Aktion", None))
@@ -310,11 +305,11 @@ class PanelStateMixin:
                     ("Teil hinzufügen", self.choose_revision_for_active_checkout),
                     ("Teil entfernen", self.remove_file_from_active_checkout),
                     (None, None),
-                    ("Checkout abbrechen", self.cancel_active_checkout),
+                    ("Checkout verwerfen", self.cancel_active_checkout),
                 ]
             else:
                 if state in ("server", "error") and checkout_can_cancel(checkout):
-                    more.append(("Checkout abbrechen", self.cancel_selected_checkout))
+                    more.append(("Checkout verwerfen", self.cancel_selected_checkout))
                 if revision_is_checkout_editable(revision or {}):
                     more.append(("Schreibgeschützt öffnen", self.open_selected_revision_readonly))
                     if (
