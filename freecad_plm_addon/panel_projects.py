@@ -586,8 +586,7 @@ class PanelProjectsMixin:
         status.addItem("Idee", "idea")
         status.addItem("Wichtig", "important")
         status.addItem("Auftrag", "order")
-        project_date = self.QtWidgets.QLineEdit()
-        project_date.setPlaceholderText("YYYY-MM-DD")
+        project_date = self.make_project_date_edit("")
         description = self.QtWidgets.QPlainTextEdit()
         description.setMaximumHeight(80)
         snapshot_name = self.QtWidgets.QLineEdit()
@@ -712,7 +711,7 @@ class PanelProjectsMixin:
                             "code": code.text(),
                             "name": name.text(),
                             "status": status.itemData(status.currentIndex()) or "running",
-                            "project_date": project_date.text(),
+                            "project_date": project_date.date().toString("yyyy-MM-dd"),
                             "description": description.toPlainText(),
                         }
                     )

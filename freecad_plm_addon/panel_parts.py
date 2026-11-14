@@ -741,8 +741,7 @@ class PanelPartsMixin:
         status_value = project.get("status") or "running"
         status_index = status.findData(status_value)
         status.setCurrentIndex(status_index if status_index >= 0 else 0)
-        project_date = self.QtWidgets.QLineEdit(project.get("project_date", "") or "")
-        project_date.setPlaceholderText("YYYY-MM-DD")
+        project_date = self.make_project_date_edit(project.get("project_date", ""))
         description = self.QtWidgets.QPlainTextEdit(project.get("description", "") or "")
         description.setMaximumHeight(120)
         form.addRow("Code", code)
@@ -767,7 +766,7 @@ class PanelPartsMixin:
                 "code": code.text(),
                 "name": name.text(),
                 "status": status.itemData(status.currentIndex()) or "running",
-                "project_date": project_date.text(),
+                "project_date": project_date.date().toString("yyyy-MM-dd"),
                 "description": description.toPlainText(),
             }
         )
@@ -801,6 +800,8 @@ class PanelPartsMixin:
         form = self.QtWidgets.QFormLayout()
         number = self.QtWidgets.QLineEdit(part.get("number", "") or "")
         number.setReadOnly(True)
+        number.setEnabled(False)
+        number.setToolTip("Die Teilenummer wird vom PLM vergeben und ist nicht editierbar.")
         name = self.QtWidgets.QLineEdit(part.get("name", "") or "")
         category = self.QtWidgets.QComboBox()
         category.addItem("Teil", "part")

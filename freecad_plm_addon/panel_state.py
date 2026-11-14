@@ -131,6 +131,16 @@ class PanelStateMixin:
             action=action,
         )
 
+    def make_project_date_edit(self, value):
+        editor = self.QtWidgets.QDateEdit()
+        editor.setCalendarPopup(True)
+        editor.setDisplayFormat("dd.MM.yyyy")
+        date = self.QtCore.QDate.fromString(str(value or ""), "yyyy-MM-dd")
+        if not date.isValid():
+            date = self.QtCore.QDate.currentDate()
+        editor.setDate(date)
+        return editor
+
     def set_connected(self, server_url):
         import time
 
