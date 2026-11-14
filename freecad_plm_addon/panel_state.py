@@ -84,6 +84,53 @@ class PanelStateMixin:
         if callable(callback):
             callback()
 
+    def handle_plm_error(self, exc, context=""):
+        """Uebersetzt API-/Netzfehler in eine Meldung mit naechster Aktion."""
+        from .errors import (
+            APIError,
+            AuthenticationError,
+            ConflictError,
+            NotFoundError,
+            PermissionDeniedError,
+        )
+
+        status = getattr(exc, "status", None)
+        text = str(exc)
+        prefix = f"{context}: " if context else ""
+        label = None
+        action = None
+        level = "error"
+
+        if (
+            isinstance(exc, AuthenticationError)
+            or status == 401
+            or "API-Token erforderlich" in text
+            or "token" in text.lower() and "erforderlich" in text.lower()
+        ):
+            message = f"{prefix}Token ungültig oder abgelaufen"
+            label, action = "Einstellungen öffnen", self.show_connection_settings_dialog
+        elif isinstance(exc, PermissionDeniedError) or status == 403:
+            message = f"{prefix}Keine Berechtigung – Token-Scopes prüfen"
+            label, action = "Einstellungen öffnen", self.show_connection_settings_dialog
+        elif isinstance(exc, NotFoundError) or status == 404:
+            message = f"{prefix}Nicht gefunden"
+        elif isinstance(exc, ConflictError) or status == 409:
+            message = f"{prefix}Konflikt: {text}"
+            label, action = "Checkouts aktualisieren", self.refresh_active_checkouts
+        elif isinstance(exc, (TimeoutError, OSError)) or "timed out" in text.lower():
+            message = f"{prefix}Server nicht erreichbar"
+            label, action = "Erneut versuchen", self.refresh_projects_background
+        elif isinstance(exc, APIError):
+            message = f"{prefix}{text}"
+        else:
+            message = f"{prefix}{text}" if prefix else text
+        self.set_status(
+            message,
+            level=level,
+            action_label=label,
+            action=action,
+        )
+
     def set_connected(self, server_url):
         label = connection_label(server_url)
         self.connection_summary.setText(label)
@@ -501,7 +548,7 @@ class PanelStateMixin:
             self.checkout_tree_items = {}
             self.reset_checkout_tree_markers()
             self.update_context_actions()
-            self.set_status(f"Aktive Checkouts konnten nicht geladen werden: {exc}")
+            self.handle_plm_error(exc, "Aktive Checkouts konnten nicht geladen werden")
             return None
 
         self.server_checkouts = list(checkouts or [])

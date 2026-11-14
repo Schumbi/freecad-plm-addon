@@ -73,7 +73,7 @@ class PanelProjectsMixin:
             if server_url != self.server_url.text().strip() or api_token != self.api_token.text().strip():
                 return
             if error is not None:
-                self.set_status(f"Projekte konnten nicht geladen werden: {error}")
+                self.handle_plm_error(error, "Projekte konnten nicht geladen werden")
                 return
             self._refresh_parts_by_project = result["parts"]
             self._refresh_part_details = result["details"]
@@ -134,7 +134,7 @@ class PanelProjectsMixin:
                     child.setData(0, self.QtCore.Qt.UserRole,
                                   {"path": document["path"], "version": version, "historical": True})
             except PLMError as exc:
-                self.set_status(f"Versionen konnten nicht geladen werden: {exc}")
+                self.handle_plm_error(exc, "Versionen konnten nicht geladen werden")
 
         def open_selected():
             item = items.currentItem()
@@ -183,7 +183,7 @@ class PanelProjectsMixin:
         try:
             refresh()
         except PLMError as exc:
-            self.set_status(f"Projektdateien konnten nicht geladen werden: {exc}")
+            self.handle_plm_error(exc, "Projektdateien konnten nicht geladen werden")
             return
         dialog.exec_()
 
@@ -318,10 +318,10 @@ class PanelProjectsMixin:
                 projects = prefetched["projects"]
                 folders = prefetched["folders"]
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
-            self.set_status(f"Verbindung fehlgeschlagen: {exc}")
+            self.handle_plm_error(exc, "Verbindung fehlgeschlagen")
             return
 
         self.project_folder.clear()
@@ -421,7 +421,7 @@ class PanelProjectsMixin:
                 if not current:
                     return
                 if error is not None:
-                    self.set_status(f"Teile konnten nicht geladen werden: {error}")
+                    self.handle_plm_error(error, "Teile konnten nicht geladen werden")
                     return
                 self.load_project_parts(project_item, force=True, parts=result)
 
@@ -434,10 +434,10 @@ class PanelProjectsMixin:
                 cache = getattr(self, "_refresh_parts_by_project", {})
                 parts = cache[project_id] if isinstance(cache, dict) and project_id in cache else self.client().get_parts(project_id, include_view=True)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
-            self.set_status(f"Verbindung fehlgeschlagen: {exc}")
+            self.handle_plm_error(exc, "Verbindung fehlgeschlagen")
             return
 
         variant_view = parts.get("variant_view") if isinstance(parts, dict) else None
@@ -542,7 +542,7 @@ class PanelProjectsMixin:
         try:
             updated_project = self.client().update_project(project_id, payload)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Projekt konnte nicht gespeichert werden: {exc}")
@@ -724,7 +724,7 @@ class PanelProjectsMixin:
                         return
                     result = client.import_project_snapshot(project_id, zip_path, snapshot, dependency_root_path=dependency_root_path, dependency_revision_id=dependency_revision_id)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Projektimport fehlgeschlagen: {exc}")

@@ -874,3 +874,41 @@ class PanelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ErrorMessageTests(unittest.TestCase):
+    def _panel(self):
+        from freecad_plm_addon.errors import AuthenticationError, ConflictError
+
+        panel = object.__new__(PLMPanel)
+        panel.set_status = Mock()
+        panel.show_connection_settings_dialog = Mock()
+        panel.refresh_active_checkouts = Mock()
+        panel.refresh_projects_background = Mock()
+        return panel, AuthenticationError, ConflictError
+
+    def test_authentication_error_offers_settings_action(self):
+        panel, AuthenticationError, _ = self._panel()
+        panel.handle_plm_error(AuthenticationError(401, "API-Token erforderlich"), "Projekte")
+
+        args, kwargs = panel.set_status.call_args
+        self.assertIn("Token", args[0])
+        self.assertEqual(kwargs["level"], "error")
+        self.assertEqual(kwargs["action_label"], "Einstellungen öffnen")
+        kwargs["action"]()
+        panel.show_connection_settings_dialog.assert_called_once_with()
+
+    def test_conflict_error_offers_checkout_refresh(self):
+        panel, _, ConflictError = self._panel()
+        panel.handle_plm_error(ConflictError(409, "Checkout aktiv"))
+
+        _args, kwargs = panel.set_status.call_args
+        self.assertEqual(kwargs["action_label"], "Checkouts aktualisieren")
+
+    def test_timeout_offers_retry(self):
+        panel, _, _ = self._panel()
+        panel.handle_plm_error(TimeoutError("timed out"), "Projekte")
+
+        args, kwargs = panel.set_status.call_args
+        self.assertIn("nicht erreichbar", args[0])
+        self.assertEqual(kwargs["action_label"], "Erneut versuchen")

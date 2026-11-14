@@ -155,7 +155,7 @@ class PanelPartsMixin:
                 if not current:
                     return
                 if error is not None:
-                    self.set_status(f"Revisionen konnten nicht geladen werden: {error}")
+                    self.handle_plm_error(error, "Revisionen konnten nicht geladen werden")
                     return
                 self.load_part_revisions(part_item, force=True, part_detail=result)
 
@@ -168,10 +168,10 @@ class PanelPartsMixin:
                 cache = getattr(self, "_refresh_part_details", {})
                 part_detail = cache[part_id] if isinstance(cache, dict) and part_id in cache else self.client().get_part(part_id)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
-            self.set_status(f"Verbindung fehlgeschlagen: {exc}")
+            self.handle_plm_error(exc, "Verbindung fehlgeschlagen")
             return
 
         revisions = sorted(
@@ -326,7 +326,7 @@ class PanelPartsMixin:
         try:
             variants = self.client().get_part(part["id"]).get("variants", [])
         except Exception as exc:
-            self.set_status(f"Varianten konnten nicht geladen werden: {exc}")
+            self.handle_plm_error(exc, "Varianten konnten nicht geladen werden")
             return
         if not variants:
             self.set_status("Dieses Teil hat noch keine Variantenfamilie.")
@@ -441,7 +441,7 @@ class PanelPartsMixin:
                     workspace_hint=self.workspace_root.text().strip(),
                 )
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Teil konnte nicht angelegt werden: {exc}")
@@ -590,7 +590,7 @@ class PanelPartsMixin:
                 open_result = self.open_checkout_response_to_workspace(project, response)
                 result_text = f"als Checkout geöffnet: {open_result['root_path'].name}"
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Lokale FCStd konnte nicht hinzugefügt werden: {exc}")
@@ -626,7 +626,7 @@ class PanelPartsMixin:
                 )
             ]
         except Exception as exc:
-            self.set_status(f"Druckprojekte konnten nicht geladen werden: {exc}")
+            self.handle_plm_error(exc, "Druckprojekte konnten nicht geladen werden")
             return
         if not candidates:
             self.set_status("Kein passendes Druckprojekt ohne diese Revision gefunden.")
@@ -701,7 +701,7 @@ class PanelPartsMixin:
         try:
             updated_part = self.client().update_part(part_id, payload)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Teil konnte nicht gespeichert werden: {exc}")
@@ -774,7 +774,7 @@ class PanelPartsMixin:
         try:
             updated_project = self.client().update_project(project_id, payload)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Projekt konnte nicht gespeichert werden: {exc}")
@@ -848,7 +848,7 @@ class PanelPartsMixin:
         try:
             updated_part = self.client().update_part(part_id, payload)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Teil konnte nicht gespeichert werden: {exc}")

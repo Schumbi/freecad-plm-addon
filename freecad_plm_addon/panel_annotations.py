@@ -60,7 +60,7 @@ class PanelAnnotationsMixin:
         try:
             updated_revision = self.client().update_revision_notes(revision_id, payload["notes"])
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
@@ -183,7 +183,7 @@ class PanelAnnotationsMixin:
         try:
             updated_revision = self.client().update_revision_notes(revision_id, payload["notes"])
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Notizen konnten nicht gespeichert werden: {exc}")
@@ -288,7 +288,7 @@ class PanelAnnotationsMixin:
         try:
             annotation = self.client().create_annotation(part_id, payload)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Anmerkung konnte nicht gespeichert werden: {exc}")
@@ -340,7 +340,7 @@ class PanelAnnotationsMixin:
         try:
             updated = self.client().update_annotation(annotation_id, payload)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Anmerkung konnte nicht gespeichert werden: {exc}")
@@ -373,7 +373,7 @@ class PanelAnnotationsMixin:
         try:
             self.client().delete_annotation(annotation_id)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Anmerkung konnte nicht gelöscht werden: {exc}")

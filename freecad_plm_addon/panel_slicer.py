@@ -367,7 +367,7 @@ class PanelSlicerMixin:
             self.set_status(f"Slicer-Projekt-Konflikt: {exc}")
             return
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Slicer konnte nicht geöffnet werden: {exc}")

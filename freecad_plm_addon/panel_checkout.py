@@ -101,7 +101,7 @@ class PanelCheckoutMixin:
                 max_revisions_per_project=self.cache_max_revisions_per_project.value(),
             )
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Öffnen fehlgeschlagen: {exc}")
@@ -284,7 +284,7 @@ class PanelCheckoutMixin:
             )
             return
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Checkout fehlgeschlagen: {exc}")
@@ -544,7 +544,7 @@ class PanelCheckoutMixin:
             self.set_status(checkin_conflict_text(exc))
             return
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Einchecken fehlgeschlagen: {exc}")
@@ -596,7 +596,7 @@ class PanelCheckoutMixin:
             response = self.client().add_checkout_file(checkout_id, revision_id)
             result = self.add_checkout_response_to_workspace(response)
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             self.QtWidgets.QMessageBox.warning(self.widget, "Teil hinzufügen fehlgeschlagen", str(exc))
             return
         except Exception as exc:
@@ -826,7 +826,7 @@ class PanelCheckoutMixin:
                 self.checkout_errors.pop(checkout_id, None)
             self.refresh_active_checkouts()
         except PLMError as exc:
-            self.set_status(f"PLM-Fehler: {exc}")
+            self.handle_plm_error(exc)
             return
         except Exception as exc:
             self.set_status(f"Checkout-Abbruch fehlgeschlagen: {exc}")
