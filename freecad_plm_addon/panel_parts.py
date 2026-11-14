@@ -199,17 +199,22 @@ class PanelPartsMixin:
                 revision_label(revision),
             )
             item.setToolTip(0, revision_workflow_hint(revision))
-            item.setHidden(True)
         part_item.setData(0, self.tree_role(7), revisions[0] if revisions else None)
         base_label = part_item.data(0, self.tree_role(5)) or part_item.text(0)
+        part_item.setText(0, base_label)
         if revisions:
-            part_item.setText(0, f"{base_label} · {revision_label(revisions[0]).split(' · ')[0]}")
             part_item.setToolTip(0, revision_workflow_hint(revisions[0]))
         else:
-            part_item.setText(0, base_label)
             part_item.setToolTip(0, "Keine Revision vorhanden.")
         part_item.setData(0, self.tree_role(2), True)
-        part_item.setChildIndicatorPolicy(self.QtWidgets.QTreeWidgetItem.DontShowIndicator)
+        if revisions:
+            part_item.setChildIndicatorPolicy(
+                self.QtWidgets.QTreeWidgetItem.ShowIndicator
+            )
+        else:
+            part_item.setChildIndicatorPolicy(
+                self.QtWidgets.QTreeWidgetItem.DontShowIndicator
+            )
         part_item.setExpanded(False)
         if self.browser_tree.currentItem() is part_item:
             self.browser_selection_changed()

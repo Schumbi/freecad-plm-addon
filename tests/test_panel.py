@@ -64,7 +64,7 @@ class PanelTests(unittest.TestCase):
             ["R0003", "R0002", "R0001"],
         )
 
-    def test_part_tree_hides_revision_rows_and_shows_latest_on_part(self):
+    def test_part_tree_shows_revision_rows(self):
         panel = object.__new__(PLMPanel)
         part_item = Mock()
         part_item.data.return_value = False
@@ -93,11 +93,14 @@ class PanelTests(unittest.TestCase):
         panel.load_part_revisions(part_item)
 
         self.assertEqual(panel.add_tree_item.call_args_list[0].args[2]["revision_code"], "R0002")
-        current.setHidden.assert_called_once_with(True)
-        older.setHidden.assert_called_once_with(True)
+        current.setHidden.assert_not_called()
+        older.setHidden.assert_not_called()
+        part_item.setChildIndicatorPolicy.assert_called_once_with(
+            panel.QtWidgets.QTreeWidgetItem.ShowIndicator
+        )
         part_item.setData.assert_any_call(0, 32, {"id": 2, "revision_code": "R0002", "file_format": "fcstd"})
 
-    def test_older_active_checkout_gets_visible_checkout_row(self):
+    def test_older_active_checkout_marks_visible_revision_row(self):
         panel = object.__new__(PLMPanel)
         panel.server_checkouts = [{
             "id": 220, "project": {"id": 14}, "part": {"id": 43},
@@ -105,25 +108,26 @@ class PanelTests(unittest.TestCase):
         }]
         panel.checkout_errors = {}
         panel.reset_checkout_tree_markers = Mock()
-        project_item, part_item, hidden_revision, checkout_row = (Mock() for _ in range(4))
-        hidden_revision.isHidden.return_value = True
-        panel.find_tree_item = Mock(side_effect=[project_item, part_item, hidden_revision])
+        project_item, part_item, revision_item = (Mock() for _ in range(3))
+        part_item.data.return_value = {}
+        panel.find_tree_item = Mock(side_effect=[project_item, part_item, revision_item])
         panel.load_project_parts = Mock()
         panel.load_part_revisions = Mock()
         panel.expand_tree_ancestors = Mock()
         panel.tree_item_payload = Mock(return_value={"id": 164, "revision_code": "R0006"})
-        panel.add_tree_item = Mock(return_value=checkout_row)
+        panel.add_tree_item = Mock()
         panel.tree_role = Mock(return_value=32)
         panel.mark_checkout_item = Mock()
         panel.QtWidgets = Mock()
 
         result = panel.reveal_active_checkouts()
 
-        self.assertIs(result[220], checkout_row)
-        self.assertIn("Checkout 220", panel.add_tree_item.call_args.args[3])
-        checkout_row.setData.assert_called_once_with(0, 32, "checkout_row")
+        self.assertIs(result[220], revision_item)
+        panel.mark_checkout_item.assert_called_with(revision_item, panel.server_checkouts[0], "")
+        panel.add_tree_item.assert_not_called()
+        part_item.setExpanded.assert_called_once_with(True)
 
-    def test_current_revision_is_selected_from_part_row(self):
+    def test_part_row_does_not_imply_a_revision(self):
         panel = object.__new__(PLMPanel)
         part_item = Mock()
         revision = {"id": 164, "revision_code": "R0006"}
@@ -133,9 +137,9 @@ class PanelTests(unittest.TestCase):
         panel.tree_item_kind = Mock(return_value="part")
         panel.tree_role = Mock(return_value=39)
 
-        self.assertEqual(panel.selected_revision(), revision)
+        self.assertIsNone(panel.selected_revision())
 
-    def test_current_checkout_is_marked_on_part_row(self):
+    def test_current_checkout_is_marked_on_part_and_revision_row(self):
         panel = object.__new__(PLMPanel)
         panel.server_checkouts = [{
             "id": 220, "project": {"id": 14}, "part": {"id": 43},
@@ -143,10 +147,9 @@ class PanelTests(unittest.TestCase):
         }]
         panel.checkout_errors = {}
         panel.reset_checkout_tree_markers = Mock()
-        project_item, part_item, hidden_revision = (Mock() for _ in range(3))
+        project_item, part_item, revision_item = (Mock() for _ in range(3))
         part_item.data.return_value = {"id": 164}
-        hidden_revision.isHidden.return_value = True
-        panel.find_tree_item = Mock(side_effect=[project_item, part_item, hidden_revision])
+        panel.find_tree_item = Mock(side_effect=[project_item, part_item, revision_item])
         panel.load_project_parts = Mock()
         panel.load_part_revisions = Mock()
         panel.expand_tree_ancestors = Mock()
@@ -156,9 +159,9 @@ class PanelTests(unittest.TestCase):
 
         result = panel.reveal_active_checkouts()
 
-        self.assertIs(result[220], part_item)
+        self.assertIs(result[220], revision_item)
         panel.mark_checkout_item.assert_any_call(part_item, panel.server_checkouts[0], "")
-        part_item.setExpanded.assert_not_called()
+        part_item.setExpanded.assert_called_once_with(True)
 
     def test_revision_lookup_prefers_visible_checkout_row(self):
         panel = object.__new__(PLMPanel)

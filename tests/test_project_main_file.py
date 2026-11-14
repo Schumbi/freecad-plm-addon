@@ -93,7 +93,7 @@ class ProjectMainFileTests(unittest.TestCase):
 
         PanelPartsMixin.load_part_revisions(self.panel, part_item)
 
-        part_item.setText.assert_called_with(0, "Hauptdatei · P-004 - Druck · R0002")
+        part_item.setText.assert_called_with(0, "Hauptdatei · P-004 - Druck")
         part_item.setData.assert_any_call(0, 37, "Hauptdatei · P-004 - Druck")
 
     def test_print_main_file_selects_print_parts_for_other_variants(self):
