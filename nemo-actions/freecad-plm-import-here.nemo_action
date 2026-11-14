@@ -1,0 +1,11 @@
+[Nemo Action]
+Name=Import this folder into FreeCAD-PLM
+Name[de]=Diesen Ordner in FreeCAD-PLM importieren
+Comment=Import the current folder as a project or snapshot
+Comment[de]=Aktuellen Ordner als Projekt oder Projektstand importieren
+Exec=<freecad-plm-import.sh %P>
+Selection=none
+Extensions=any;
+Quote=double
+Icon-Name=<freecad-plm-import.svg>
+Dependencies=python3;zenity;

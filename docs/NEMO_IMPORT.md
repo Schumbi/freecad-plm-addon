@@ -19,15 +19,21 @@ des Add-ons. FreeCAD selbst muss dafür nicht laufen.
 
 ## Nemo-Actions installieren
 
-Die Actions liegen unter `~/.local/share/nemo/actions/`:
+Die Actions liegen im Repo unter `nemo-actions/`. Die vollständige
+Installationsanleitung steht in
+[`../nemo-actions/README.md`](../nemo-actions/README.md).
+
+Zum Installieren werden die Dateien nach `~/.local/share/nemo/actions/`
+kopiert:
 
 - `freecad-plm-import-folder.nemo_action` – ausgewählter Ordner
 - `freecad-plm-import-here.nemo_action` – aktueller Ordner über die freie Fläche
 - `freecad-plm-import.sh` – Wrapper auf das CLI
 - `freecad-plm-import.svg` – Icon
 
-Der Wrapper enthält den absoluten Pfad zum Add-on-Repo. Wenn das Repo
-verschoben wird, muss dieser Pfad angepasst werden.
+Der Wrapper findet das Repo automatisch, wenn er direkt aus dem Repo gestartet
+wird. Für die installierte Kopie verwendet er den in `ADDON_ROOT` hinterlegten
+Pfad; alternativ kann `FREECAD_PLM_ADDON_ROOT` gesetzt werden.
 
 ## Konfiguration
 

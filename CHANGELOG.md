@@ -6,7 +6,8 @@
   ein neues Projekt oder einen Projektstand in einem bestehenden Projekt
   anlegen, alle Dateien oder nur CAD-Dateien übertragen und STEP-/STL-Dateien
   einer ausgewählten FCStd-Wurzel zuordnen. Server-URL und Token werden aus
-  der FreeCAD-Konfiguration gelesen. Details in
+  der FreeCAD-Konfiguration gelesen. Die installationsfertigen Actions liegen
+  unter `nemo-actions/`; Details in
   [`docs/NEMO_IMPORT.md`](docs/NEMO_IMPORT.md).
 
 ## 0.1.14 – 2026-11-14
