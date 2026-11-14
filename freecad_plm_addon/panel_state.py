@@ -85,7 +85,9 @@ class PanelStateMixin:
             callback()
 
     def set_connected(self, server_url):
-        self.connection_summary.setText(connection_label(server_url))
+        label = connection_label(server_url)
+        self.connection_summary.setText(label)
+        self.connection_summary.setToolTip(label)
         self.refresh_button.setVisible(True)
         self.update_context_actions()
 

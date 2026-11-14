@@ -127,13 +127,25 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         self.connection_summary.setFixedHeight(header_height)
         header_layout.addWidget(self.connection_summary, 1)
 
-        self.refresh_button = self.QtWidgets.QPushButton("Aktualisieren")
+        self.refresh_button = self.QtWidgets.QToolButton()
+        self.refresh_button.setAutoRaise(True)
+        self.refresh_button.setToolTip("Projekte und Teile aktualisieren")
+        self.refresh_button.setIcon(
+            self.QtGui.QIcon.fromTheme("view-refresh")
+        )
+        self.refresh_button.setText("⟳")
+        self.refresh_button.setFixedSize(max(header_height, 26), max(header_height, 26))
         self.refresh_button.setVisible(False)
-        self.refresh_button.setFixedHeight(header_height)
         header_layout.addWidget(self.refresh_button)
 
-        self.settings_button = self.QtWidgets.QPushButton("Verbindungseinstellungen")
-        self.settings_button.setFixedHeight(header_height)
+        self.settings_button = self.QtWidgets.QToolButton()
+        self.settings_button.setAutoRaise(True)
+        self.settings_button.setToolTip("Verbindungseinstellungen")
+        self.settings_button.setIcon(
+            self.QtGui.QIcon.fromTheme("preferences-system")
+        )
+        self.settings_button.setText("⚙")
+        self.settings_button.setFixedSize(max(header_height, 26), max(header_height, 26))
         header_layout.addWidget(self.settings_button)
         layout.addWidget(header)
 
