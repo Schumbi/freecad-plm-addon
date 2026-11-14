@@ -443,14 +443,6 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
     def begin_network_activity(self):
         self._network_activity_count += 1
         if self._network_activity_count == 1:
-            self.browser_tree.setEnabled(False)
-            self.variant_role.setEnabled(False)
-            self.project_search.setEnabled(False)
-            self.project_tag_button.setEnabled(False)
-            self.project_tag_mode.setEnabled(False)
-            self.project_filter_reset.setEnabled(False)
-            self.action_bar_widget.setEnabled(False)
-            self.settings_button.setEnabled(False)
             self._network_indicator_lit = False
             self._blink_network_indicator()
             self.network_indicator_timer.start()
@@ -461,14 +453,6 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
             self.network_indicator_timer.stop()
             self._network_indicator_lit = False
             self.network_indicator.setStyleSheet("color: transparent; font-size: 15px;")
-            self.browser_tree.setEnabled(True)
-            self.variant_role.setEnabled(True)
-            self.project_search.setEnabled(True)
-            self.project_tag_button.setEnabled(True)
-            self.project_tag_mode.setEnabled(True)
-            self.project_filter_reset.setEnabled(True)
-            self.action_bar_widget.setEnabled(True)
-            self.settings_button.setEnabled(True)
             self.update_context_actions()
 
 

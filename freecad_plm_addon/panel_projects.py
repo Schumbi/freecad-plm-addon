@@ -37,7 +37,7 @@ class PanelProjectsMixin:
         client = self.client()
         self._project_refresh_pending = True
         self.refresh_button.setEnabled(False)
-        self.set_status("Lade Projekte...")
+        self.set_status("Lade Projekte...", level="progress")
 
         def work():
             projects = client.get_projects()
@@ -298,7 +298,7 @@ class PanelProjectsMixin:
             self.set_status("Server und API-Token eintragen.")
             return
 
-        self.set_status("Lade Projekte...")
+        self.set_status("Lade Projekte...", level="progress")
         previous_selection = prefetched["selection"] if prefetched is not None else self.tree_selection_key()
         self.browser_tree.clear()
         self.server_checkouts = []
@@ -406,7 +406,7 @@ class PanelProjectsMixin:
         if project_id is None:
             self.set_status("Projekt hat keine ID.")
             return
-        self.set_status("Lade Teile...")
+        self.set_status("Lade Teile...", level="progress")
 
         if background:
             from .background_work import run_gui_work

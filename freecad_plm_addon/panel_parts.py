@@ -137,7 +137,7 @@ class PanelPartsMixin:
             self.set_part_form(part)
 
         if self.tree_ancestor(self.browser_tree.currentItem(), "part") is part_item:
-            self.set_status("Lade Revisionen...")
+            self.set_status("Lade Revisionen...", level="progress")
 
         if background:
             from .background_work import run_gui_work

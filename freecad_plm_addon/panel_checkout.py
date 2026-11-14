@@ -81,7 +81,7 @@ class PanelCheckoutMixin:
                 )
                 return
 
-            self.set_status("Lade Manifest und Dateien herunter...")
+            self.set_status("Lade Manifest und Dateien herunter...", level="progress")
             manifest = self.client().get_revision_manifest(revision_id)
             write_manifest(target_dir, manifest)
             downloaded = download_manifest_files(self.client(), manifest, target_dir)
@@ -276,7 +276,7 @@ class PanelCheckoutMixin:
             return
 
         try:
-            self.set_status("Starte Checkout und lade Dateien herunter...")
+            self.set_status("Starte Checkout und lade Dateien herunter...", level="progress")
             result = self.checkout_revision_to_workspace(project, revision_id)
         except ConflictError as exc:
             self.refresh_active_checkouts()
@@ -404,7 +404,7 @@ class PanelCheckoutMixin:
                 return
 
             client = self.client()
-            self.set_status("Öffne aktiven Checkout wieder...")
+            self.set_status("Öffne aktiven Checkout wieder...", level="progress")
             manifest = response_manifest(checkout.get("manifest"))
             if manifest is None:
                 manifest = response_manifest(client.get_checkout_manifest(checkout_id))
@@ -503,7 +503,7 @@ class PanelCheckoutMixin:
                 self.set_status("Einchecken abgebrochen.")
                 return
 
-            self.set_status("Sende Check-in...")
+            self.set_status("Sende Check-in...", level="progress")
             client = self.client()
             def upload():
                 with checkin_upload_copies(changed_files) as copies:
