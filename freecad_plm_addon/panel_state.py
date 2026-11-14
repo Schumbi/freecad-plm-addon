@@ -264,6 +264,7 @@ class PanelStateMixin:
 
     def set_context_actions(self, summary, primary_label, primary_callback, more_actions):
         self.context_summary.setText(summary)
+        self.context_summary.setToolTip(summary)
         self.context_primary_button.setText(primary_label or "Keine Aktion")
         self.context_primary_callback = primary_callback
         self.context_primary_label = primary_label or ""
