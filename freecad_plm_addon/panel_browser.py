@@ -354,6 +354,40 @@ class PanelBrowserMixin:
         self.checkout_tree_items = checkout_items
         return checkout_items
 
+    def capture_tree_state(self):
+        expanded = {"project": set(), "part": set()}
+        scroll = 0
+        try:
+            for item in self.iter_tree_items():
+                kind = self.tree_item_kind(item)
+                if kind in expanded and item.isExpanded():
+                    payload = self.tree_item_payload(item) or {}
+                    if payload.get("id") is not None:
+                        expanded[kind].add(payload["id"])
+            scroll = self.browser_tree.verticalScrollBar().value()
+        except Exception:
+            pass
+        return expanded, scroll
+
+    def restore_tree_state(self, state):
+        expanded, scroll = state
+        try:
+            for item in self.iter_tree_items():
+                kind = self.tree_item_kind(item)
+                payload = self.tree_item_payload(item) or {}
+                if payload.get("id") in expanded.get(kind, set()):
+                    item.setExpanded(True)
+        except Exception:
+            pass
+
+        def restore_scroll():
+            try:
+                self.browser_tree.verticalScrollBar().setValue(scroll)
+            except Exception:
+                pass
+
+        self.QtCore.QTimer.singleShot(400, restore_scroll)
+
     def clear_tree_children(self, item):
         while item is not None and item.childCount():
             item.takeChild(0)

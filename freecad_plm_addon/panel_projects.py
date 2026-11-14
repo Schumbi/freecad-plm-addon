@@ -300,6 +300,7 @@ class PanelProjectsMixin:
 
         self.set_status("Lade Projekte...", level="progress")
         previous_selection = prefetched["selection"] if prefetched is not None else self.tree_selection_key()
+        tree_state = self.capture_tree_state()
         self.browser_tree.clear()
         self.server_checkouts = []
         self.clear_revision_context()
@@ -357,6 +358,7 @@ class PanelProjectsMixin:
             client, checkouts=prefetched["checkouts"] if prefetched is not None else None,
         )
         restored = self.restore_tree_selection(previous_selection)
+        self.restore_tree_state(tree_state)
         if not restored:
             target_checkout_id = self.active_checkout_id()
             if target_checkout_id not in self.checkout_tree_items and len(self.server_checkouts) == 1:
