@@ -389,6 +389,20 @@ Zusammenführen und Entfernen erfolgt im Web unter **Tags verwalten**.
 Erforderlich ist ein Server mit Projekt-Tags (Migration 0026); ältere Server
 liefern weiterhin Projekte, jedoch ohne Tag-Funktionen.
 
+## Teile-Tags
+
+Teile und Baugruppen haben eigene, projektübergreifende Tags. Sie sind von den
+Projekt-Tags getrennt. Im Teileigenschaftendialog bearbeitest du sie durch
+Kommas getrennt.
+
+Beim Speichern sendet das Addon `tags` als Liste von Namen. Der Server antwortet
+weiterhin mit dem kommagetrennten String `tags`, den das Addon für die Anzeige
+liest; das zusätzliche Feld `tag_items` wird derzeit nicht ausgewertet. Ein
+fehlendes Feld lässt Zuordnungen unverändert, eine leere Liste entfernt alle
+Tags. Ältere Server bleiben lesend nutzbar; das Bearbeiten von Teile-Tags setzt
+einen Server mit dem neuen Tag-Vertrag voraus. Voraussetzung für die relationalen
+Tags ist Server-Migration `0036` bis `0038`.
+
 Beim Projektimport werden STEP- und STL-Dateien einer FCStd-Datei als
 abhängige Dateien zugeordnet. Bei mehreren FCStd-Dateien wird die gewünschte
 Datei ausgewählt; bei genau einer erfolgt die Zuordnung automatisch. Ohne

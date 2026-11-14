@@ -638,3 +638,43 @@ veralteter Basis-Hash führt zu `409`.
 Die Ressource ist ein veränderlicher Arbeitsstand. Sie ist von normalen
 unveränderlichen Fertigungsdateien und einer später aus Bambuddy übernommenen
 gedruckten `gcode.3mf` getrennt.
+
+---
+
+# Server API Requirement: Strukturierte Teile-Tags
+
+```http
+GET  /api/parts/<part_id>/
+POST /api/parts/<part_id>/
+GET  /api/projects/<project_id>/parts/
+```
+
+## Ziel
+
+Das Addon bearbeitet Teile-Tags, ohne die bestehende String-API zu brechen.
+
+## Verhalten
+
+- `tags` wird abwärtskompatibel als kommagetrennter String geliefert.
+- Zusätzlich liefert der Server `tag_items` als Liste aus `{"id": ..., "name": ...}`.
+- Beim Schreiben akzeptiert `tags` einen String oder eine Liste von Namen.
+- Ein fehlendes `tags`-Feld lässt bestehende Zuordnungen unverändert.
+- `""` oder `[]` entfernt alle Zuordnungen.
+- Namen werden an Kommas getrennt, Unicode-Leerraum wird normalisiert und die
+  Eindeutigkeit per Unicode-Casefolding geprüft; die erste Schreibweise bleibt
+  Anzeigename.
+- Maximal 255 Zeichen pro Tag, maximal 100 Tags pro Teil.
+
+## Addon-Nutzung
+
+- Der Teileigenschaftendialog liest den abwärtskompatiblen String `tags`.
+- Beim Speichern sendet das Addon die bearbeiteten Namen als `tags`-Liste.
+- `tag_items` ist für spätere Anzeige-/Vorschlagsfunktionen vorgesehen, wird
+  vom aktuellen Addon aber noch nicht ausgewertet.
+- Die Antwort mit String-`tags` bleibt für ältere Addon-Stände lesbar.
+
+## Akzeptanzkriterien
+
+- Ein älterer Client, der `tags` als String sendet, funktioniert weiterhin.
+- Ein Client, der eine Namensliste sendet, erhält normalisierte, dublettenfreie Tags.
+- `tag_items` ist nur lesend und wird bei Schreibzugriffen ignoriert.

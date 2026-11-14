@@ -2,6 +2,7 @@
 
 ## Unveröffentlicht
 
+- Teile-Tags sind mit Servern mit abgeschlossenem AP-E2 kompatibel (Migrationen `0036`–`0038`): Beim Bearbeiten sendet das Addon `tags` als Namensliste, der Server liefert weiterhin den kommagetrennten String `tags` und zusätzlich `tag_items`. Ältere Server bleiben lesend nutzbar; das Bearbeiten von Teile-Tags setzt den neuen Server-Vertrag voraus.
 - Der Netzwerkpunkt behält seinen Platz und ist im Ruhezustand vollständig transparent. Bei Übertragungen einschließlich Druckprojekt-Vorschauen blinkt er alle 300 ms; Projektbaum und Aktionen sind währenddessen gesperrt.
 - Auch ältere PLM-Dialogaktionen führen ihre Serveranfragen auf einem Worker aus, während Qt weiter Ereignisse verarbeitet.
 - Projekt-Refresh über Symbolleiste und Verbindungseinstellungen läuft im Hintergrund. Ein blinkender Kreis im Projektbaum zeigt laufende Netzwerkabfragen und Datenübertragungen an.
