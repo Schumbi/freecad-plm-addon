@@ -415,15 +415,55 @@ class PanelStateMixin:
         return client
 
     def show_connection_settings_dialog(self):
+        from .background_work import run_gui_work
+
         dialog = self.QtWidgets.QDialog(self.widget)
         dialog.setWindowTitle("Verbindungseinstellungen")
+        dialog.setMinimumWidth(460)
         layout = self.QtWidgets.QVBoxLayout(dialog)
-        form = self.QtWidgets.QFormLayout()
+        tabs = self.QtWidgets.QTabWidget()
+        layout.addWidget(tabs)
 
+        connection_page = self.QtWidgets.QWidget()
+        connection_form = self.QtWidgets.QFormLayout(connection_page)
         server_url = self.QtWidgets.QLineEdit(self.server_url.text())
+        server_url.setPlaceholderText("https://plm.example")
+        token_row = self.QtWidgets.QWidget()
+        token_layout = self.QtWidgets.QHBoxLayout(token_row)
+        token_layout.setContentsMargins(0, 0, 0, 0)
         api_token = self.QtWidgets.QLineEdit(self.api_token.text())
         api_token.setEchoMode(self.QtWidgets.QLineEdit.Password)
+        reveal = self.QtWidgets.QToolButton()
+        reveal.setText("Anzeigen")
+        reveal.setCheckable(True)
+        token_layout.addWidget(api_token, 1)
+        token_layout.addWidget(reveal)
+        connection_form.addRow("Server", server_url)
+        connection_form.addRow("API-Token", token_row)
+        connection_form.addRow(
+            "",
+            self.QtWidgets.QLabel(
+                "Scopes: read, write, checkout · admin für Projektmetadaten"
+            ),
+        )
+        test_button = self.QtWidgets.QPushButton("Verbindung testen")
+        test_status = self.QtWidgets.QLabel("")
+        test_row = self.QtWidgets.QHBoxLayout()
+        test_row.addWidget(test_button)
+        test_row.addWidget(test_status, 1)
+        connection_form.addRow("", test_row)
+        tabs.addTab(connection_page, "Verbindung")
+
+        workspace_page = self.QtWidgets.QWidget()
+        workspace_form = self.QtWidgets.QFormLayout(workspace_page)
+        workspace_row = self.QtWidgets.QWidget()
+        workspace_layout = self.QtWidgets.QHBoxLayout(workspace_row)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_root = self.QtWidgets.QLineEdit(self.workspace_root.text())
+        browse_workspace = self.QtWidgets.QPushButton("Wählen …")
+        workspace_layout.addWidget(workspace_root, 1)
+        workspace_layout.addWidget(browse_workspace)
+        workspace_form.addRow("Arbeitsordner", workspace_row)
         cache_max_fcstd_files = self.QtWidgets.QSpinBox()
         cache_max_fcstd_files.setMinimum(self.cache_max_fcstd_files.minimum())
         cache_max_fcstd_files.setMaximum(self.cache_max_fcstd_files.maximum())
@@ -442,6 +482,13 @@ class PanelStateMixin:
         cache_max_revisions_per_project.setValue(
             self.cache_max_revisions_per_project.value()
         )
+        workspace_form.addRow("Max. CAD-Dateien im Cache", cache_max_fcstd_files)
+        workspace_form.addRow("Max. Projekte im Cache", cache_max_projects)
+        workspace_form.addRow("Max. Revisionen je Projekt", cache_max_revisions_per_project)
+        tabs.addTab(workspace_page, "Arbeitsbereich")
+
+        slicer_page = self.QtWidgets.QWidget()
+        slicer_form = self.QtWidgets.QFormLayout(slicer_page)
         slicer_kind = self.QtWidgets.QComboBox()
         slicer_kind.addItem("Automatisch erkennen", "auto")
         slicer_kind.addItem("Bambu Studio", "bambu")
@@ -453,24 +500,71 @@ class PanelStateMixin:
         slicer_executable.setPlaceholderText("Leer lassen für automatische Erkennung")
         slicer_extra_args = self.QtWidgets.QLineEdit(self.slicer_extra_args)
         slicer_extra_args.setPlaceholderText('["--option"]')
-
-        form.addRow("Server", server_url)
-        form.addRow("API-Token", api_token)
-        form.addRow("Workspace", workspace_root)
-        form.addRow("Max. CAD-Dateien", cache_max_fcstd_files)
-        form.addRow("Max. Projekte", cache_max_projects)
-        form.addRow("Max. Revisionen je Projekt", cache_max_revisions_per_project)
-        form.addRow("Slicer", slicer_kind)
-        form.addRow("Slicer-Programm", slicer_executable)
-        form.addRow("Zusätzliche Argumente", slicer_extra_args)
-        layout.addLayout(form)
+        slicer_form.addRow("Slicer", slicer_kind)
+        slicer_form.addRow("Slicer-Programm", slicer_executable)
+        slicer_form.addRow("Zusätzliche Argumente", slicer_extra_args)
+        tabs.addTab(slicer_page, "Slicer")
 
         buttons = self.QtWidgets.QDialogButtonBox(
             self.QtWidgets.QDialogButtonBox.Ok | self.QtWidgets.QDialogButtonBox.Cancel
         )
-        buttons.button(self.QtWidgets.QDialogButtonBox.Ok).setText("Speichern und verbinden")
+        buttons.button(self.QtWidgets.QDialogButtonBox.Ok).setText("Speichern")
         layout.addWidget(buttons)
-        buttons.accepted.connect(dialog.accept)
+
+        def toggle_token(checked):
+            api_token.setEchoMode(
+                self.QtWidgets.QLineEdit.Normal
+                if checked
+                else self.QtWidgets.QLineEdit.Password
+            )
+            reveal.setText("Verbergen" if checked else "Anzeigen")
+
+        def choose_workspace():
+            chosen = self.QtWidgets.QFileDialog.getExistingDirectory(
+                dialog, "Arbeitsordner wählen", workspace_root.text().strip()
+            )
+            if chosen:
+                workspace_root.setText(chosen)
+
+        def test_connection():
+            url = server_url.text().strip()
+            token = api_token.text().strip()
+            if not url or not token:
+                test_status.setText("Server und Token sind erforderlich.")
+                return
+            test_status.setText("Teste Verbindung …")
+            test_button.setEnabled(False)
+
+            def finished(result, error):
+                test_button.setEnabled(True)
+                if error is not None:
+                    test_status.setText(f"Fehlgeschlagen: {error}")
+                    return
+                count = len(result) if isinstance(result, list) else 0
+                test_status.setText(f"Verbunden · {count} Projekte")
+
+            run_gui_work(
+                self.QtCore,
+                self.widget,
+                lambda: PLMClient(url, token).get_projects(),
+                finished,
+            )
+
+        def accept():
+            if not server_url.text().strip():
+                tabs.setCurrentIndex(0)
+                test_status.setText("Server ist erforderlich.")
+                return
+            if not api_token.text().strip():
+                tabs.setCurrentIndex(0)
+                test_status.setText("API-Token ist erforderlich.")
+                return
+            dialog.accept()
+
+        reveal.toggled.connect(toggle_token)
+        browse_workspace.clicked.connect(choose_workspace)
+        test_button.clicked.connect(test_connection)
+        buttons.accepted.connect(accept)
         buttons.rejected.connect(dialog.reject)
 
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
