@@ -159,7 +159,7 @@ class CreateAnnotationCommand(BaseCommand):
 
 class OpenInSlicerCommand(BaseCommand):
     menu_text = "Druckprojekt öffnen/erstellen"
-    tooltip = "Ausgewählte Revision als Druckprojekt im Slicer öffnen oder anlegen"
+    tooltip = "Revision als Druckprojekt öffnen oder anlegen"
     pixmap = icon_path("open-slicer.svg")
 
     def IsActive(self):
