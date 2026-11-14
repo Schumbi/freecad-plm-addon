@@ -455,7 +455,9 @@ class PanelBrowserMixin:
         elif state in ("server", "error"):
             self.reopen_selected_checkout()
         else:
-            self.open_selected_revision()
+            # Doppelklick ist eine Navigationsgeste wie im Dateibrowser:
+            # Er darf keinen Server-Checkout ausloesen.
+            self.open_selected_revision_readonly()
 
     def show_browser_context_menu(self, position):
         item = self.browser_tree.itemAt(position)

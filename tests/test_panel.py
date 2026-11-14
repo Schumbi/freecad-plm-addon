@@ -749,7 +749,7 @@ class PanelTests(unittest.TestCase):
     def test_revision_workflow_hint_explains_double_click(self):
         self.assertEqual(
             revision_workflow_hint({"id": 1, "file_format": "fcstd"}),
-            "FCStd: bearbeitbar · Doppelklick startet den Checkout",
+            "FCStd: bearbeitbar · Doppelklick öffnet schreibgeschützt; Checkout über die Aktion",
         )
         self.assertEqual(
             revision_workflow_hint({"id": 2, "file_format": "stl"}),

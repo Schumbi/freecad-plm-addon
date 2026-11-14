@@ -259,7 +259,7 @@ def revision_primary_action(revision):
 def revision_workflow_hint(revision):
     file_format = revision_format_label(revision) or "CAD"
     if revision_is_checkout_editable(revision):
-        return f"{file_format}: bearbeitbar · Doppelklick startet den Checkout"
+        return f"{file_format}: bearbeitbar · Doppelklick öffnet schreibgeschützt; Checkout über die Aktion"
     return f"{file_format}: Austauschmodell · Doppelklick öffnet schreibgeschützt"
 
 
