@@ -290,11 +290,6 @@ class PanelBrowserMixin:
             "server": "Checkout auf Server",
             "error": "Checkout fehlerhaft",
         }
-        colors = {
-            "local": "#18794e",
-            "server": "#9a6700",
-            "error": "#c62828",
-        }
         base_label = item.data(0, self.tree_role(5)) or item.text(0)
         if self.tree_item_kind(item) == "part":
             revision = item.data(0, self.tree_role(7))
@@ -307,7 +302,7 @@ class PanelBrowserMixin:
         font.setBold(state == "local")
         font.setItalic(False)
         item.setFont(0, font)
-        item.setForeground(0, self.QtGui.QBrush(self.QtGui.QColor(colors[state])))
+        item.setForeground(0, self.QtGui.QBrush())
         item.setIcon(0, self.checkout_icon(state))
         tooltip = labels[state]
         if error:
@@ -327,7 +322,6 @@ class PanelBrowserMixin:
         font = item.font(0)
         font.setBold(True)
         item.setFont(0, font)
-        item.setForeground(0, self.QtGui.QBrush(self.QtGui.QColor("#c62828")))
         item.setIcon(0, self.checkout_icon("error"))
         item.setToolTip(0, message)
         if parent is not None:

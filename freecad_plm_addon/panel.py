@@ -188,7 +188,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         self.network_indicator.setFixedWidth(16)
         self.network_indicator.setAlignment(self.QtCore.Qt.AlignCenter)
         self.network_indicator.setToolTip("Warte auf Netzwerkverbindung oder Datenübertragung")
-        self.network_indicator.setStyleSheet("color: rgba(22, 132, 197, 0); font-size: 15px;")
+        self.network_indicator.setStyleSheet("color: transparent; font-size: 15px;")
         tree_header.addWidget(self.network_indicator)
         self._network_activity_count = 0
         self._network_indicator_lit = False
@@ -215,13 +215,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         details_widget = self.QtWidgets.QWidget()
         self.action_bar_widget = details_widget
         details_widget.setObjectName("PLMActionBar")
-        details_widget.setStyleSheet(
-            "#PLMActionBar {"
-            "border-top: 1px solid #c8c8c8;"
-            "background: #f6f6f6;"
-            "}"
-        )
-        details_widget.setMaximumHeight(48)
+        details_widget.setMaximumHeight(self.connection_summary_height() * 3)
         details_layout = self.QtWidgets.QVBoxLayout(details_widget)
         details_layout.setContentsMargins(4, 3, 4, 3)
         details_layout.setSpacing(3)
@@ -440,7 +434,10 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
 
     def _blink_network_indicator(self):
         self._network_indicator_lit = not self._network_indicator_lit
-        color = "rgba(22, 132, 197, 255)" if self._network_indicator_lit else "rgba(22, 132, 197, 0)"
+        if self._network_indicator_lit:
+            color = self.widget.palette().highlight().color().name()
+        else:
+            color = "transparent"
         self.network_indicator.setStyleSheet(f"color: {color}; font-size: 15px;")
 
     def begin_network_activity(self):
@@ -463,7 +460,7 @@ class PLMPanel(PanelProjectTagsMixin, PanelStateMixin, PanelBrowserMixin, PanelP
         if self._network_activity_count == 0:
             self.network_indicator_timer.stop()
             self._network_indicator_lit = False
-            self.network_indicator.setStyleSheet("color: rgba(22, 132, 197, 0); font-size: 15px;")
+            self.network_indicator.setStyleSheet("color: transparent; font-size: 15px;")
             self.browser_tree.setEnabled(True)
             self.variant_role.setEnabled(True)
             self.project_search.setEnabled(True)
