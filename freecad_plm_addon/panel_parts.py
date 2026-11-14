@@ -360,7 +360,9 @@ class PanelPartsMixin:
             else {}
         )
         active_project_id = active_project.get("id")
+        switched_project = None
         if active_project_id is not None and active_project_id != project_id:
+            switched_project = project_label(project or {})
             self.select_project_by_id(active_project_id)
             project = self.selected_project() or active_project
             project_id = project.get("id")
@@ -373,17 +375,22 @@ class PanelPartsMixin:
         dialog = self.QtWidgets.QDialog(self.widget)
         dialog.setWindowTitle("Neues FreeCAD-Teil")
         layout = self.QtWidgets.QVBoxLayout(dialog)
-        intro = self.QtWidgets.QLabel(
-            (
-                "Das PLM legt Teil und Revision R0001 an und fügt die neue FCStd-Datei "
-                "direkt zum aktiven Checkout hinzu."
-                if active_checkout_id is not None
-                else (
-                    "Das PLM legt Teil und Revision R0001 an und öffnet die "
-                    "neue FCStd-Datei direkt als Checkout."
-                )
+        intro_text = (
+            "Das PLM legt Teil und Revision R0001 an und fügt die neue FCStd-Datei "
+            "direkt zum aktiven Checkout hinzu."
+            if active_checkout_id is not None
+            else (
+                "Das PLM legt Teil und Revision R0001 an und öffnet die "
+                "neue FCStd-Datei direkt als Checkout."
             )
         )
+        if switched_project:
+            intro_text = (
+                f"Achtung: Der aktive Checkout gehört zu {project_label(project or {})}. "
+                f"Das neue Teil wird dort angelegt, nicht in {switched_project}.\n\n"
+                + intro_text
+            )
+        intro = self.QtWidgets.QLabel(intro_text)
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
