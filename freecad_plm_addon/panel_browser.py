@@ -194,12 +194,27 @@ class PanelBrowserMixin:
         self.browser_tree.scrollToItem(item)
         return True
 
+    def entity_icon(self, kind, payload=None):
+        if kind == "part" and (payload or {}).get("category") == "assembly":
+            filename = "assembly.svg"
+        else:
+            filename = {
+                "folder": "folder.svg",
+                "project": "project.svg",
+                "part": "part.svg",
+                "revision": "revision.svg",
+            }.get(kind, "")
+        if not filename:
+            return self.QtGui.QIcon()
+        return self.QtGui.QIcon(str(Path(__file__).resolve().parent / "icons" / filename))
+
     def add_tree_item(self, parent, kind, payload, label, lazy=False):
         item = self.QtWidgets.QTreeWidgetItem([label])
         item.setData(0, int(self.QtCore.Qt.UserRole), payload)
         item.setData(0, self.tree_role(1), kind)
         item.setData(0, self.tree_role(2), not lazy)
         item.setData(0, self.tree_role(5), label)
+        item.setIcon(0, self.entity_icon(kind, payload))
         if parent is None:
             self.browser_tree.addTopLevelItem(item)
         else:
@@ -243,7 +258,7 @@ class PanelBrowserMixin:
             font.setItalic(False)
             item.setFont(0, font)
             item.setForeground(0, self.QtGui.QBrush())
-            item.setIcon(0, self.QtGui.QIcon())
+            item.setIcon(0, self.entity_icon(self.tree_item_kind(item), self.tree_item_payload(item)))
             if self.tree_item_kind(item) == "part":
                 revision = item.data(0, self.tree_role(7))
                 item.setToolTip(0, revision_workflow_hint(revision) if isinstance(revision, dict) else "Keine Revision vorhanden.")
