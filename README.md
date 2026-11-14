@@ -44,6 +44,8 @@ Aktuell umgesetzt:
 - Streng validierte `freecad-plm://revision/...`-Links aus dem Web unter Linux
   und Windows öffnen; Checkout-Links werden vor Ausführung nochmals bestätigt.
 - Lokale CAD-Ordner mit FCStd-, STEP- und STL-Dateien als Projektstand oder neues Projekt importieren.
+- Für Linux Mint ist ein zusätzlicher Nemo-Import für lokale Ordner
+  dokumentiert; Details stehen in [`docs/NEMO_IMPORT.md`](docs/NEMO_IMPORT.md).
 - Aus FCStd-, STEP- und STL-Revisionen projektbezogene Druckprojekte anlegen,
   zusätzliche PLM-Revisionen oder externe STL-Dateien als Quellen zuordnen und
   den gemeinsamen 3MF-Arbeitsstand aus Bambu Studio oder OrcaSlicer
