@@ -781,10 +781,14 @@ class PanelCheckoutMixin:
         self.set_status(f"{path} wurde zum Entfernen vorgemerkt.")
 
     def offer_cancel_unchanged_checkout(self, saved_count=0):
+        summary = checkout_label(self.active_checkout or {})
         answer = self.QtWidgets.QMessageBox.question(
             self.widget,
             "Keine Änderungen",
-            "Keine modellrelevanten Änderungen gefunden. Checkout abbrechen?",
+            f"Keine modellrelevanten Änderungen gefunden.\n\n"
+            f"Checkout für {summary} verwerfen?",
+            self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+            self.QtWidgets.QMessageBox.No,
         )
         if answer != self.QtWidgets.QMessageBox.Yes:
             self.set_status(unchanged_checkout_text(saved_count=saved_count))

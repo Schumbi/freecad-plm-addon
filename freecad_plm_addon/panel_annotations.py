@@ -361,10 +361,14 @@ class PanelAnnotationsMixin:
             self.set_status("Keine Anmerkung ausgewählt.")
             return
 
+        text = (annotation.get("text") or "").strip()
+        preview = text if len(text) <= 120 else text[:117] + "…"
         answer = self.QtWidgets.QMessageBox.question(
             self.widget,
             "Anmerkung löschen",
-            "Ausgewählte Anmerkung wirklich löschen?",
+            f"Anmerkung „{preview}“ wirklich löschen?",
+            self.QtWidgets.QMessageBox.Yes | self.QtWidgets.QMessageBox.No,
+            self.QtWidgets.QMessageBox.No,
         )
         if answer != self.QtWidgets.QMessageBox.Yes:
             self.set_status("Löschen abgebrochen.")
