@@ -62,7 +62,7 @@ class PanelAnnotationsMixin:
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
-            self.set_status("Notizenbearbeitung abgebrochen.")
+            return
             return
         payload = revision_notes_payload(notes.toPlainText())
         try:
@@ -343,7 +343,7 @@ class PanelAnnotationsMixin:
             f"Ziel: {target} · Revision {revision.get('revision_code', '')}",
         )
         if text is None:
-            self.set_status("Anmerkung abgebrochen.")
+            return
             return
 
         payload = annotation_create_payload(revision_id, text, object_name, subelement)
@@ -378,7 +378,7 @@ class PanelAnnotationsMixin:
             annotation.get("text", ""),
         )
         if text is None:
-            self.set_status("Bearbeiten abgebrochen.")
+            return
             return
 
         payload = annotation_update_payload(text=text)

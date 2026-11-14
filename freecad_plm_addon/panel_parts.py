@@ -427,7 +427,7 @@ class PanelPartsMixin:
         name_input.setFocus()
 
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
-            self.set_status("Teilanlage abgebrochen.")
+            return
             return
 
         name = name_input.text().strip()
@@ -786,7 +786,7 @@ class PanelPartsMixin:
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
-            self.set_status("Projektbearbeitung abgebrochen.")
+            return
             return
 
         payload = project_edit_payload(
@@ -862,7 +862,7 @@ class PanelPartsMixin:
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
-            self.set_status("Teilbearbeitung abgebrochen.")
+            return
             return
 
         payload = part_edit_payload(

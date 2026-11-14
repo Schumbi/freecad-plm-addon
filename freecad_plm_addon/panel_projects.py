@@ -707,7 +707,7 @@ class PanelProjectsMixin:
         buttons.rejected.connect(dialog.reject)
 
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
-            self.set_status("Projektimport abgebrochen.")
+            return
             return
 
         source = source_dir.text().strip()
@@ -727,7 +727,7 @@ class PanelProjectsMixin:
                     dependency_root_path, accepted = self.QtWidgets.QInputDialog.getItem(
                         dialog, "Abhängige Dateien zuordnen", "FreeCAD-Datei", fcstd_paths, 0, False)
                     if not accepted:
-                        self.set_status("Projektimport abgebrochen.")
+                        return
                         return
                 elif external_paths and not fcstd_paths:
                     projects = client.get_projects()
@@ -737,7 +737,7 @@ class PanelProjectsMixin:
                     labels = [project_label(item) for item in projects]
                     label, accepted = self.QtWidgets.QInputDialog.getItem(dialog, "Projekt wählen", "Projekt", labels, 0, False)
                     if not accepted:
-                        self.set_status("Projektimport abgebrochen.")
+                        return
                         return
                     import_project_id = projects[labels.index(label)]["id"]
                     candidates = []
@@ -755,7 +755,7 @@ class PanelProjectsMixin:
                         labels = [label for label, _revision_id in candidates]
                         label, accepted = self.QtWidgets.QInputDialog.getItem(dialog, "Abhängige Dateien zuordnen", "FreeCAD-Teil", labels, 0, False)
                         if not accepted:
-                            self.set_status("Projektimport abgebrochen.")
+                            return
                             return
                         dependency_revision_id = candidates[labels.index(label)][1]
                 if new_project_radio.isChecked() and not dependency_revision_id:

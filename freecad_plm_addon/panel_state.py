@@ -594,7 +594,7 @@ class PanelStateMixin:
         buttons.rejected.connect(dialog.reject)
 
         if dialog.exec_() != self.QtWidgets.QDialog.Accepted:
-            self.set_status("Verbindungseinstellungen abgebrochen.")
+            return
             return
 
         self.server_url.setText(server_url.text().strip())
